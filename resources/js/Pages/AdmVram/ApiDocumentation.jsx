@@ -11,7 +11,7 @@ import RowAction from '../../Components/Table/RowAction';
 import TopPanel from '../../Components/Table/TopPanel';
 import Button from '../../Components/Table/Buttons/Button';
 import TableSearch from '../../Components/Table/TableSearch';
-import Tooltip from '../../Components/Tooltip/Tooltip';
+import { IconTooltipButton } from '../../Components/Tooltip/AnchoredTooltip';
 import { useTheme } from '../../Context/ThemeContext';
 import useThemeStyles from '../../Hooks/useThemeStyles';
 import RowStatus from '../../Components/Table/RowStatus';
@@ -20,6 +20,7 @@ import BulkActions from '../../Components/Table/Buttons/BulkActions';
 import { useToast } from '../../Context/ToastContext';
 const ApiDocumentation = ({api, queryParams}) => {
     const { theme } = useTheme();
+    const isDark = theme === 'bg-skin-black';
     const { textColorActive } = useThemeStyles(theme);
     const { handleToast } = useToast();
     const [pathname, setPathname] = useState(null);
@@ -113,19 +114,19 @@ const ApiDocumentation = ({api, queryParams}) => {
                         onConfirm={handleBulkAction}
                         itemName="API/s"
                     />
-                    <Tooltip text="Refresh data" arrow="bottom">
-                        <Button
-                            extendClass={
-                                (["bg-skin-white"].includes(theme)
-                                    ? primayActiveColor
-                                    : theme) + " py-[5px] px-[10px]"
-                            }
-                            fontColor={textColorActive}
-                            onClick={refreshTable}
-                        >
-                            <i className="fa fa-rotate-right text-base p-[1px]"></i>
-                        </Button>
-                    </Tooltip>
+                    <IconTooltipButton
+                        label="Refresh data"
+                        isDark={isDark}
+                        placement="bottom"
+                        className={`${textColorActive} overflow-hidden border border-[1px] border-gray-500 rounded-md font-poppins text-sm px-2 py-2 hover:opacity-80 ${
+                            ["bg-skin-white"].includes(theme)
+                                ? primayActiveColor
+                                : theme
+                        } py-[5px] px-[10px]`}
+                        onClick={refreshTable}
+                    >
+                        <i className="fa fa-rotate-right text-base p-[1px]"></i>
+                    </IconTooltipButton>
                     <Button
                         extendClass={
                             (["bg-skin-white"].includes(theme)

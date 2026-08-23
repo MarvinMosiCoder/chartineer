@@ -31,6 +31,9 @@ Route::post('login-save', [LoginController::class, 'authenticate'])
 3. `LoginController` loads privilege, menus, profile, theme, notification, and announcement session data.
 4. Laravel regenerates the authenticated session and redirects by the current database role. The trader endpoint rejects administrative accounts; the admin endpoint rejects non-admin accounts with a generic error.
 5. OAuth redirects through Socialite. The callback matches provider identity, then email, and may create a non-superadmin account.
+6. `LoginController::completeLogin()` also decides whether this account must change its password now: still on the literal seeded default (`Hash::check('qwerty', ...)`), or `last_password_updated` is null/older than 3 months. If so it sets `Session::put('check_user', true)`. `CheckUserForceChangePassword` (`check.user` middleware alias) redirects any request carrying that flag to `show-change-force-password`.
+
+`check.user` is deliberately attached only to specific routes, never to a whole route group: it's a plain `redirect()->route(...)`, which would break AJAX/JSON calls (e.g. the trading UI's `market-backtest/*` endpoints) if it fired on them. It must be attached to whichever named routes `loginDestination()` actually sends a session to right after login — currently `dashboard` (admins) and `market` (traders) — otherwise an account can land on its home page without ever being prompted, even though the session flag is set. Adding a new post-login landing destination requires adding `check.user` to it explicitly.
 
 `adm_users` stores identity, provider fields, password-login state, status, privilege, onboarding, trial, and paid-access fields. Password history is stored in `adm_password_histories`.
 

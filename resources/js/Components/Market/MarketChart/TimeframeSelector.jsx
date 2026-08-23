@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Star } from 'lucide-react';
+import { useAnchoredTooltip, AnchoredTooltipPortal, IconTooltipButton } from '../../Tooltip/AnchoredTooltip';
 
 const GRID_WIDTH = 280;
 
@@ -9,7 +10,7 @@ const GRID_WIDTH = 280;
 // gets clipped by that ancestor's scroll box instead of floating over the chart.
 // Portaling to document.body and positioning from the trigger's own
 // getBoundingClientRect (same escape-the-clipping-ancestor pattern as
-// ChartHeader.jsx's HeaderTooltipPortal / ReplayPanel.jsx's RailTooltipPortal)
+// Components/Tooltip/AnchoredTooltip.jsx's AnchoredTooltipPortal, used below)
 // keeps it fully visible and viewport-clamped regardless of that ancestor.
 function useAnchoredGridPosition() {
   const anchorRef = useRef(null);
@@ -21,6 +22,51 @@ function useAnchoredGridPosition() {
     setPos({ top: rect.bottom + 8, left });
   };
   return { anchorRef, pos, open, close: () => setPos(null) };
+}
+
+// A grid cell needs its own useAnchoredTooltip() instance, so it must be a
+// real component rather than inline JSX inside the .map() below — hooks
+// can't be called per-iteration inside a loop callback.
+function TimeframeGridCell({ tf, isActive, isFav, isDark, onSelect, onToggleFavorite }) {
+  const { anchorRef, pos, show, hide } = useAnchoredTooltip('bottom');
+  return (
+    <div
+      ref={anchorRef}
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        onSelect();
+      }}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      className={`relative flex h-10 cursor-pointer items-center justify-center rounded text-xs font-semibold outline-none ${
+        isActive
+          ? 'bg-[#2962ff] text-white'
+          : isDark ? 'bg-white/5 text-gray-200 hover:bg-white/10' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+      }`}
+    >
+      {tf.value}
+      <button
+        type="button"
+        onClick={(event) => { event.stopPropagation(); onToggleFavorite(); }}
+        className={`absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full ${
+          isFav ? 'text-amber-400' : isActive ? 'text-white/60 hover:text-amber-300' : isDark ? 'text-gray-600 hover:text-amber-400' : 'text-slate-300 hover:text-amber-500'
+        }`}
+        aria-label={isFav ? `Remove ${tf.label} from favorites` : `Add ${tf.label} to favorites`}
+      >
+        <Star size={11} fill={isFav ? 'currentColor' : 'none'} />
+      </button>
+      {/* z-[10022]: this cell lives inside the "Select period" panel, itself
+          portaled at z-[10021] — the shared default z-[9999] would paint
+          the tooltip underneath that panel instead of above it. */}
+      <AnchoredTooltipPortal pos={pos} label={tf.label} isDark={isDark} zIndexClass="z-[10022]" />
+    </div>
+  );
 }
 
 export const MAX_TIMEFRAME_FAVORITES = 10;
@@ -37,6 +83,10 @@ export const DEFAULT_TIMEFRAME_FAVORITES = ['1m', '5m', '15m', '30m', '1h', '4h'
 export default function TimeframeSelector({ timeframe, timeframeOptions, favorites, onTimeframeChange, onFavoritesChange, chartTheme }) {
   const [isOpen, setIsOpen] = useState(false);
   const grid = useAnchoredGridPosition();
+  // Reuses grid.anchorRef (see useAnchoredGridPosition above) rather than a
+  // second ref on the same chevron button — see useAnchoredTooltip's
+  // externalAnchorRef param.
+  const chevronTooltip = useAnchoredTooltip('bottom', grid.anchorRef);
   const isDark = chartTheme?.mode === 'dark';
 
   const toggleOpen = () => {
@@ -75,11 +125,12 @@ export default function TimeframeSelector({ timeframe, timeframeOptions, favorit
         {displayedTimeframes.map((tf) => {
           const isActive = tf.value === timeframe;
           return (
-            <button
+            <IconTooltipButton
               key={tf.value}
-              type="button"
+              label={tf.label}
+              isDark={isDark}
+              placement="bottom"
               onClick={() => onTimeframeChange(tf.value)}
-              title={tf.label}
               className={`flex h-7 shrink-0 items-center justify-center rounded px-2 text-xs font-semibold transition-colors ${
                 isActive
                   ? 'text-emerald-500'
@@ -87,21 +138,23 @@ export default function TimeframeSelector({ timeframe, timeframeOptions, favorit
               }`}
             >
               {tf.value}
-            </button>
+            </IconTooltipButton>
           );
         })}
       </div>
-      <button
-        ref={grid.anchorRef}
-        type="button"
-        onClick={toggleOpen}
-        className={`flex h-7 w-6 shrink-0 items-center justify-center rounded ${isDark ? 'text-gray-400 hover:bg-white/10 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
-        aria-label="Select period"
-        aria-expanded={isOpen}
-        title="Select period"
-      >
-        <ChevronDown size={14} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+      <span className="relative inline-flex shrink-0" onMouseEnter={chevronTooltip.show} onMouseLeave={chevronTooltip.hide} onFocus={chevronTooltip.show} onBlur={chevronTooltip.hide}>
+        <button
+          ref={grid.anchorRef}
+          type="button"
+          onClick={toggleOpen}
+          className={`flex h-7 w-6 shrink-0 items-center justify-center rounded ${isDark ? 'text-gray-400 hover:bg-white/10 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
+          aria-label="Select period"
+          aria-expanded={isOpen}
+        >
+          <ChevronDown size={14} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+        <AnchoredTooltipPortal pos={chevronTooltip.pos} label="Select period" isDark={isDark} />
+      </span>
 
       {isOpen && grid.pos && typeof document !== 'undefined' && createPortal(
         <>
@@ -117,42 +170,17 @@ export default function TimeframeSelector({ timeframe, timeframeOptions, favorit
               <span className={`text-xs font-semibold ${mutedClass}`}>{favorites.length}/{MAX_TIMEFRAME_FAVORITES}</span>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
-              {timeframeOptions.map((tf) => {
-                const isFav = favoriteSet.has(tf.value);
-                const isActive = tf.value === timeframe;
-                return (
-                  <div
-                    key={tf.value}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => { onTimeframeChange(tf.value); setIsOpen(false); }}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return;
-                      event.preventDefault();
-                      onTimeframeChange(tf.value);
-                      setIsOpen(false);
-                    }}
-                    title={tf.label}
-                    className={`relative flex h-10 cursor-pointer items-center justify-center rounded text-xs font-semibold outline-none ${
-                      isActive
-                        ? 'bg-[#2962ff] text-white'
-                        : isDark ? 'bg-white/5 text-gray-200 hover:bg-white/10' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {tf.value}
-                    <button
-                      type="button"
-                      onClick={(event) => { event.stopPropagation(); toggleFavorite(tf.value); }}
-                      className={`absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full ${
-                        isFav ? 'text-amber-400' : isActive ? 'text-white/60 hover:text-amber-300' : isDark ? 'text-gray-600 hover:text-amber-400' : 'text-slate-300 hover:text-amber-500'
-                      }`}
-                      aria-label={isFav ? `Remove ${tf.label} from favorites` : `Add ${tf.label} to favorites`}
-                    >
-                      <Star size={11} fill={isFav ? 'currentColor' : 'none'} />
-                    </button>
-                  </div>
-                );
-              })}
+              {timeframeOptions.map((tf) => (
+                <TimeframeGridCell
+                  key={tf.value}
+                  tf={tf}
+                  isActive={tf.value === timeframe}
+                  isFav={favoriteSet.has(tf.value)}
+                  isDark={isDark}
+                  onSelect={() => { onTimeframeChange(tf.value); setIsOpen(false); }}
+                  onToggleFavorite={() => toggleFavorite(tf.value)}
+                />
+              ))}
             </div>
           </div>
         </>,

@@ -37,6 +37,7 @@ This handbook documents the application by feature. Each guide names the respons
 | Legacy configurable API system | [Admin API generator](admin-api-generator.md) |
 | Name, logo, theme, login settings | [System settings](system-settings.md) |
 | App-wide exception log, payment lifecycle trail | [System error logs and payment activity](system-error-logs-and-payment-activity.md) |
+| Admin "Reports" section: revenue by day/week/month/year | [Admin reports](admin-reports.md) |
 
 Use [file reference](file-reference.md) when you know a path but not its feature owner.
 

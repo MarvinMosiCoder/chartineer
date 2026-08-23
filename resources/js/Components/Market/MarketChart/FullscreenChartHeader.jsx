@@ -5,6 +5,7 @@ import getAppName from '../../SystemSettings/ApplicationName';
 import ChartHeader from './ChartHeader';
 import WatchlistPanel from '../WatchlistPanel';
 import { watchlistMarketKey } from '../../../Context/WatchlistContext';
+import { IconTooltipButton } from '../../Tooltip/AnchoredTooltip';
 
 export default function FullscreenChartHeader({
   chartHeaderProps,
@@ -82,9 +83,12 @@ export default function FullscreenChartHeader({
       </div>
 
       <div data-chart-ui="watchlists-panel" className="relative mx-1 shrink-0">
-        <button
-          type="button"
+        <IconTooltipButton
+          label="Watchlists"
+          isDark={isDark}
+          placement="bottom"
           onClick={() => setIsWatchlistPanelOpen((current) => !current)}
+          aria-expanded={isWatchlistPanelOpen}
           className={`flex h-9 items-center gap-2 rounded-md border px-2 transition ${
             isWatchlistPanelOpen
               ? 'border-[#2962ff] bg-[#2962ff] text-white'
@@ -92,13 +96,10 @@ export default function FullscreenChartHeader({
                 ? 'border-gray-700 bg-black-table-color text-white hover:bg-skin-black-light'
                 : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
           }`}
-          title="Watchlists"
-          aria-label="Watchlists"
-          aria-expanded={isWatchlistPanelOpen}
         >
           <ListChecks size={15} />
           <span className="hidden text-[11px] font-semibold lg:inline">Watchlists</span>
-        </button>
+        </IconTooltipButton>
         {isWatchlistPanelOpen && (
           <div className="absolute right-0 top-11 z-[130]">
             <WatchlistPanel
@@ -111,9 +112,12 @@ export default function FullscreenChartHeader({
         )}
       </div>
 
-      {showEntryWallet && <button
-        type="button"
+      {showEntryWallet && <IconTooltipButton
+        label="Enter Position"
+        isDark={isDark}
+        placement="bottom"
         onClick={() => onEntryPanelOpenChange?.(!isEntryPanelOpen)}
+        aria-expanded={isEntryPanelOpen}
         className={`mx-1 flex h-9 shrink-0 items-center gap-2 rounded-md border px-2 transition ${
           isEntryPanelOpen
             ? 'border-[#2962ff] bg-[#2962ff] text-white'
@@ -121,9 +125,6 @@ export default function FullscreenChartHeader({
               ? 'border-gray-700 bg-black-table-color text-white hover:bg-skin-black-light'
               : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
         }`}
-        title="Enter Position"
-        aria-label="Enter Position"
-        aria-expanded={isEntryPanelOpen}
       >
         <Wallet size={15} />
         <span className="hidden text-[11px] font-semibold lg:inline">Enter Position</span>
@@ -132,21 +133,21 @@ export default function FullscreenChartHeader({
             {Number(backtestAccount.cashBalance ?? backtestAccount.cash_balance ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
           </span>
         )}
-      </button>}
+      </IconTooltipButton>}
 
-      <button
-        type="button"
+      <IconTooltipButton
+        label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+        isDark={isDark}
+        placement="bottom"
         onClick={onToggleFullscreen}
         className={`mx-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition sm:mx-2 ${
           isDark
             ? 'border-gray-700 bg-black-table-color text-white hover:bg-white hover:text-black'
             : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-900 hover:text-white'
         }`}
-        title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-        aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
       >
         {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-      </button>
+      </IconTooltipButton>
     </header>
   );
 }

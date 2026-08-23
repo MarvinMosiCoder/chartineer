@@ -8,6 +8,7 @@ import {
   RefreshCcw,
 } from 'lucide-react';
 import { useTheme } from '../../Context/ThemeContext';
+import { IconTooltipButton } from '../Tooltip/AnchoredTooltip';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_LABELS = [
@@ -322,32 +323,33 @@ export default function TradeCalendar() {
       <div className="p-4">
         <div className={`rounded-lg border ${sectionClass}`}>
           <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2 ${borderClass}`}>
-            <button
-              type="button"
+            <IconTooltipButton
+              label="Previous month"
+              isDark={isDark}
+              placement="bottom"
               onClick={() => moveMonth(-1)}
               className={`flex h-8 w-8 items-center justify-center rounded-md ${iconButtonClass}`}
-              title="Previous month"
-              aria-label="Previous month"
             >
               <ChevronLeft size={16} />
-            </button>
-            <button
-              type="button"
+            </IconTooltipButton>
+            <IconTooltipButton
+              label="Select month and year"
+              isDark={isDark}
+              placement="bottom"
               onClick={() => setShowCalendarPicker((current) => !current)}
               className={`rounded-md px-2 py-1 text-sm font-semibold ${valueTextClass} ${isDark ? 'hover:bg-skin-black-light' : 'hover:bg-white'}`}
-              title="Select month and year"
             >
               {monthLabel}
-            </button>
-            <button
-              type="button"
+            </IconTooltipButton>
+            <IconTooltipButton
+              label="Next month"
+              isDark={isDark}
+              placement="left"
               onClick={() => moveMonth(1)}
               className={`flex h-8 w-8 items-center justify-center rounded-md ${iconButtonClass}`}
-              title="Next month"
-              aria-label="Next month"
             >
               <ChevronRight size={16} />
-            </button>
+            </IconTooltipButton>
             {showCalendarPicker && (
               <div className="grid w-full grid-cols-[minmax(0,1fr)_96px_auto] gap-2 pt-2">
                 <select

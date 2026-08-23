@@ -58,7 +58,6 @@ function ChartCandleCountdown({ timeframe, priceCoordinate, overlayHeight, chart
         borderColor: chartTheme?.border ?? '#2a2e39',
         color: chartTheme?.text ?? '#b2b5be',
       }}
-      title={`${timeframe} candle closes in ${label}`}
     >
       <span className="mr-1 opacity-70">Close</span>{label}
     </div>

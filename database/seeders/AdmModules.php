@@ -148,6 +148,28 @@ class AdmModules extends Seeder
                 'controller' => 'Dashboard\DashboardController',
                 'is_protected' => 0,
                 'is_active' => 1,
+            ],
+            [
+
+                'created_at' => date('Y-m-d H:i:s'),
+                'name' => 'Revenue Reports',
+                'icon' => 'fa fa-chart-line',
+                'path' => 'reports_revenue',
+                'table_name' => 'subscription_requests',
+                'controller' => 'RevenueReportController',
+                'is_protected' => 1,
+                'is_active' => 1,
+            ],
+            [
+
+                'created_at' => date('Y-m-d H:i:s'),
+                'name' => 'Feedback Analytics',
+                'icon' => 'fa fa-comments',
+                'path' => 'reports_feedback',
+                'table_name' => 'user_feedback',
+                'controller' => 'FeedbackReportController',
+                'is_protected' => 1,
+                'is_active' => 1,
             ]
         ];
 

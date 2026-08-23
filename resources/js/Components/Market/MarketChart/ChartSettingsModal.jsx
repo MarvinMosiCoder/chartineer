@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Layers, LineChart, Move, Palette, Rows3, X } from 'lucide-react';
+import { useAnchoredTooltip, AnchoredTooltipPortal } from '../../Tooltip/AnchoredTooltip';
 
 const TABS = [
   { key: 'symbol', label: 'Symbol', icon: Rows3 },
@@ -18,11 +19,35 @@ function CheckRow({ isDark, checked, onToggle, label, children }) {
   );
 }
 
-function ColorPair({ up, down, onUpChange, onDownChange }) {
+function ColorPair({ up, down, onUpChange, onDownChange, isDark }) {
+  const upTooltip = useAnchoredTooltip();
+  const downTooltip = useAnchoredTooltip();
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <input type="color" value={up} onChange={(event) => onUpChange(event.target.value)} className="h-6 w-7 cursor-pointer rounded border-0 bg-transparent p-0" title="Up color" />
-      <input type="color" value={down} onChange={(event) => onDownChange(event.target.value)} className="h-6 w-7 cursor-pointer rounded border-0 bg-transparent p-0" title="Down color" />
+      <input
+        ref={upTooltip.anchorRef}
+        type="color"
+        value={up}
+        onChange={(event) => onUpChange(event.target.value)}
+        onMouseEnter={upTooltip.show}
+        onMouseLeave={upTooltip.hide}
+        onFocus={upTooltip.show}
+        onBlur={upTooltip.hide}
+        className="h-6 w-7 cursor-pointer rounded border-0 bg-transparent p-0"
+      />
+      <AnchoredTooltipPortal pos={upTooltip.pos} label="Up color" isDark={isDark} zIndexClass="z-[10031]" />
+      <input
+        ref={downTooltip.anchorRef}
+        type="color"
+        value={down}
+        onChange={(event) => onDownChange(event.target.value)}
+        onMouseEnter={downTooltip.show}
+        onMouseLeave={downTooltip.hide}
+        onFocus={downTooltip.show}
+        onBlur={downTooltip.hide}
+        className="h-6 w-7 cursor-pointer rounded border-0 bg-transparent p-0"
+      />
+      <AnchoredTooltipPortal pos={downTooltip.pos} label="Down color" isDark={isDark} zIndexClass="z-[10031]" />
     </div>
   );
 }
@@ -39,6 +64,7 @@ function SymbolTab({ isDark, fieldClass, draftColors, setDraftColors, draftSize,
         <div className="flex items-center gap-2 py-1.5 text-sm">
           <span className="min-w-0 flex-1">Body</span>
           <ColorPair
+            isDark={isDark}
             up={draftColors.up}
             down={draftColors.down}
             onUpChange={(value) => setDraftColors((current) => ({ ...current, up: value }))}
@@ -47,6 +73,7 @@ function SymbolTab({ isDark, fieldClass, draftColors, setDraftColors, draftSize,
         </div>
         <CheckRow isDark={isDark} checked={candles.borderEnabled} onToggle={() => onCandlesChange({ borderEnabled: !candles.borderEnabled })} label="Borders">
           <ColorPair
+            isDark={isDark}
             up={candles.borderUp || draftColors.up}
             down={candles.borderDown || draftColors.down}
             onUpChange={(value) => onCandlesChange({ borderUp: value })}
@@ -55,6 +82,7 @@ function SymbolTab({ isDark, fieldClass, draftColors, setDraftColors, draftSize,
         </CheckRow>
         <CheckRow isDark={isDark} checked={candles.wickEnabled} onToggle={() => onCandlesChange({ wickEnabled: !candles.wickEnabled })} label="Wick">
           <ColorPair
+            isDark={isDark}
             up={candles.wickUp || draftColors.up}
             down={candles.wickDown || draftColors.down}
             onUpChange={(value) => onCandlesChange({ wickUp: value })}
@@ -147,6 +175,7 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
   const [isDragging, setIsDragging] = useState(false);
   const panelRef = useRef(null);
   const dragCleanupRef = useRef(null);
+  const dragHandleTooltip = useAnchoredTooltip();
 
   useEffect(() => {
     if (!open) return;
@@ -224,9 +253,13 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
         style={{ transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`, willChange: 'transform' }}
       >
         <div
+          ref={dragHandleTooltip.anchorRef}
           onPointerDown={handleDragHandlePointerDown}
+          onMouseEnter={dragHandleTooltip.show}
+          onMouseLeave={dragHandleTooltip.hide}
+          onFocus={dragHandleTooltip.show}
+          onBlur={dragHandleTooltip.hide}
           className={`flex select-none items-center justify-between border-b px-5 py-4 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${isDark ? 'border-gray-700' : 'border-gray-200'}`}
-          title="Drag to move"
         >
           <h2 id="chart-settings-title" className="flex items-center gap-2 text-lg font-bold">
             <Move size={15} className={isDark ? 'text-gray-500' : 'text-gray-400'} aria-hidden="true" />
@@ -234,6 +267,7 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
           </h2>
           <button type="button" onClick={onClose} className={`rounded-md p-1.5 ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`} aria-label="Close"><X size={18} /></button>
         </div>
+        <AnchoredTooltipPortal pos={dragHandleTooltip.pos} label="Drag to move" isDark={isDark} zIndexClass="z-[10031]" />
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           <div className={`flex shrink-0 gap-1 overflow-x-auto border-b p-2 sm:w-44 sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
             {TABS.map(({ key, label, icon: Icon }) => (

@@ -63,4 +63,4 @@ This is a *separate* system from the privilege-scoped `adm_menuses`/`adm_menus_p
 - Route list with and without module seed data.
 - No duplicate route names introduced by generated modules.
 
-Related: [Admin API generator](admin-api-generator.md), [Dashboard and layouts](dashboard-and-layouts.md).
+Related: [Admin API generator](admin-api-generator.md), [Dashboard and layouts](dashboard-and-layouts.md), [Admin reports](admin-reports.md).

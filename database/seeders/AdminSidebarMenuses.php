@@ -196,6 +196,49 @@ class AdminSidebarMenuses extends Seeder
                 'sorting'           => 2,
                 'created_at'        => date('Y-m-d H:i:s')
             ],
+            [
+                // New dropdown parent, appended after "Payments" (id 13) so it lands
+                // at id 16 on a fresh seed — the fixed id "Revenue" below hardcodes.
+                // Must stay the last top-level entry added; inserting anything above
+                // this line on a fresh table would shift every hardcoded parent_id
+                // in this file (see the note on "Payments" above).
+                'name'              => 'Reports',
+                'type'              => 'URL',
+                'slug'              => 'reports_group',
+                'color'             => NULL,
+                'icon'              => 'fa fa-chart-line',
+                'parent_id'         => 0,
+                'is_active'         => 1,
+                'sorting'           => 6,
+                'created_at'        => date('Y-m-d H:i:s')
+            ],
+            [
+                // Named "Revenue", not "Reports" — matches rows by `name` via
+                // updateOrInsert(), so reusing the parent dropdown's own label would
+                // collide with it (same footgun documented for "Payments"/"Transactions").
+                'name'              => 'Revenue',
+                'type'              => 'Route',
+                'slug'              => 'admin/reports/revenue',
+                'color'             => NULL,
+                'icon'              => 'fa fa-chart-line',
+                'parent_id'         => 16,
+                'is_active'         => 1,
+                'sorting'           => 1,
+                'created_at'        => date('Y-m-d H:i:s')
+            ],
+            [
+                // Second child under the same "Reports" parent (id 16 on a fresh
+                // seed, established above). Named "Feedback", not "Reports".
+                'name'              => 'Feedback',
+                'type'              => 'Route',
+                'slug'              => 'admin/reports/feedback',
+                'color'             => NULL,
+                'icon'              => 'fa fa-comments',
+                'parent_id'         => 16,
+                'is_active'         => 1,
+                'sorting'           => 2,
+                'created_at'        => date('Y-m-d H:i:s')
+            ],
         ];
         foreach ($data as $indexmenu) {
             DB::table('adm_admin_menuses')->updateOrInsert(['name' => $indexmenu['name']], $indexmenu);

@@ -28,6 +28,7 @@ import IndicatorSettingsPanel, { IndicatorClickTargets, IndicatorContextMenu } f
 import { createLiveCandleStream } from './MarketChart/liveCandleStream';
 import FullscreenChartHeader from './MarketChart/FullscreenChartHeader';
 import WorkspaceTour from './WorkspaceTour';
+import { useAnchoredTooltip, AnchoredTooltipPortal, IconTooltipButton } from '../Tooltip/AnchoredTooltip';
 import {
   CHART_HEIGHT,
   DRAWING_COLOR,
@@ -232,6 +233,7 @@ function ChartSkeletonLoader({ isDark }) {
 }
 
 function ChartMarketLegend({ symbol, exchange, timeframe, candle, isTimeframeLoading, chartTheme, showSymbol = true, showExchange = true, showOhlc = true, showChange = true, isActive = false, onOpenSettings }) {
+  const settingsTooltip = useAnchoredTooltip('right');
   const open = Number(candle?.open);
   const high = Number(candle?.high);
   const low = Number(candle?.low);
@@ -281,15 +283,20 @@ function ChartMarketLegend({ symbol, exchange, timeframe, candle, isTimeframeLoa
           </span>
         )}
         <button
+          ref={settingsTooltip.anchorRef}
           type="button"
           data-tour="appearance"
           onClick={onOpenSettings}
+          onMouseEnter={settingsTooltip.show}
+          onMouseLeave={settingsTooltip.hide}
+          onFocus={settingsTooltip.show}
+          onBlur={settingsTooltip.hide}
           className={`ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded transition-opacity hover:bg-white/10 ${isActive ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
-          title="Chart settings"
           aria-label="Chart settings"
         >
           <MoreHorizontal size={13} />
         </button>
+        <AnchoredTooltipPortal pos={settingsTooltip.pos} label="Chart settings" isDark={chartTheme.mode === 'dark'} />
       </div>
       {showOhlc && <span className="ml-0.5" style={{ color: valueColor }}><span className="text-[#787b86]">O</span> {hasCandle ? formatOverlayPrice(open) : '---'}</span>}
       {showOhlc && <span style={{ color: valueColor }}><span className="text-[#787b86]">H</span> {hasCandle ? formatOverlayPrice(high) : '---'}</span>}
@@ -681,6 +688,7 @@ function ChartBottomBar({
   onTimezoneChange,
 }) {
   const [clock, setClock] = useState(() => Date.now());
+  const timezoneTooltip = useAnchoredTooltip('right');
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 1000);
@@ -755,17 +763,22 @@ function ChartBottomBar({
       <div className="flex min-w-0 items-center gap-1.5">
         <span className="hidden whitespace-nowrap tabular-nums sm:inline">{clockLabel}</span>
         <select
+          ref={timezoneTooltip.anchorRef}
           value={timezone}
           onChange={(event) => onTimezoneChange(event.target.value)}
+          onMouseEnter={timezoneTooltip.show}
+          onMouseLeave={timezoneTooltip.hide}
+          onFocus={timezoneTooltip.show}
+          onBlur={timezoneTooltip.hide}
           disabled={timezoneSaving}
           className={`h-5 max-w-[148px] rounded border px-1 text-[10px] outline-none disabled:opacity-60 ${
             isDark ? 'border-[#363a45] bg-[#0f1115] text-[#d1d4dc]' : 'border-slate-300 bg-white text-slate-700'
           }`}
           aria-label="Chart timezone"
-          title="Chart timezone"
         >
           {timezoneOptions.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
+        <AnchoredTooltipPortal pos={timezoneTooltip.pos} label="Chart timezone" isDark={isDark} />
       </div>
     </div>
   );
@@ -868,6 +881,39 @@ async function captureChartSnapshot(wrapper, backgroundColor = CHART_THEMES.dark
   return canvasToBlob(output);
 }
 
+// Rendered once per price alert inside a .map() below, so its tooltip needs
+// its own useAnchoredTooltip() instance per row (can't call the hook directly
+// in the .map() callback — that would vary the hook count between renders as
+// alerts are added/removed). Not built on IconTooltipButton: this button is
+// absolute-positioned by the chart to sit at a specific price coordinate,
+// and IconTooltipButton's wrapping <span> would become the new positioning
+// context for an absolute child, moving it away from its intended spot —
+// same reason the sibling "Create order"/"Set alert" overlay buttons above
+// use manual wiring instead of IconTooltipButton.
+function CancelAlertButton({ top, label, isDark, onClick }) {
+  const { anchorRef, pos, show, hide } = useAnchoredTooltip();
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        data-chart-ui="alert-line-cancel"
+        onClick={onClick}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        className="absolute left-9 z-20 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-400"
+        style={{ top }}
+        aria-label={label}
+      >
+        <X size={12}/>
+      </button>
+      <AnchoredTooltipPortal pos={pos} label={label} isDark={isDark} />
+    </>
+  );
+}
+
 export default function MarketReplayChart({
   initialSymbol = 'BTCUSDT',
   initialExchange = 'bingx',
@@ -889,6 +935,8 @@ export default function MarketReplayChart({
   const candleColorsStorageKey = `market-chart-candle-colors:${preferenceUserId}`;
   const candleSizeStorageKey = `market-chart-candle-size:${preferenceUserId}`;
   const chartTheme = useMemo(() => resolveChartTheme(adminTheme), [adminTheme]);
+  const createOrderTooltip = useAnchoredTooltip('right');
+  const setAlertTooltip = useAnchoredTooltip('right');
   const wrapperRef = useRef(null);
   const fullscreenRef = useRef(null);
   const containerRef = useRef(null);
@@ -6685,7 +6733,7 @@ export default function MarketReplayChart({
   return (
     <>
     {confirmElement}
-    <button type="button" onClick={()=>setTourStep(0)} className="fixed bottom-4 right-4 z-[10000] flex h-9 w-9 items-center justify-center rounded-full border border-[#2962ff]/40 bg-[#131722] text-[#5b8cff] shadow-xl" title="Restart workspace tour" aria-label="Restart workspace tour"><HelpCircle size={17}/></button>
+    <IconTooltipButton label="Restart workspace tour" isDark={chartTheme.mode === 'dark'} placement="left" zIndexClass="z-[10001]" onClick={()=>setTourStep(0)} className="fixed bottom-4 right-4 z-[10000] flex h-9 w-9 items-center justify-center rounded-full border border-[#2962ff]/40 bg-[#131722] text-[#5b8cff] shadow-xl"><HelpCircle size={17}/></IconTooltipButton>
     {showSubscriptionModal && <SubscriptionModal onClose={() => setShowSubscriptionModal(false)} onTrialActivated={() => {
       setReplayAccessAllowed(true);
       replayAccessAllowedRef.current = true;
@@ -7018,7 +7066,15 @@ export default function MarketReplayChart({
           {priceAlerts.map(alert => {
             const y = candleSeriesRef.current?.priceToCoordinate?.(Number(alert.target_price));
             if (!Number.isFinite(Number(y))) return null;
-            return <button key={`cancel-alert-${alert.id}`} type="button" data-chart-ui="alert-line-cancel" onClick={() => cancelPriceAlert(alert.id)} className="absolute left-9 z-20 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-400" style={{ top: Math.max(2, Number(y) - 10) }} title={`Cancel alert at ${formatOverlayPrice(Number(alert.target_price))}`} aria-label={`Cancel alert at ${formatOverlayPrice(Number(alert.target_price))}`}><X size={12}/></button>;
+            return (
+              <CancelAlertButton
+                key={`cancel-alert-${alert.id}`}
+                top={Math.max(2, Number(y) - 10)}
+                label={`Cancel alert at ${formatOverlayPrice(Number(alert.target_price))}`}
+                isDark={chartTheme.mode === 'dark'}
+                onClick={() => cancelPriceAlert(alert.id)}
+              />
+            );
           })}
 
           {chartOrderAction && !loading && !error && <div className="pointer-events-none absolute left-0 right-0 z-10 border-t border-dashed border-[#787b86]" style={{ top: chartOrderAction.y }} />}
@@ -7059,16 +7115,21 @@ export default function MarketReplayChart({
 
           {chartOrderAction && !loading && !error && (
             <button
+              ref={createOrderTooltip.anchorRef}
               type="button"
               data-chart-ui="order-price-action"
               onClick={() => setChartOrderRequest({
                 id: Date.now(),
                 price: chartOrderAction.price,
               })}
+              onMouseEnter={createOrderTooltip.show}
               onMouseLeave={(event) => {
+                createOrderTooltip.hide();
                 if (wrapperRef.current?.contains(event.relatedTarget)) return;
                 setChartOrderAction(null);
               }}
+              onFocus={createOrderTooltip.show}
+              onBlur={createOrderTooltip.hide}
               className={`absolute z-20 flex h-7 w-7 items-center justify-center rounded-full border p-0 text-base font-bold leading-none shadow-lg ${
                 chartTheme.mode === 'dark'
                   ? 'border-gray-600 bg-skin-black text-white hover:bg-white hover:text-black'
@@ -7078,27 +7139,32 @@ export default function MarketReplayChart({
                 right: 58,
                 top: Math.max(4, chartOrderAction.y - 14),
               }}
-              title={`Create order at ${formatOverlayPrice(chartOrderAction.price)}`}
               aria-label={`Create order at ${formatOverlayPrice(chartOrderAction.price)}`}
             >
               <span aria-hidden="true">+</span>
             </button>
           )}
+          <AnchoredTooltipPortal pos={createOrderTooltip.pos} label={chartOrderAction ? `Create order at ${formatOverlayPrice(chartOrderAction.price)}` : ''} isDark={chartTheme.mode === 'dark'} />
 
           {chartOrderAction && !loading && !error && (
             <button
+              ref={setAlertTooltip.anchorRef}
               type="button"
               data-chart-ui="alert-price-action"
               onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
               onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleCreatePriceAlert(chartOrderAction.price); }}
+              onMouseEnter={setAlertTooltip.show}
+              onMouseLeave={setAlertTooltip.hide}
+              onFocus={setAlertTooltip.show}
+              onBlur={setAlertTooltip.hide}
               className="absolute left-2 z-20 flex h-6 w-6 items-center justify-center rounded bg-amber-500 text-black shadow-lg hover:bg-amber-400"
               style={{ top: Math.max(4, chartOrderAction.y - 12) }}
-              title={`Set alert at ${formatOverlayPrice(chartOrderAction.price)}`}
               aria-label={`Set alert at ${formatOverlayPrice(chartOrderAction.price)}`}
             >
               <Bell size={13} />
             </button>
           )}
+          <AnchoredTooltipPortal pos={setAlertTooltip.pos} label={chartOrderAction ? `Set alert at ${formatOverlayPrice(chartOrderAction.price)}` : ''} isDark={chartTheme.mode === 'dark'} />
 
           {(loading || error) && (
             <div

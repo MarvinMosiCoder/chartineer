@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { createPortal } from 'react-dom';
 import { marketCategoryLabel } from '../../../utils/marketLabels';
@@ -9,28 +9,24 @@ import { useWatchlist } from '../../../Context/WatchlistContext';
 import { useConfirm } from '../../../Hooks/useConfirm';
 import { useToast } from '../../../Context/ToastContext';
 import TimeframeSelector, { DEFAULT_TIMEFRAME_FAVORITES } from './TimeframeSelector';
+import { useAnchoredTooltip, AnchoredTooltipPortal, IconTooltipButton } from '../../Tooltip/AnchoredTooltip';
 
 const searchResultKey = (exchange, category, symbol) => `${String(exchange).toLowerCase()}:${String(category).toLowerCase()}:${String(symbol).toUpperCase()}`;
 
-// Same anchored-tooltip pattern as the drawing-tool rail in ReplayPanel.jsx
-// (useAnchoredTooltip + RailTooltipPortal): a portal-rendered label positioned
-// via getBoundingClientRect so it escapes any clipping/overflow ancestors.
-function useAnchoredTooltip() {
-  const anchorRef = useRef(null);
-  const [pos, setPos] = useState(null);
+// Adds a click-opened, viewport-clamped panel (openPanel/closePanel) on top of
+// the shared hover tooltip, for the header's trigger buttons that double as a
+// menu/panel opener (market info, indicators, symbol search) — see
+// docs/developer/trading-chart.md's anchored-tooltip section.
+function useAnchoredPanelTooltip() {
+  const { anchorRef, pos, show, hide } = useAnchoredTooltip();
   const [panelPos, setPanelPos] = useState(null);
-  const show = () => {
-    const rect = anchorRef.current?.getBoundingClientRect();
-    if (rect) setPos({ top: rect.top + rect.height / 2, left: rect.right + 8 });
-  };
-  const hide = () => setPos(null);
   // For a click-opened panel (not just a hover label) anchored below the trigger,
   // clamped so it never runs off the right edge — same escape-the-clipping-ancestor
-  // reason as `show()` above, but this one also has to fit a whole panel on-screen,
-  // not just a point. Compact mode's mobile toolbar wraps this trigger in an
-  // `overflow-y-auto` panel, so a plain `absolute` popover gets clipped by that
-  // ancestor's scrollport instead of floating over the chart (see TimeframeSelector.jsx's
-  // "Select period" grid for the same fix).
+  // reason as the hover label above, but this one also has to fit a whole panel
+  // on-screen, not just a point. Compact mode's mobile toolbar wraps this trigger
+  // in an `overflow-y-auto` panel, so a plain `absolute` popover gets clipped by
+  // that ancestor's scrollport instead of floating over the chart (see
+  // TimeframeSelector.jsx's "Select period" grid for the same fix).
   const openPanel = (width, align = 'right') => {
     const rect = anchorRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -40,52 +36,6 @@ function useAnchoredTooltip() {
   };
   const closePanel = () => setPanelPos(null);
   return { anchorRef, pos, show, hide, panelPos, openPanel, closePanel };
-}
-
-function HeaderTooltipPortal({ pos, label, isDark, zIndexClass = 'z-[9999]' }) {
-  if (!pos || !label || typeof document === 'undefined') return null;
-  return createPortal(
-    <span
-      role="tooltip"
-      className={`pointer-events-none fixed ${zIndexClass} -translate-y-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] font-medium shadow-lg ${
-        isDark ? 'border-[#363a45] bg-[#1e222d] text-white' : 'border-slate-200 bg-white text-slate-800'
-      }`}
-      style={{ top: pos.top, left: pos.left }}
-    >
-      {label}
-    </span>,
-    document.body
-  );
-}
-
-// Same anchored tooltip as the header's other icon-only buttons (replay,
-// alert, info, indicators) instead of a plain browser title — used for the
-// icon-only actions (favorite/watchlist/remove) on each symbol search row.
-// These rows live inside the "Search all symbols" popover, itself portaled
-// at z-[10021] (see the panels documented in trading-chart.md) — a sibling
-// with a *higher* z-index than the header tooltip's default z-[9999] would
-// paint over it, so this needs its own higher value to actually show above
-// the popover it's nested in rather than behind it.
-function IconTooltipButton({ label, isDark, className, onClick, ariaLabel, children }) {
-  const { anchorRef, pos, show, hide } = useAnchoredTooltip();
-  return (
-    <span className="relative flex shrink-0">
-      <button
-        ref={anchorRef}
-        type="button"
-        onClick={onClick}
-        onMouseEnter={show}
-        onMouseLeave={hide}
-        onFocus={show}
-        onBlur={hide}
-        aria-label={ariaLabel ?? label}
-        className={className}
-      >
-        {children}
-      </button>
-      <HeaderTooltipPortal pos={pos} label={label} isDark={isDark} zIndexClass="z-[10022]" />
-    </span>
-  );
 }
 
 function MarketCategoryTabs({ marketCategory, onCategoryChange, showFavoritesOnly, onSelectFavorites, onResetSearch, isDark }) {
@@ -300,11 +250,11 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
     return () => controller.abort();
   }, [exchange, isMarketInfoOpen, marketCategory, symbol]);
 
-  const replayTooltip = useAnchoredTooltip();
-  const alertTooltip = useAnchoredTooltip();
-  const infoTooltip = useAnchoredTooltip();
-  const indicatorsTooltip = useAnchoredTooltip();
-  const symbolPickerTooltip = useAnchoredTooltip();
+  const replayTooltip = useAnchoredPanelTooltip();
+  const alertTooltip = useAnchoredPanelTooltip();
+  const infoTooltip = useAnchoredPanelTooltip();
+  const indicatorsTooltip = useAnchoredPanelTooltip();
+  const symbolPickerTooltip = useAnchoredPanelTooltip();
   const replayTooltipLabel = replayMode ? 'Back to live' : 'Start replay';
 
   const marketInfo = <MarketMetadataPopover metadata={marketMetadata} loading={marketMetadataLoading} error={marketMetadataError} isDark={isDark} panelStyle={panelStyle} pos={infoTooltip.panelPos}/>;
@@ -422,6 +372,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                             label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
                             ariaLabel={isFavorited ? `Remove ${item.symbol} from favorites` : `Add ${item.symbol} to favorites`}
                             isDark={isDark}
+                            zIndexClass="z-[10022]"
                             onClick={() => handleToggleFavorite(item)}
                             className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${isFavorited ? 'border-amber-400/40 text-amber-400' : isDark ? 'border-gray-700 text-gray-400 hover:border-amber-400 hover:text-amber-400' : 'border-gray-200 text-slate-500 hover:border-amber-400 hover:text-amber-400'}`}
                           >
@@ -433,6 +384,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                             <IconTooltipButton
                               label={inActiveWatchlist ? 'In your active watchlist' : 'Add to watchlist'}
                               isDark={isDark}
+                              zIndexClass="z-[10022]"
                               onClick={() => setWatchlistMenuOpenKey((current) => (current === watchlistItemKey ? null : watchlistItemKey))}
                               className={`flex h-6 w-6 items-center justify-center rounded-md border ${inActiveWatchlist || justAddedToWatchlist ? 'border-[#2962ff]/40 text-[#2962ff]' : isDark ? 'border-gray-700 text-gray-400 hover:border-[#2962ff] hover:text-[#2962ff]' : 'border-gray-200 text-slate-500 hover:border-[#2962ff] hover:text-[#2962ff]'}`}
                             >
@@ -463,6 +415,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                           <IconTooltipButton
                             label={`Remove ${item.symbol} from favorites`}
                             isDark={isDark}
+                            zIndexClass="z-[10022]"
                             onClick={() => handleRemoveFavorite(item)}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-red-500/10 hover:text-red-500"
                           >
@@ -498,22 +451,22 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
           <button ref={replayTooltip.anchorRef} data-tour="replay" type="button" onClick={onToggleReplayMode} onMouseEnter={replayTooltip.show} onMouseLeave={replayTooltip.hide} onFocus={replayTooltip.show} onBlur={replayTooltip.hide} disabled={replayAccessStatus === 'checking-access'} aria-label={replayTooltipLabel} className={`flex h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-semibold disabled:cursor-wait disabled:opacity-60 ${replayMode ? 'bg-red-600 text-white hover:bg-red-700' : neutralActionClass}`}>
             {replayAccessStatus === 'checking-access' ? <LoaderCircle size={14} className="animate-spin" /> : replayMode ? <X size={14} /> : <Play size={14} />}
           </button>
-          {replayAccessStatus !== 'checking-access' && <HeaderTooltipPortal pos={replayTooltip.pos} label={replayTooltipLabel} isDark={isDark} />}
+          {replayAccessStatus !== 'checking-access' && <AnchoredTooltipPortal pos={replayTooltip.pos} label={replayTooltipLabel} isDark={isDark} />}
           <button ref={alertTooltip.anchorRef} type="button" onClick={onCreatePriceAlert} onMouseEnter={alertTooltip.show} onMouseLeave={alertTooltip.hide} onFocus={alertTooltip.show} onBlur={alertTooltip.hide} aria-label="Create alert" className="flex h-8 items-center gap-1.5 rounded-md bg-[#2962ff] px-2.5 text-xs font-semibold text-white">
             <Bell size={13} />
           </button>
-          <HeaderTooltipPortal pos={alertTooltip.pos} label="Create alert" isDark={isDark} />
+          <AnchoredTooltipPortal pos={alertTooltip.pos} label="Create alert" isDark={isDark} />
           <div data-chart-ui="market-info" className="relative">
             <button ref={infoTooltip.anchorRef} type="button" onClick={toggleMarketInfo} onMouseEnter={infoTooltip.show} onMouseLeave={infoTooltip.hide} onFocus={infoTooltip.show} onBlur={infoTooltip.hide} className={`${compactFieldClass} flex w-8 items-center justify-center`} aria-label="Market information" aria-expanded={isMarketInfoOpen}><Info size={14}/></button>
             {isMarketInfoOpen && marketInfo}
-            <HeaderTooltipPortal pos={infoTooltip.pos} label="Market information" isDark={isDark} />
+            <AnchoredTooltipPortal pos={infoTooltip.pos} label="Market information" isDark={isDark} />
           </div>
 
           <div className="relative">
             <button data-chart-ui="indicator-picker" ref={indicatorsTooltip.anchorRef} type="button" onClick={toggleIndicators} onMouseEnter={indicatorsTooltip.show} onMouseLeave={indicatorsTooltip.hide} onFocus={indicatorsTooltip.show} onBlur={indicatorsTooltip.hide} aria-label="Indicators" className={`${compactFieldClass} flex items-center gap-1.5 font-semibold`}>
               <SlidersHorizontal size={13} />
             </button>
-            <HeaderTooltipPortal pos={indicatorsTooltip.pos} label="Indicators" isDark={isDark} />
+            <AnchoredTooltipPortal pos={indicatorsTooltip.pos} label="Indicators" isDark={isDark} />
             {isIndicatorsOpen && indicatorsTooltip.panelPos && typeof document !== 'undefined' && createPortal(
               <div data-chart-ui="indicator-picker" className={`fixed z-[10021] w-72 max-w-[85vw] space-y-3 rounded-md border p-3 shadow-2xl ${isDark ? 'text-white' : 'text-slate-900'}`} style={{ ...panelStyle, top: indicatorsTooltip.panelPos.top, left: indicatorsTooltip.panelPos.left }}>
                 <div className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>Add indicators</div>
@@ -572,17 +525,19 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
               <div className={`flex items-center gap-2 rounded-full border mx-3 mt-3 px-3.5 py-2 transition-colors focus-within:border-[#2962ff] ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                 <Search size={14} className="text-gray-400" />
                 <input autoFocus value={symbolSearch} onChange={(event) => setSymbolSearch(event.target.value)} placeholder="Search all symbols" style={{ outline: 'none' }} className={`min-w-0 flex-1 bg-transparent text-xs uppercase placeholder:text-gray-500 ${isDark ? 'text-white' : 'text-gray-800'}`} />
-                <button
-                  type="button"
+                <IconTooltipButton
+                  label="Close"
+                  isDark={isDark}
+                  placement="bottom"
+                  zIndexClass="z-[10022]"
                   onClick={() => {
                     setSymbolSearch('');
                     setIsAddOpen(false);
                   }}
                   className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
-                  title="Close"
                 >
                   <X size={14} />
-                </button>
+                </IconTooltipButton>
               </div>
               <div className={`border-b px-3 pb-2 pt-3 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                 <MarketCategoryTabs
@@ -627,6 +582,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                           label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
                           ariaLabel={isFavorited ? `Remove ${item.symbol} from favorites` : `Add ${item.symbol} to favorites`}
                           isDark={isDark}
+                          zIndexClass="z-[10022]"
                           onClick={() => handleToggleFavorite(item)}
                           className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${isFavorited ? 'border-amber-400/40 text-amber-400' : isDark ? 'border-gray-700 text-gray-400 hover:border-amber-400 hover:text-amber-400' : 'border-gray-200 text-slate-500 hover:border-amber-400 hover:text-amber-400'}`}
                         >
@@ -638,6 +594,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                           <IconTooltipButton
                             label={inActiveWatchlist ? 'In your active watchlist' : 'Add to watchlist'}
                             isDark={isDark}
+                            zIndexClass="z-[10022]"
                             onClick={() => setWatchlistMenuOpenKey((current) => (current === watchlistItemKey ? null : watchlistItemKey))}
                             className={`flex h-6 w-6 items-center justify-center rounded-md border ${inActiveWatchlist || justAddedToWatchlist ? 'border-[#2962ff]/40 text-[#2962ff]' : isDark ? 'border-gray-700 text-gray-400 hover:border-[#2962ff] hover:text-[#2962ff]' : 'border-gray-200 text-slate-500 hover:border-[#2962ff] hover:text-[#2962ff]'}`}
                           >
@@ -668,15 +625,23 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                         <IconTooltipButton
                           label={`Remove ${item.symbol} from favorites`}
                           isDark={isDark}
+                          zIndexClass="z-[10022]"
                           onClick={() => handleRemoveFavorite(item)}
                           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-red-500/10 hover:text-red-500"
                         >
                           <X size={12} />
                         </IconTooltipButton>
                       )}
-                      <button type="button" onClick={() => handleSelectSymbol(item)} className="rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-40" title={`Open ${item.symbol}`}>
+                      <IconTooltipButton
+                        label={`Open ${item.symbol}`}
+                        isDark={isDark}
+                        placement="bottom"
+                        zIndexClass="z-[10022]"
+                        onClick={() => handleSelectSymbol(item)}
+                        className="rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
+                      >
                         Open
-                      </button>
+                      </IconTooltipButton>
                     </div>
                     );
                   })
@@ -707,7 +672,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
           <button ref={replayTooltip.anchorRef} data-tour="replay" type="button" onClick={onToggleReplayMode} onMouseEnter={replayTooltip.show} onMouseLeave={replayTooltip.hide} onFocus={replayTooltip.show} onBlur={replayTooltip.hide} disabled={replayAccessStatus === 'checking-access'} aria-label={replayTooltipLabel} className={`flex h-9 w-full items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60 ${replayMode ? 'bg-red-600 text-white hover:bg-red-700' : neutralActionClass}`}>
             {replayAccessStatus === 'checking-access' ? <LoaderCircle size={15} className="animate-spin" /> : replayMode ? <X size={15} /> : <Play size={15} />}
           </button>
-          {replayAccessStatus !== 'checking-access' && <HeaderTooltipPortal pos={replayTooltip.pos} label={replayTooltipLabel} isDark={isDark} />}
+          {replayAccessStatus !== 'checking-access' && <AnchoredTooltipPortal pos={replayTooltip.pos} label={replayTooltipLabel} isDark={isDark} />}
         </div>
 
         <div data-chart-ui="indicator-picker" className="relative col-span-1 sm:col-span-3 lg:col-span-2">
@@ -715,7 +680,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
             <SlidersHorizontal size={14} />
             {activeIndicatorCount > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2962ff] px-1 text-[9px] text-white">{activeIndicatorCount}</span>}
           </button>
-          <HeaderTooltipPortal pos={indicatorsTooltip.pos} label="Indicators" isDark={isDark} />
+          <AnchoredTooltipPortal pos={indicatorsTooltip.pos} label="Indicators" isDark={isDark} />
           {isIndicatorsOpen && (
             <div className={`absolute right-0 top-full z-[100] mt-2 w-72 max-w-[calc(100vw-1rem)] space-y-3 rounded-lg border p-3 shadow-2xl ${isDark ? 'text-white' : 'text-slate-900'}`} style={panelStyle}>
               <div className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>Add indicators</div>
@@ -742,12 +707,12 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
         <button ref={alertTooltip.anchorRef} type="button" onClick={onCreatePriceAlert} onMouseEnter={alertTooltip.show} onMouseLeave={alertTooltip.hide} onFocus={alertTooltip.show} onBlur={alertTooltip.hide} aria-label="Create alert" className="col-span-1 flex h-9 items-center justify-center gap-2 rounded-lg bg-[#2962ff] px-3 text-xs font-semibold text-white transition-colors hover:bg-blue-600 sm:col-span-3 lg:col-span-1">
           <Bell size={14} />
         </button>
-        <HeaderTooltipPortal pos={alertTooltip.pos} label="Create alert" isDark={isDark} />
+        <AnchoredTooltipPortal pos={alertTooltip.pos} label="Create alert" isDark={isDark} />
 
         <div data-chart-ui="market-info" className="relative col-span-1 sm:col-span-3 lg:col-span-1">
           <button ref={infoTooltip.anchorRef} type="button" onClick={toggleMarketInfo} onMouseEnter={infoTooltip.show} onMouseLeave={infoTooltip.hide} onFocus={infoTooltip.show} onBlur={infoTooltip.hide} className={`${fieldClass} flex w-full items-center justify-center gap-1.5 font-semibold hover:border-[#2962ff]/60`} aria-label="Market information" aria-expanded={isMarketInfoOpen}><Info size={14}/></button>
           {isMarketInfoOpen && marketInfo}
-          <HeaderTooltipPortal pos={infoTooltip.pos} label="Market information" isDark={isDark} />
+          <AnchoredTooltipPortal pos={infoTooltip.pos} label="Market information" isDark={isDark} />
         </div>
 
         <div

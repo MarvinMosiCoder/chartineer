@@ -3,7 +3,6 @@ import React, { useEffect, useState, useContext } from "react";
 import axios from "axios";
 import { NavbarContext } from "../../Context/NavbarContext";
 import { useTheme } from "../../Context/ThemeContext";
-import Tooltip from "../Tooltip/Tooltip";
 import useThemeStyles from "../../Hooks/useThemeStyles";
 
 const SidebarAccordion = ({ open, closeSidebar }) => {

@@ -6,14 +6,39 @@ import Button from '../../../Components/Table/Buttons/Button';
 import InputComponent from '../../../Components/Forms/Input';
 import CustomSelect from '../../../Components/Dropdown/CustomSelect';
 import { router, useForm } from '@inertiajs/react';
-import LoginInputTooltip from '../../../Components/Tooltip/LoginInputTooltip';
+import { useAnchoredTooltip, AnchoredTooltipPortal } from '../../../Components/Tooltip/AnchoredTooltip';
 import TextArea from '../../../Components/Forms/TextArea';
 import { useToast } from '../../../Context/ToastContext';
 
+// Each row's info icon needs its own useAnchoredTooltip() instance. Since these
+// rows live inside a selectedColumns.map() whose length changes (add/remove
+// column), the hook can't be called directly in the map callback — that would
+// vary the number of hook calls between renders. A small per-row component
+// keeps one hook call per component instance, which Rules of Hooks requires.
+const ValidationRuleHint = ({ isDark }) => {
+    const { anchorRef, pos, show, hide } = useAnchoredTooltip('left');
+    return (
+        <>
+            <div
+                ref={anchorRef}
+                tabIndex={0}
+                className='hover:bg-gray-100 w-fit h-fit hover:text-gray-500 p-2 rounded-full text-gray-500 cursor-pointer'
+                onMouseEnter={show}
+                onMouseLeave={hide}
+                onFocus={show}
+                onBlur={hide}
+            >
+                <Info className='w-4 h-4'/>
+            </div>
+            <AnchoredTooltipPortal pos={pos} label='Laravel validation rules like required, string, max:255, etc.' isDark={isDark} />
+        </>
+    );
+};
 
 const ApiGeneratorCreate = ({table_columns}) => {
-    
+
 const { theme } = useTheme();
+const isDark = theme === 'bg-skin-black';
 const { handleToast } = useToast();
 const baseUrl = window.location.protocol + "//" + window.location.hostname + (window.location.port ? ":" + window.location.port : "" + "/api/");
 const [activeMenu, setActiveMenu] = useState('Configuration');
@@ -440,11 +465,7 @@ const handleModalToggle = ()=> {
                                                     placeholder="required|string|max:255"
                                                     onChange={(event) => handleValidationChange(event, column)}
                                                 />
-                                                <LoginInputTooltip content='Laravel validation rules like required, string, max:255, etc.' placement='left'>
-                                                    <div className='hover:bg-gray-100 w-fit h-fit hover:text-gray-500 p-2 rounded-full text-gray-500 cursor-pointer'>
-                                                        <Info className='w-4 h-4'/>
-                                                    </div>
-                                                </LoginInputTooltip>
+                                                <ValidationRuleHint isDark={isDark} />
                                                 <button className='hover:bg-red-100  hover:text-red-500 p-2 rounded-full text-gray-500' onClick={() => handleRemoveColumn(index, column)}>
                                                     <Trash2 className='w-4 h-4 '/>
                                                 </button>

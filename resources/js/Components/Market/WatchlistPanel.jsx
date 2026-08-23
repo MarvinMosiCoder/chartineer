@@ -1,5 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useEffect, useState } from 'react';
 import Select from 'react-select';
 import { CandlestickChart, ChevronDown, FolderPlus, Pencil, Star, Trash2, X } from 'lucide-react';
 import { useTheme } from '../../Context/ThemeContext';
@@ -7,66 +6,14 @@ import { useWatchlist, watchlistMarketKey } from '../../Context/WatchlistContext
 import { useConfirm } from '../../Hooks/useConfirm';
 import { useToast } from '../../Context/ToastContext';
 import { marketCategoryLabel } from '../../utils/marketLabels';
+import { IconTooltipButton } from '../Tooltip/AnchoredTooltip';
 
-// Same anchored-portal tooltip as ChartHeader.jsx's icon-only row buttons
-// (see "Header command buttons: icon-only with anchored tooltips" in
-// docs/developer/trading-chart.md) — a `createPortal`-into-`document.body`
-// label positioned from `getBoundingClientRect()`, replacing a plain native
-// `title`. Duplicated locally rather than imported, same precedent as that
-// file's own copy: no shared small-component module between them yet.
-// z-[10022] (not the header's z-[9999]) because this panel is itself
-// rendered from a z-[130] popover (FullscreenChartHeader.jsx's "Watchlists"
-// button) and its own react-select menu already portals at z-[10050] — a
-// lower value would paint the tooltip underneath either.
-function useAnchoredTooltip() {
-  const anchorRef = useRef(null);
-  const [pos, setPos] = useState(null);
-  const show = () => {
-    const rect = anchorRef.current?.getBoundingClientRect();
-    if (rect) setPos({ top: rect.top + rect.height / 2, left: rect.right + 8 });
-  };
-  const hide = () => setPos(null);
-  return { anchorRef, pos, show, hide };
-}
-
-function PanelTooltipPortal({ pos, label, isDark }) {
-  if (!pos || !label || typeof document === 'undefined') return null;
-  return createPortal(
-    <span
-      role="tooltip"
-      className={`pointer-events-none fixed z-[10022] -translate-y-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] font-medium shadow-lg ${
-        isDark ? 'border-[#363a45] bg-[#1e222d] text-white' : 'border-slate-200 bg-white text-slate-800'
-      }`}
-      style={{ top: pos.top, left: pos.left }}
-    >
-      {label}
-    </span>,
-    document.body
-  );
-}
-
-function IconTooltipButton({ label, isDark, className, onClick, onMouseDown, ariaLabel, children }) {
-  const { anchorRef, pos, show, hide } = useAnchoredTooltip();
-  return (
-    <span className="relative inline-flex shrink-0">
-      <button
-        ref={anchorRef}
-        type="button"
-        onClick={onClick}
-        onMouseDown={onMouseDown}
-        onMouseEnter={show}
-        onMouseLeave={hide}
-        onFocus={show}
-        onBlur={hide}
-        aria-label={ariaLabel ?? label}
-        className={className}
-      >
-        {children}
-      </button>
-      <PanelTooltipPortal pos={pos} label={label} isDark={isDark} />
-    </span>
-  );
-}
+// This panel passes zIndexClass="z-[10022]" (not the shared default
+// z-[9999]) to every IconTooltipButton below because it is itself rendered
+// from a z-[130] popover (FullscreenChartHeader.jsx's "Watchlists" button)
+// and its own react-select menu already portals at z-[10050] — a lower
+// value would paint the tooltip underneath either.
+const WATCHLIST_TOOLTIP_Z = 'z-[10022]';
 
 const watchlistSelectStyles = (isDark) => ({
     control: (base, state) => ({
@@ -167,8 +114,8 @@ export default function WatchlistPanel({ isFullscreen = false, compact = false, 
                                     <span className="flex min-w-0 items-center gap-2"><Star size={12} className="shrink-0 text-amber-400" fill="currentColor" /><span className={`truncate text-[11px] font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{name}</span><span className={`rounded-full px-1.5 text-[8px] font-bold ${isDark ? 'bg-white/10 text-[#b2b5be]' : 'bg-slate-200 text-slate-600'}`}>{items.length}</span></span>
                                     <ChevronDown size={13} className={`shrink-0 text-[#787b86] transition-transform ${expanded ? 'rotate-180' : ''}`} />
                                 </button>
-                                <IconTooltipButton label={`Edit ${name}`} isDark={isDark} onClick={() => openEditWatchlistModal(name)} className="rounded p-1.5 text-[#787b86] hover:text-[#2962ff]"><Pencil size={11} /></IconTooltipButton>
-                                <IconTooltipButton label={`Delete ${name}`} isDark={isDark} onClick={() => setDeleteWatchlistName(name)} className="rounded p-1.5 text-[#787b86] hover:text-red-500"><Trash2 size={11} /></IconTooltipButton>
+                                <IconTooltipButton label={`Edit ${name}`} isDark={isDark} zIndexClass={WATCHLIST_TOOLTIP_Z} onClick={() => openEditWatchlistModal(name)} className="rounded p-1.5 text-[#787b86] hover:text-[#2962ff]"><Pencil size={11} /></IconTooltipButton>
+                                <IconTooltipButton label={`Delete ${name}`} isDark={isDark} zIndexClass={WATCHLIST_TOOLTIP_Z} onClick={() => setDeleteWatchlistName(name)} className="rounded p-1.5 text-[#787b86] hover:text-red-500"><Trash2 size={11} /></IconTooltipButton>
                             </div>
                             {expanded && <div className={`border-t p-1.5 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
                                 <div className="flex items-center gap-1.5">
@@ -198,6 +145,7 @@ export default function WatchlistPanel({ isFullscreen = false, compact = false, 
                                         <IconTooltipButton
                                             label={`Delete saved symbol ${option.symbol}`}
                                             isDark={isDark}
+                                            zIndexClass={WATCHLIST_TOOLTIP_Z}
                                             onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
                                             onClick={async (event) => {
                                                 event.stopPropagation();
@@ -223,6 +171,7 @@ export default function WatchlistPanel({ isFullscreen = false, compact = false, 
                                     <IconTooltipButton
                                         label="Remove all saved symbols"
                                         isDark={isDark}
+                                        zIndexClass={WATCHLIST_TOOLTIP_Z}
                                         onClick={async () => {
                                             const count = savedSymbols.length;
                                             if (!(await confirm(
@@ -264,6 +213,7 @@ export default function WatchlistPanel({ isFullscreen = false, compact = false, 
                                         <IconTooltipButton
                                             label={`Remove ${market.symbol} from ${name}`}
                                             isDark={isDark}
+                                            zIndexClass={WATCHLIST_TOOLTIP_Z}
                                             onClick={async () => {
                                                 if (!(await confirm(`Remove ${market.symbol} from "${name}"? This only removes it from this watchlist — the saved symbol itself stays.`, { title: 'Remove from watchlist?', confirmLabel: 'Remove' }))) return;
                                                 removeSymbolFromWatchlist(name, key);

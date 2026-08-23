@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { FileText } from 'lucide-react';
+import { IconTooltipButton } from '../../Tooltip/AnchoredTooltip';
 
 const TABS = [
   { key: 'positions', label: 'Positions' },
@@ -228,17 +229,17 @@ export default function PositionsPanel({
                         {position.takeProfit ? formatNum(position.takeProfit) : '--'} / {position.stopLoss ? formatNum(position.stopLoss) : '--'}
                       </td>
                       <td className="px-3 py-2.5 text-right">
-                        <button
-                          type="button"
+                        <IconTooltipButton
+                          label={isActiveSymbol ? 'Close position' : `Switch to ${position.symbol} to close`}
+                          isDark={isDark}
                           onClick={() => isActiveSymbol && onClosePosition?.(position.id)}
                           disabled={!isActiveSymbol}
-                          title={isActiveSymbol ? 'Close position' : `Switch to ${position.symbol} to close`}
                           className={`rounded border px-2.5 py-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
                             isDark ? 'border-gray-700 text-gray-200 hover:bg-white/10' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
                           }`}
                         >
                           Close
-                        </button>
+                        </IconTooltipButton>
                       </td>
                     </tr>
                   );

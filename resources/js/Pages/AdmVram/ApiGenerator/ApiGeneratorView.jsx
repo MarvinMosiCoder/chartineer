@@ -3,7 +3,6 @@ import { AlignJustify, Braces, Database, Info, Trash, Trash2 } from 'lucide-reac
 import Button from '../../../Components/Table/Buttons/Button';
 import InputComponent from '../../../Components/Forms/Input';
 import CustomSelect from '../../../Components/Dropdown/CustomSelect';
-import LoginInputTooltip from '../../../Components/Tooltip/LoginInputTooltip';
 import TextArea from '../../../Components/Forms/TextArea';
 import { useTheme } from '../../../Context/ThemeContext';
 

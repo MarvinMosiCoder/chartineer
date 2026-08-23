@@ -3,6 +3,7 @@ import axios from 'axios';
 import { createPortal } from 'react-dom';
 import { usePage } from '@inertiajs/react';
 import Select from 'react-select';
+import { useAnchoredTooltip, AnchoredTooltipPortal, IconTooltipButton } from '../../Tooltip/AnchoredTooltip';
 import {
   Activity,
   ArrowDown,
@@ -148,33 +149,6 @@ function getPanelStyle(chartTheme) {
   };
 }
 
-function useAnchoredTooltip() {
-  const anchorRef = useRef(null);
-  const [pos, setPos] = useState(null);
-  const show = () => {
-    const rect = anchorRef.current?.getBoundingClientRect();
-    if (rect) setPos({ top: rect.top + rect.height / 2, left: rect.right + 8 });
-  };
-  const hide = () => setPos(null);
-  return { anchorRef, pos, show, hide };
-}
-
-function RailTooltipPortal({ pos, label, isDark }) {
-  if (!pos || !label || typeof document === 'undefined') return null;
-  return createPortal(
-    <span
-      role="tooltip"
-      className={`pointer-events-none fixed z-[9999] -translate-y-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] font-medium shadow-lg ${
-        isDark ? 'border-[#363a45] bg-[#1e222d] text-white' : 'border-slate-200 bg-white text-slate-800'
-      }`}
-      style={{ top: pos.top, left: pos.left }}
-    >
-      {label}
-    </span>,
-    document.body
-  );
-}
-
 function RailButton({ icon: Icon, active, disabled, title, onClick, chartTheme, dataChartUi }) {
   const isDark = chartTheme?.mode !== 'light';
   const inactiveTextClass = isDark ? 'text-[#b2b5be]' : 'text-slate-500';
@@ -202,7 +176,7 @@ function RailButton({ icon: Icon, active, disabled, title, onClick, chartTheme, 
       >
         <Icon size={18} />
       </button>
-      {!disabled && <RailTooltipPortal pos={pos} label={title} isDark={isDark} />}
+      {!disabled && <AnchoredTooltipPortal pos={pos} label={title} isDark={isDark} />}
     </span>
   );
 }
@@ -232,7 +206,7 @@ function ToolGroupRailItem({ group, tool, toolSettings, handleToolChange, toggle
               isDarkTheme ? 'hover:bg-white/10 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
             }`}
           ><ChevronRight size={9}/></button>
-          <RailTooltipPortal pos={chevronTooltip.pos} label={`Choose ${group.name} tool`} isDark={isDarkTheme} />
+          <AnchoredTooltipPortal pos={chevronTooltip.pos} label={`Choose ${group.name} tool`} isDark={isDarkTheme} />
         </span>
       </div>
     </div>
@@ -277,7 +251,7 @@ function Flyout({ title, icon: Icon, onClose, children, bodyClassName = 'space-y
 
 // Was a native `title` plus an optional, non-portaled CSS group-hover span
 // (only ever opted into by the "Templates" button below) — replaced with
-// the same anchored-portal tooltip as RailButton/RailTooltipPortal above,
+// the same anchored-portal tooltip as RailButton/AnchoredTooltipPortal above,
 // so every ToolEditorButton gets a real hover label instead of most of them
 // silently having none. `hideTooltip` replaces the old inverted
 // `showTooltip` prop, still used only by "Templates" to avoid the tooltip
@@ -324,7 +298,7 @@ function ToolEditorButton({
         {Icon && <Icon size={20} strokeWidth={1.65} className="shrink-0" />}
         {children}
       </button>
-      {!disabled && !hideTooltip && <RailTooltipPortal pos={pos} label={title} isDark={isDark} />}
+      {!disabled && !hideTooltip && <AnchoredTooltipPortal pos={pos} label={title} isDark={isDark} />}
     </span>
   );
 }
@@ -521,6 +495,7 @@ function DrawingSettingsDialog({
   onApply,
 }) {
   const isDark = chartTheme?.mode !== 'light';
+  const dragHandleTooltip = useAnchoredTooltip('bottom');
   const [activeTab, setActiveTab] = useState('style');
   const [draft, setDraft] = useState(() => ({ ...drawing }));
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
@@ -646,15 +621,21 @@ function DrawingSettingsDialog({
         style={{ transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`, willChange: 'transform' }}
       >
         <header
+          ref={dragHandleTooltip.anchorRef}
           onPointerDown={handleDragHandlePointerDown}
+          onMouseEnter={dragHandleTooltip.show}
+          onMouseLeave={dragHandleTooltip.hide}
           className={`flex select-none items-center justify-between px-6 pb-4 pt-6 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-          title="Drag to move"
         >
           <div className="flex min-w-0 items-center gap-3">
             <h2 className="truncate text-xl font-semibold">{editorLabel}</h2>
             <Pencil size={19} strokeWidth={1.6} className={mutedClass} />
           </div>
           <button type="button" onClick={onClose} className={`flex h-9 w-9 items-center justify-center rounded transition ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`} aria-label="Close settings"><X size={27} strokeWidth={1.4} /></button>
+          {/* z-[10022]: this dialog is portaled at z-[10020] (see the outer fixed
+              wrapper below), so the shared default z-[9999] would paint the
+              tooltip underneath it. */}
+          <AnchoredTooltipPortal pos={dragHandleTooltip.pos} label="Drag to move" isDark={isDark} zIndexClass="z-[10022]" />
         </header>
 
         <nav className="relative flex px-6" aria-label="Drawing setting sections">
@@ -789,23 +770,24 @@ function DrawingSettingsDialog({
                   <div className="max-h-44 space-y-0.5 overflow-y-auto px-2 pb-1.5">
                     {(presetItems ?? []).map((preset) => (
                       <div key={preset.id ?? preset.name} className="flex items-center gap-1">
-                        <button
-                          type="button"
+                        <IconTooltipButton
+                          label={`Apply ${preset.name}`}
+                          isDark={isDark}
+                          zIndexClass="z-[10031]"
                           onClick={() => handleApplyTemplate(preset)}
                           className={`h-9 flex-1 truncate rounded px-2 text-left text-sm ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}
-                          title={`Apply ${preset.name}`}
                         >
                           {preset.name}
-                        </button>
-                        <button
-                          type="button"
+                        </IconTooltipButton>
+                        <IconTooltipButton
+                          label={`Delete ${preset.name}`}
+                          isDark={isDark}
+                          zIndexClass="z-[10031]"
                           onClick={() => onDeleteToolPreset?.(editorType, preset)}
                           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-red-400 hover:bg-red-500/10"
-                          title={`Delete ${preset.name}`}
-                          aria-label={`Delete ${preset.name}`}
                         >
                           <Trash2 size={14} />
-                        </button>
+                        </IconTooltipButton>
                       </div>
                     ))}
                     {!(presetItems ?? []).length && (
@@ -904,6 +886,7 @@ function TopToolEditorBar({
   const [hexColorDraft, setHexColorDraft] = useState(activeColor ?? '');
   const [showSaveAsDialog, setShowSaveAsDialog] = useState(false);
   const [pendingOverwriteName, setPendingOverwriteName] = useState(null);
+  const gripTooltip = useAnchoredTooltip();
 
   const toggleMenu = (menu) => {
     setOpenMenu((currentMenu) => (currentMenu === menu ? null : menu));
@@ -992,13 +975,16 @@ function TopToolEditorBar({
     >
       <div className="flex h-11 max-w-full flex-nowrap items-center overflow-visible">
         <div
+          ref={gripTooltip.anchorRef}
+          onMouseEnter={gripTooltip.show}
+          onMouseLeave={gripTooltip.hide}
           className={`flex h-11 w-7 shrink-0 cursor-grab items-center justify-center rounded-l-lg ${
             isDark ? 'text-[#787b86]' : 'text-slate-400'
           }`}
-          title="Tool settings"
           aria-hidden="true"
         >
           <GripVertical size={17} strokeWidth={2} />
+          <AnchoredTooltipPortal pos={gripTooltip.pos} label="Tool settings" isDark={isDark} />
         </div>
 
         <div className="relative order-1">
@@ -1053,15 +1039,14 @@ function TopToolEditorBar({
                     >
                       {preset.name}
                     </ControlButton>
-                    <button
-                      type="button"
+                    <IconTooltipButton
+                      label={`Delete ${preset.name}`}
+                      isDark={isDark}
                       onClick={() => onDeleteToolPreset(editorType, preset)}
                       className="flex h-8 w-8 items-center justify-center rounded-md bg-red-950/70 text-red-200 hover:bg-red-900 hover:text-white"
-                      title={`Delete ${preset.name}`}
-                      aria-label={`Delete ${preset.name}`}
                     >
                       <Trash2 size={14} />
-                    </button>
+                    </IconTooltipButton>
                   </div>
                 ))}
 
@@ -1189,9 +1174,11 @@ function TopToolEditorBar({
                   const isActive = activeColor?.toLowerCase() === color.toLowerCase();
 
                   return (
-                    <button
+                    <IconTooltipButton
                       key={color}
-                      type="button"
+                      label={color}
+                      isDark={isDark}
+                      ariaLabel={`Use color ${color}`}
                       onClick={() => {
                         onDrawingColorChange(color);
                         setOpenMenu(null);
@@ -1200,8 +1187,6 @@ function TopToolEditorBar({
                         isActive ? 'border-white ring-2 ring-white' : 'border-gray-500'
                       }`}
                       style={{ backgroundColor: color }}
-                      title={color}
-                      aria-label={`Use color ${color}`}
                     />
                   );
                 })}
@@ -1221,21 +1206,21 @@ function TopToolEditorBar({
                 <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${editorLabelClass}`}>Line Width</div>
                 <div className="grid grid-cols-6 gap-2">
                   {DRAWING_WIDTHS.map((width) => (
-                    <button
+                    <IconTooltipButton
                       key={width}
-                      type="button"
+                      label={`${width}px`}
+                      isDark={isDark}
                       onClick={() => {
                         onDrawingWidthChange(width);
                         setOpenMenu(null);
                       }}
                       className={`flex h-8 items-center justify-center rounded border text-[11px] ${editorOptionClass(activeStrokeWidth === width)}`}
-                      title={`${width}px`}
                     >
                       <span
                         className="block rounded-full bg-white"
                         style={{ width: 18, height: Math.max(width, 1) }}
                       />
-                    </button>
+                    </IconTooltipButton>
                   ))}
                 </div>
               </div>
@@ -1295,26 +1280,24 @@ function TopToolEditorBar({
             <div className={menuPanelClass}>
               <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${editorLabelClass}`}>Text Style</div>
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
+                <IconTooltipButton
+                  label="Bold text"
+                  isDark={isDark}
                   onClick={() => onDrawingLabelChange({ textBold: !activeTextBold })}
                   className={`flex h-9 items-center justify-center gap-2 rounded border px-2 text-xs font-medium ${editorOptionClass(activeTextBold)}`}
-                  title="Bold text"
-                  aria-label="Bold text"
                 >
                   <Bold size={14} />
                   Bold
-                </button>
-                <button
-                  type="button"
+                </IconTooltipButton>
+                <IconTooltipButton
+                  label="Italic text"
+                  isDark={isDark}
                   onClick={() => onDrawingLabelChange({ textItalic: !activeTextItalic })}
                   className={`flex h-9 items-center justify-center gap-2 rounded border px-2 text-xs font-medium ${editorOptionClass(activeTextItalic)}`}
-                  title="Italic text"
-                  aria-label="Italic text"
                 >
                   <Italic size={14} />
                   Italic
-                </button>
+                </IconTooltipButton>
               </div>
             </div>
           )}
@@ -2966,15 +2949,14 @@ export default function ReplayPanel({
                   {backtestAccount ? formatAccountMoney(backtestMetrics.cashBalance) : '---'}
                 </div>
                 <div className="relative">
-                  <button
-                    type="button"
+                  <IconTooltipButton
+                    label="Display currency settings"
+                    isDark={isDarkTheme}
                     onClick={() => setShowCurrencySettings((current) => !current)}
                     className={`flex h-7 w-7 items-center justify-center rounded ${mutedTextClass} ${isDarkTheme ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}
-                    title="Display currency settings"
-                    aria-label="Display currency settings"
                   >
                     <Settings size={14} />
-                  </button>
+                  </IconTooltipButton>
                   {showCurrencySettings && (
                     <>
                       <button type="button" className="fixed inset-0 z-[10029] cursor-default" onClick={() => setShowCurrencySettings(false)} aria-label="Close currency settings" tabIndex={-1} />
@@ -3095,24 +3077,24 @@ export default function ReplayPanel({
               </div>
               {!isSpot && (
                 <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
+                  <IconTooltipButton
+                    label="This engine simulates isolated margin only — there is no cross-margin mode."
+                    isDark={isDarkTheme}
                     disabled
-                    className={`h-8 cursor-default rounded border px-2 text-xs font-semibold opacity-90 outline-none ${fieldClass}`}
-                    title="This engine simulates isolated margin only — there is no cross-margin mode."
+                    className={`h-8 w-full cursor-default rounded border px-2 text-xs font-semibold opacity-90 outline-none ${fieldClass}`}
                   >
                     Isolated
-                  </button>
-                  <button
-                    type="button"
+                  </IconTooltipButton>
+                  <IconTooltipButton
+                    label="Leverage, 1x to 125x"
+                    isDark={isDarkTheme}
                     onClick={() => setShowLeverageModal(true)}
-                    className={`h-8 min-w-0 rounded border px-2 text-left text-xs font-semibold outline-none ${
+                    className={`h-8 w-full min-w-0 rounded border px-2 text-left text-xs font-semibold outline-none ${
                       isLeverageValid ? fieldClass : invalidFieldClass
                     }`}
-                    title="Leverage, 1x to 125x"
                   >
                     {isLeverageValid ? formatLeverage(leverageValue) : (orderLeverage || 'Lev')}
-                  </button>
+                  </IconTooltipButton>
                 </div>
               )}
               <input
@@ -3178,14 +3160,14 @@ export default function ReplayPanel({
                     <label className="block">
                       <span className={`mb-1 block text-[10px] uppercase tracking-wide ${mutedTextClass}`}>SL</span>
                       {orderStopLossMode === 'pnl' ? (
-                        <button
-                          type="button"
+                        <IconTooltipButton
+                          label="Set via PnL % in Advanced"
+                          isDark={isDarkTheme}
                           onClick={() => setShowAdvancedTpSlModal(true)}
                           className={`flex h-8 w-full items-center rounded border px-2 text-left text-xs outline-none ${fieldClass}`}
-                          title="Set via PnL % in Advanced"
                         >
                           {orderStopLossPnl ? `-${orderStopLossPnl}% PnL` : 'Set % in Advanced'}
-                        </button>
+                        </IconTooltipButton>
                       ) : (
                         <input
                           value={orderStopLoss}
@@ -3201,14 +3183,14 @@ export default function ReplayPanel({
                     <label className="block">
                       <span className={`mb-1 block text-[10px] uppercase tracking-wide ${mutedTextClass}`}>TP</span>
                       {orderTakeProfitMode === 'pnl' ? (
-                        <button
-                          type="button"
+                        <IconTooltipButton
+                          label="Set via PnL % in Advanced"
+                          isDark={isDarkTheme}
                           onClick={() => setShowAdvancedTpSlModal(true)}
                           className={`flex h-8 w-full items-center rounded border px-2 text-left text-xs outline-none ${fieldClass}`}
-                          title="Set via PnL % in Advanced"
                         >
                           {orderTakeProfitPnl ? `+${orderTakeProfitPnl}% PnL` : 'Set % in Advanced'}
-                        </button>
+                        </IconTooltipButton>
                       ) : (
                         <input
                           value={orderTakeProfit}

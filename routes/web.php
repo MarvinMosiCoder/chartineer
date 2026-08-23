@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\FeedbackReportController;
 use App\Http\Controllers\ImportedTradeController;
 use App\Http\Controllers\MarketBacktestController;
 use App\Http\Controllers\MarketBacktestPlaybookController;
@@ -28,6 +29,7 @@ use App\Http\Controllers\MarketPriceAlertController;
 use App\Http\Controllers\MentorReviewController;
 use App\Http\Controllers\PaymentActivityLogController;
 use App\Http\Controllers\ReplayAccessController;
+use App\Http\Controllers\RevenueReportController;
 use App\Http\Controllers\SystemErrorLogController;
 use App\Http\Controllers\TrainingChallengeController;
 use App\Http\Controllers\UserFeedbackController;
@@ -122,12 +124,12 @@ Route::group(['middleware' => ['auth', 'account.active', 'web']], function () {
 Route::post('/webhooks/paymongo', PayMongoWebhookController::class)->middleware('throttle:api')->name('webhooks.paymongo');
 
 Route::middleware(['auth', 'account.active'])->group(function () {
-    Route::get('dashboard', [DashboardController::class, 'index'])->middleware('superadmin')->name('dashboard');
+    Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['superadmin', 'check.user'])->name('dashboard');
     Route::get('workspace', [DashboardController::class, 'tradingWorkspace'])->name('workspace');
     Route::get('/admin/workspace', [DashboardController::class, 'workspace'])->middleware('superadmin')->name('admin.workspace');
     Route::get('market', function () {
         return Inertia::render('Market/Market');
-    })->name('market');
+    })->middleware('check.user')->name('market');
     Route::get('/market-overview', MarketOverviewController::class)->name('market-overview.show');
     Route::get('trade-report', function () {
         return Inertia::render('Market/TradeReportPage');
@@ -195,6 +197,12 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/admin/feedback', [UserFeedbackController::class, 'adminPage'])->middleware('superadmin')->name('admin.feedback.index');
     Route::get('/admin/feedback/items', [UserFeedbackController::class, 'adminIndex'])->middleware('superadmin')->name('admin.feedback.items');
     Route::put('/admin/feedback/items/{feedback}', [UserFeedbackController::class, 'update'])->middleware(['superadmin', 'throttle:feedback-write'])->name('admin.feedback.update');
+    Route::get('/admin/reports/revenue', [RevenueReportController::class, 'adminPage'])->middleware('admin.permission:reports_revenue,view')->name('admin.reports.revenue.index');
+    Route::get('/admin/reports/revenue/items', [RevenueReportController::class, 'adminIndex'])->middleware('admin.permission:reports_revenue,view')->name('admin.reports.revenue.items');
+    Route::get('/admin/reports/revenue/export', [RevenueReportController::class, 'export'])->middleware('admin.permission:reports_revenue,view')->name('admin.reports.revenue.export');
+    Route::get('/admin/reports/feedback', [FeedbackReportController::class, 'adminPage'])->middleware('admin.permission:reports_feedback,view')->name('admin.reports.feedback.index');
+    Route::get('/admin/reports/feedback/items', [FeedbackReportController::class, 'adminIndex'])->middleware('admin.permission:reports_feedback,view')->name('admin.reports.feedback.items');
+    Route::get('/admin/reports/feedback/export', [FeedbackReportController::class, 'export'])->middleware('admin.permission:reports_feedback,view')->name('admin.reports.feedback.export');
     Route::get('/market-replay-progress', [MarketReplayProgressController::class, 'show'])->name('market-replay-progress.show');
     Route::put('/market-replay-progress', [MarketReplayProgressController::class, 'update'])->middleware('replay.access')->name('market-replay-progress.update');
     Route::get('/market-backtest/account', [MarketBacktestController::class, 'show'])->middleware(['replay.access', 'throttle:backtest-read'])->name('market-backtest.show');

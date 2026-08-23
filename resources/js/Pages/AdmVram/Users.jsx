@@ -29,11 +29,12 @@ import Button from '../../Components/Table/Buttons/Button';
 import FilterFields from '../../Components/Table/Buttons/FilterFields';
 import FilterSearchOptions from '../../Components/Table/FilterSearchOptions';
 import ExportDataModal from '../../Components/Modal/ExportDataModel';
-import Tooltip from '../../Components/Tooltip/Tooltip';
+import { IconTooltipButton } from '../../Components/Tooltip/AnchoredTooltip';
 
 const Users = ({ tableName, users, options, queryParams }) => {
     const { auth } = usePage().props;
     const {theme} = useTheme();
+    const isDark = theme === 'bg-skin-black';
     const swalColor = useSwalColor(theme);
     queryParams = queryParams || {};
     const { handleToast } = useToast();
@@ -227,16 +228,15 @@ const Users = ({ tableName, users, options, queryParams }) => {
                                 btnColor='bg-gray-100'
                                 fontColor='text-stone-900'
                             />
-                            <Tooltip text='Refresh table' arrow='bottom'>
-                                <Button
-                                    href="privileges/create-privileges"
-                                    extendClass={(theme === 'bg-skin-white' ? whiteBgCoror : theme)+" py-[5px] px-[10px]"}
-                                    fontColor={textColorActive}
-                                    onClick={refreshTable}
-                                >
-                                    <i className='fa fa-table text-[18px] mt-1'></i>
-                                </Button>
-                            </Tooltip>
+                            <IconTooltipButton
+                                label="Refresh table"
+                                isDark={isDark}
+                                placement="bottom"
+                                className={`${textColorActive} overflow-hidden border border-[1px] border-gray-500 rounded-md font-poppins text-sm px-2 py-2 hover:opacity-80 ${theme === 'bg-skin-white' ? whiteBgCoror : theme} py-[5px] px-[10px]`}
+                                onClick={refreshTable}
+                            >
+                                <i className='fa fa-table text-[18px] mt-1'></i>
+                            </IconTooltipButton>
                             <Button
                                 href="privileges/create-privileges"
                                 extendClass={(theme === 'bg-skin-white' ? whiteBgCoror : theme)+" py-[5px] px-[10px]"}
