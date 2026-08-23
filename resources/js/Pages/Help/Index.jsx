@@ -34,7 +34,7 @@ const steps = [
         icon: SlidersHorizontal,
         title: '3. Add indicators',
         summary: 'Turn on the tools that help you read price action.',
-        detail: 'Open Appearance (the chart settings menu) to enable Volume, SMA, EMA, or RSI. Each indicator has its own period setting you can edit — for example, a 50 EMA vs. a 200 EMA — plus volume bar height.',
+        detail: 'Open Indicators (the sliders icon above the chart) to enable Volume, SMA, EMA, RSI, or MACD. Each indicator has its own settings you can edit — for example, a 50 EMA vs. a 200 EMA — plus volume bar height.',
         cta: { label: 'Open Workspace', href: '/workspace' },
     },
     {
@@ -48,7 +48,7 @@ const steps = [
         icon: Wallet,
         title: '5. Practice execution',
         summary: 'Place a simulated (paper) trade with real risk math, no real money.',
-        detail: "Open Wallet and start a session with a starting balance. Then use Enter Position to plan your trade: margin (how much of your balance you commit), leverage (how much your position size is multiplied), entry price, stop loss (where you exit if wrong), and take profit (where you exit if right). Confirm to place the paper order — it fills against the replayed price, not real money.",
+        detail: "Select Enter Position to open your demo account panel — start a new session there if you don't have one active yet, then check your available balance. Below that, plan your trade: margin (how much of your balance you commit), leverage (how much your position size is multiplied), entry price, stop loss (where you exit if wrong), and take profit (where you exit if right). Confirm to place the paper order — it fills against the replayed price, not real money.",
         cta: { label: 'Open Workspace', href: '/workspace' },
     },
     {
@@ -62,7 +62,7 @@ const steps = [
         icon: AlarmClock,
         title: '7. Set price alerts',
         summary: 'Get notified when price reaches a level you care about, without watching the chart.',
-        detail: 'Open Appearance and select Set price alert, then choose a target price and direction (above or below). You will get an in-app notification and, if allowed, a browser notification the moment the live price reaches that target.',
+        detail: 'Select the bell (Create alert) icon above the chart, or click a price on the chart itself, then confirm a target price — the direction (above or below) is set automatically from where that price sits relative to the current one. You will get an in-app notification and, if allowed, a browser notification the moment the live price reaches that target. Alerts only fire on the live market, not while you are in Replay.',
         cta: { label: 'Open Workspace', href: '/workspace' },
     },
     {

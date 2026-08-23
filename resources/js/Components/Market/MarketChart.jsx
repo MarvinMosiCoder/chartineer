@@ -28,7 +28,7 @@ import IndicatorSettingsPanel, { IndicatorClickTargets, IndicatorContextMenu } f
 import { createLiveCandleStream } from './MarketChart/liveCandleStream';
 import FullscreenChartHeader from './MarketChart/FullscreenChartHeader';
 import WorkspaceTour from './WorkspaceTour';
-import { useAnchoredTooltip, AnchoredTooltipPortal, IconTooltipButton } from '../Tooltip/AnchoredTooltip';
+import { useAnchoredTooltip, AnchoredTooltipPortal } from '../Tooltip/AnchoredTooltip';
 import {
   CHART_HEIGHT,
   DRAWING_COLOR,
@@ -937,6 +937,7 @@ export default function MarketReplayChart({
   const chartTheme = useMemo(() => resolveChartTheme(adminTheme), [adminTheme]);
   const createOrderTooltip = useAnchoredTooltip('right');
   const setAlertTooltip = useAnchoredTooltip('right');
+  const restartTourTooltip = useAnchoredTooltip('left');
   const wrapperRef = useRef(null);
   const fullscreenRef = useRef(null);
   const containerRef = useRef(null);
@@ -6733,7 +6734,25 @@ export default function MarketReplayChart({
   return (
     <>
     {confirmElement}
-    <IconTooltipButton label="Restart workspace tour" isDark={chartTheme.mode === 'dark'} placement="left" zIndexClass="z-[10001]" onClick={()=>setTourStep(0)} className="fixed bottom-4 right-4 z-[10000] flex h-9 w-9 items-center justify-center rounded-full border border-[#2962ff]/40 bg-[#131722] text-[#5b8cff] shadow-xl"><HelpCircle size={17}/></IconTooltipButton>
+    {/* Manual wiring, not IconTooltipButton: this button needs `fixed`
+        positioning on itself, and IconTooltipButton's wrapping <span>
+        hardcodes `relative` — same class landing on the same element
+        conflicts on the `position` property, and `relative` was winning,
+        so the button rendered inline instead of pinned to the viewport
+        corner (see CancelAlertButton above for the sibling absolute-child
+        version of this same pitfall). */}
+    <button
+      ref={restartTourTooltip.anchorRef}
+      type="button"
+      aria-label="Restart workspace tour"
+      onClick={()=>setTourStep(0)}
+      onMouseEnter={restartTourTooltip.show}
+      onMouseLeave={restartTourTooltip.hide}
+      onFocus={restartTourTooltip.show}
+      onBlur={restartTourTooltip.hide}
+      className="fixed bottom-4 right-4 z-[10000] flex h-9 w-9 items-center justify-center rounded-full border border-[#2962ff]/40 bg-[#131722] text-[#5b8cff] shadow-xl"
+    ><HelpCircle size={17}/></button>
+    <AnchoredTooltipPortal pos={restartTourTooltip.pos} label="Restart workspace tour" isDark={chartTheme.mode === 'dark'} zIndexClass="z-[10001]" />
     {showSubscriptionModal && <SubscriptionModal onClose={() => setShowSubscriptionModal(false)} onTrialActivated={() => {
       setReplayAccessAllowed(true);
       replayAccessAllowedRef.current = true;

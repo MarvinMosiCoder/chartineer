@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Star } from 'lucide-react';
-import { useAnchoredTooltip, AnchoredTooltipPortal, IconTooltipButton } from '../../Tooltip/AnchoredTooltip';
+import { useAnchoredTooltip, AnchoredTooltipPortal } from '../../Tooltip/AnchoredTooltip';
 
 const GRID_WIDTH = 280;
 
@@ -69,6 +69,38 @@ function TimeframeGridCell({ tf, isActive, isFav, isDark, onSelect, onToggleFavo
   );
 }
 
+// Own useAnchoredTooltip() instance per pill (can't call the hook directly in
+// the .map() callback below), and manual wiring rather than IconTooltipButton:
+// that wrapper duplicates the full className — including `px-2` — onto both
+// its <span> and the <button>, doubling the horizontal padding on every pill
+// and visibly widening the row (same root cause as IconTooltipButton doubling
+// visible border/background elsewhere, e.g. FullscreenChartHeader.jsx's
+// Watchlists/Enter Position buttons; see docs/developer/trading-chart.md).
+function TimeframePill({ tf, isActive, isDark, onSelect }) {
+  const { anchorRef, pos, show, hide } = useAnchoredTooltip('bottom');
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        onClick={onSelect}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        className={`flex h-7 shrink-0 items-center justify-center rounded px-2 text-xs font-semibold transition-colors ${
+          isActive
+            ? 'text-emerald-500'
+            : isDark ? 'text-gray-300 hover:bg-white/10 hover:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+        }`}
+      >
+        {tf.value}
+      </button>
+      <AnchoredTooltipPortal pos={pos} label={tf.label} isDark={isDark} />
+    </>
+  );
+}
+
 export const MAX_TIMEFRAME_FAVORITES = 10;
 export const DEFAULT_TIMEFRAME_FAVORITES = ['1m', '5m', '15m', '30m', '1h', '4h'];
 
@@ -122,25 +154,15 @@ export default function TimeframeSelector({ timeframe, timeframeOptions, favorit
   return (
     <div className="relative flex min-w-0 items-center gap-0.5">
       <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto scrollbar-none">
-        {displayedTimeframes.map((tf) => {
-          const isActive = tf.value === timeframe;
-          return (
-            <IconTooltipButton
-              key={tf.value}
-              label={tf.label}
-              isDark={isDark}
-              placement="bottom"
-              onClick={() => onTimeframeChange(tf.value)}
-              className={`flex h-7 shrink-0 items-center justify-center rounded px-2 text-xs font-semibold transition-colors ${
-                isActive
-                  ? 'text-emerald-500'
-                  : isDark ? 'text-gray-300 hover:bg-white/10 hover:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              {tf.value}
-            </IconTooltipButton>
-          );
-        })}
+        {displayedTimeframes.map((tf) => (
+          <TimeframePill
+            key={tf.value}
+            tf={tf}
+            isActive={tf.value === timeframe}
+            isDark={isDark}
+            onSelect={() => onTimeframeChange(tf.value)}
+          />
+        ))}
       </div>
       <span className="relative inline-flex shrink-0" onMouseEnter={chevronTooltip.show} onMouseLeave={chevronTooltip.hide} onFocus={chevronTooltip.show} onBlur={chevronTooltip.hide}>
         <button

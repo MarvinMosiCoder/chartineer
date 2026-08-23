@@ -5,7 +5,7 @@ import getAppName from '../../SystemSettings/ApplicationName';
 import ChartHeader from './ChartHeader';
 import WatchlistPanel from '../WatchlistPanel';
 import { watchlistMarketKey } from '../../../Context/WatchlistContext';
-import { IconTooltipButton } from '../../Tooltip/AnchoredTooltip';
+import { useAnchoredTooltip, AnchoredTooltipPortal } from '../../Tooltip/AnchoredTooltip';
 
 export default function FullscreenChartHeader({
   chartHeaderProps,
@@ -22,6 +22,13 @@ export default function FullscreenChartHeader({
   const [appName, setAppName] = useState('BacktradeLab');
   const [isWatchlistPanelOpen, setIsWatchlistPanelOpen] = useState(false);
   const isDark = chartTheme?.mode === 'dark';
+  // Manual wiring, not IconTooltipButton: its wrapping <span> duplicates the
+  // full className onto both itself and the <button>, so a visible
+  // border/background (as these three buttons have) renders as a nested
+  // double box. See docs/developer/trading-chart.md.
+  const watchlistsTooltip = useAnchoredTooltip('bottom');
+  const enterPositionTooltip = useAnchoredTooltip('bottom');
+  const fullscreenTooltip = useAnchoredTooltip('bottom');
 
   useEffect(() => {
     let cancelled = false;
@@ -83,11 +90,15 @@ export default function FullscreenChartHeader({
       </div>
 
       <div data-chart-ui="watchlists-panel" className="relative mx-1 shrink-0">
-        <IconTooltipButton
-          label="Watchlists"
-          isDark={isDark}
-          placement="bottom"
+        <button
+          ref={watchlistsTooltip.anchorRef}
+          type="button"
+          aria-label="Watchlists"
           onClick={() => setIsWatchlistPanelOpen((current) => !current)}
+          onMouseEnter={watchlistsTooltip.show}
+          onMouseLeave={watchlistsTooltip.hide}
+          onFocus={watchlistsTooltip.show}
+          onBlur={watchlistsTooltip.hide}
           aria-expanded={isWatchlistPanelOpen}
           className={`flex h-9 items-center gap-2 rounded-md border px-2 transition ${
             isWatchlistPanelOpen
@@ -99,7 +110,8 @@ export default function FullscreenChartHeader({
         >
           <ListChecks size={15} />
           <span className="hidden text-[11px] font-semibold lg:inline">Watchlists</span>
-        </IconTooltipButton>
+        </button>
+        <AnchoredTooltipPortal pos={watchlistsTooltip.pos} label="Watchlists" isDark={isDark} />
         {isWatchlistPanelOpen && (
           <div className="absolute right-0 top-11 z-[130]">
             <WatchlistPanel
@@ -112,11 +124,16 @@ export default function FullscreenChartHeader({
         )}
       </div>
 
-      {showEntryWallet && <IconTooltipButton
-        label="Enter Position"
-        isDark={isDark}
-        placement="bottom"
+      {showEntryWallet && <button
+        ref={enterPositionTooltip.anchorRef}
+        type="button"
+        data-tour="position"
+        aria-label="Enter Position"
         onClick={() => onEntryPanelOpenChange?.(!isEntryPanelOpen)}
+        onMouseEnter={enterPositionTooltip.show}
+        onMouseLeave={enterPositionTooltip.hide}
+        onFocus={enterPositionTooltip.show}
+        onBlur={enterPositionTooltip.hide}
         aria-expanded={isEntryPanelOpen}
         className={`mx-1 flex h-9 shrink-0 items-center gap-2 rounded-md border px-2 transition ${
           isEntryPanelOpen
@@ -133,13 +150,18 @@ export default function FullscreenChartHeader({
             {Number(backtestAccount.cashBalance ?? backtestAccount.cash_balance ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
           </span>
         )}
-      </IconTooltipButton>}
+      </button>}
+      {showEntryWallet && <AnchoredTooltipPortal pos={enterPositionTooltip.pos} label="Enter Position" isDark={isDark} />}
 
-      <IconTooltipButton
-        label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-        isDark={isDark}
-        placement="bottom"
+      <button
+        ref={fullscreenTooltip.anchorRef}
+        type="button"
+        aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
         onClick={onToggleFullscreen}
+        onMouseEnter={fullscreenTooltip.show}
+        onMouseLeave={fullscreenTooltip.hide}
+        onFocus={fullscreenTooltip.show}
+        onBlur={fullscreenTooltip.hide}
         className={`mx-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition sm:mx-2 ${
           isDark
             ? 'border-gray-700 bg-black-table-color text-white hover:bg-white hover:text-black'
@@ -147,7 +169,8 @@ export default function FullscreenChartHeader({
         }`}
       >
         {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-      </IconTooltipButton>
+      </button>
+      <AnchoredTooltipPortal pos={fullscreenTooltip.pos} label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} isDark={isDark} />
     </header>
   );
 }

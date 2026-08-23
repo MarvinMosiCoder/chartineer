@@ -128,7 +128,6 @@ function ControlButton({
     <button
       type="button"
       aria-label={title}
-      data-tour={title === 'Drawing Tools' ? 'drawings' : title === 'Enter Position' ? 'position' : undefined}
       className={`${controlBaseClass} ${controlVariantClass(variant, active, chartTheme)} ${className}`}
       {...props}
     >
@@ -181,14 +180,14 @@ function RailButton({ icon: Icon, active, disabled, title, onClick, chartTheme, 
   );
 }
 
-function ToolGroupRailItem({ group, tool, toolSettings, handleToolChange, toggleGroup, chartTheme, isDarkTheme }) {
+function ToolGroupRailItem({ group, tool, toolSettings, handleToolChange, toggleGroup, chartTheme, isDarkTheme, dataTour }) {
   const readyType = group.tools.includes(toolSettings?.readyTools?.[group.name]) ? toolSettings.readyTools[group.name] : group.tools[0];
   const firstTool = TOOL_BUTTONS.find((item) => item.type === readyType);
   const isGroupActive = group.tools.includes(tool);
   const chevronTooltip = useAnchoredTooltip();
 
   return (
-    <div className="group flex w-12 items-center justify-center">
+    <div className="group flex w-12 items-center justify-center" data-tour={dataTour}>
       <div className="relative flex items-center">
         <RailButton icon={firstTool?.icon ?? MousePointer2} active={isGroupActive} title={`${group.name}: ${firstTool?.label}`} onClick={() => handleToolChange(readyType)} chartTheme={chartTheme}/>
         <span className="absolute -right-2 top-0 z-10 flex h-9 w-2 items-center justify-center">
@@ -2534,7 +2533,7 @@ export default function ReplayPanel({
             />
           </div>
         )}
-        {(fullscreenDrawingOnly || groupedWorkspaceRail) ? TOOL_GROUPS.map((group) => (
+        {(fullscreenDrawingOnly || groupedWorkspaceRail) ? TOOL_GROUPS.map((group, index) => (
           <ToolGroupRailItem
             key={group.name}
             group={group}
@@ -2544,6 +2543,7 @@ export default function ReplayPanel({
             toggleGroup={toggleGroup}
             chartTheme={chartTheme}
             isDarkTheme={isDarkTheme}
+            dataTour={index === 0 ? 'drawings' : undefined}
           />
         )) : (
           <>

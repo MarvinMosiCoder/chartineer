@@ -3,10 +3,13 @@ import React, { useEffect, useState } from 'react'
 import useThemeStyles from '../../Hooks/useThemeStyles';
 import { useTheme } from '../../Context/ThemeContext';
 import { useSidebar } from '../../Context/SidebarContext';
+import { useAnchoredTooltip, AnchoredTooltipPortal } from '../Tooltip/AnchoredTooltip';
 
 const SidebarMenuCardMultiple = ({menuTitle = 'Sample Menu', icon = 'fa-solid fa-chart-simple', isMenuOpen , onMenuClick, onChildMenuClick, isMenuActive, isChildMenuActive, childMenus}) => {
     const {theme} = useTheme();
+    const isDark = theme === 'bg-skin-black';
     const { isSidebarOpen } = useSidebar();
+    const { anchorRef, pos, show, hide } = useAnchoredTooltip('right');
     const [loading, setLoading] = useState(false);
     router.on("start", () => setLoading(true));
     router.on("finish", () => setLoading(false));
@@ -25,16 +28,24 @@ const SidebarMenuCardMultiple = ({menuTitle = 'Sample Menu', icon = 'fa-solid fa
   return (
     <div>
         {/* PARENT */}
-        <div className={`flex h-10 cursor-pointer select-none items-center overflow-hidden rounded-md px-3 text-xs font-semibold transition ${isMenuActive ? 'bg-[#2962ff] text-white shadow-[0_6px_20px_rgba(41,98,255,.22)]' : theme === 'bg-skin-black' ? 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+        <div
+            ref={anchorRef}
+            tabIndex={0}
+            className={`flex h-10 cursor-pointer select-none items-center overflow-hidden rounded-md px-3 text-xs font-semibold transition ${isMenuActive ? 'bg-[#2962ff] text-white shadow-[0_6px_20px_rgba(41,98,255,.22)]' : theme === 'bg-skin-black' ? 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-white' : 'text-slate-700 hover:bg-slate-100'}`}
             onClick={onMenuClick}
+            onMouseEnter={show}
+            onMouseLeave={hide}
+            onFocus={show}
+            onBlur={hide}
         >
             <div className='w-5 h-5  flex items-center justify-center mr-2 flex-shrink-0'>
                 <i className={icon}></i>
             </div>
             <p className={`text-xs font-semibold text-nowrap flex-1 ${!isSidebarOpen ? 'hidden' : ''}`}>{menuTitle}</p>
             <div className={`w-5 h-5 items-center justify-center transition-full duration-300 ${!isSidebarOpen ? 'hidden' : 'flex'} ${isMenuOpen ? '-rotate-180': ''}`}>
-                <i className="fa-solid fa-caret-down text-xs"></i> 
+                <i className="fa-solid fa-caret-down text-xs"></i>
             </div>
+            <AnchoredTooltipPortal pos={pos} label={menuTitle} isDark={isDark} />
         </div>
         {/* CHILD */}
         <div className={`${isMenuOpen && isSidebarOpen ? 'max-h-[100rem] opacity-100' : 'max-h-0 opacity-0'} flex flex-col space-y-1 overflow-hidden border-l border-[#2a2e39] ml-5 pl-2 transition-all duration-300`}>

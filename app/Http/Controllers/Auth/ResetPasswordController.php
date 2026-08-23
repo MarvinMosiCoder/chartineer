@@ -65,6 +65,7 @@ class ResetPasswordController extends Controller
 			$user->waiver_count = 0;
 			$user->	last_password_updated = now();
 			$user->password = Hash::make($request->get('new_password'));
+			$user->password_login_enabled = true;
 			$user->save();
 
 			DB::table('adm_password_histories')->insert([

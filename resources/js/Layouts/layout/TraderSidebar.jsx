@@ -3,6 +3,7 @@ import { Link, usePage } from '@inertiajs/react';
 import { BarChart3, BookOpen, CandlestickChart, ChevronLeft, CircleHelp, CreditCard, KeyRound, LayoutDashboard, MessageSquarePlus, Share2, Target, UserRound } from 'lucide-react';
 import { useSidebar } from '../../Context/SidebarContext';
 import { useTheme } from '../../Context/ThemeContext';
+import { useAnchoredTooltip, AnchoredTooltipPortal, IconTooltipButton } from '../../Components/Tooltip/AnchoredTooltip';
 
 const items = [
     { label: 'Market Summary', href: '/market', icon: CandlestickChart },
@@ -16,6 +17,31 @@ const items = [
     { label: 'Change password', href: '/change_password', icon: KeyRound },
     { label: 'How to use', href: '/help', icon: CircleHelp },
 ];
+
+// Nav items need their own anchored-tooltip instance each (hooks can't be
+// called from inside the .map() callback in the parent), so this mirrors the
+// shared pattern's non-button "manual wiring" case for the Inertia <Link>.
+function SidebarNavLink({ href, label, Icon, active, isDark, isSidebarOpen, onNavigate }) {
+    const { anchorRef, pos, show, hide } = useAnchoredTooltip('right');
+    return (
+        <span className="relative flex" onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>
+            <Link
+                ref={anchorRef}
+                href={href}
+                onClick={onNavigate}
+                className={`flex h-10 w-full items-center gap-3 rounded-md px-3 text-xs font-semibold transition ${
+                    active
+                        ? 'bg-[#2962ff] text-white shadow-[0_6px_20px_rgba(41,98,255,.22)]'
+                        : isDark ? 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-white' : 'hover:bg-slate-100'
+                }`}
+            >
+                <Icon size={17} className="shrink-0" />
+                <span className={!isSidebarOpen ? 'lg:hidden' : ''}>{label}</span>
+            </Link>
+            <AnchoredTooltipPortal pos={pos} label={label} isDark={isDark} />
+        </span>
+    );
+}
 
 export default function TraderSidebar() {
     const { url } = usePage();
@@ -43,20 +69,16 @@ export default function TraderSidebar() {
                     {items.map(({ label, href, icon: Icon }) => {
                         const active = url === href || (href === '/workspace' && url.startsWith('/workspace'));
                         return (
-                            <Link
+                            <SidebarNavLink
                                 key={href}
                                 href={href}
-                                onClick={() => window.innerWidth < 1024 && toggleSidebar(false)}
-                                className={`flex h-10 items-center gap-3 rounded-md px-3 text-xs font-semibold transition ${
-                                    active
-                                        ? 'bg-[#2962ff] text-white shadow-[0_6px_20px_rgba(41,98,255,.22)]'
-                                        : isDark ? 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-white' : 'hover:bg-slate-100'
-                                }`}
-                                title={label}
-                            >
-                                <Icon size={17} className="shrink-0" />
-                                <span className={!isSidebarOpen ? 'lg:hidden' : ''}>{label}</span>
-                            </Link>
+                                label={label}
+                                Icon={Icon}
+                                active={active}
+                                isDark={isDark}
+                                isSidebarOpen={isSidebarOpen}
+                                onNavigate={() => window.innerWidth < 1024 && toggleSidebar(false)}
+                            />
                         );
                     })}
                 </nav>
@@ -66,9 +88,14 @@ export default function TraderSidebar() {
                     <p className="mt-1 text-[10px] leading-4 text-[#787b86]">Replay, execute, journal, and improve your process.</p>
                 </div>
 
-                <button type="button" onClick={() => toggleSidebar()} className="mt-2 hidden h-8 items-center justify-center rounded-md text-[#787b86] hover:bg-white/10 lg:flex" title="Collapse navigation">
+                <IconTooltipButton
+                    label="Collapse navigation"
+                    isDark={isDark}
+                    onClick={() => toggleSidebar()}
+                    className="mt-2 hidden h-8 items-center justify-center rounded-md text-[#787b86] hover:bg-white/10 lg:flex"
+                >
                     <ChevronLeft size={16} className={!isSidebarOpen ? 'rotate-180' : ''} />
-                </button>
+                </IconTooltipButton>
             </div>
         </aside>
         </>

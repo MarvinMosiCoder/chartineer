@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import useThemeStyles from '../../Hooks/useThemeStyles';
 import { useTheme } from '../../Context/ThemeContext';
 import { useSidebar } from '../../Context/SidebarContext';
+import { useAnchoredTooltip, AnchoredTooltipPortal } from '../Tooltip/AnchoredTooltip';
 
 const SidebarMenuCard = ({
   menuTitle = 'Sample Menu',
@@ -26,6 +27,8 @@ const SidebarMenuCard = ({
   } = useThemeStyles(theme);
 
   const [loading, setLoading] = useState(false);
+  const isDark = theme === 'bg-skin-black';
+  const { anchorRef, pos, show, hide } = useAnchoredTooltip('right');
 
   // Handle the click event to prevent double-clicks
   const handleClick = (e) => {
@@ -48,17 +51,21 @@ const SidebarMenuCard = ({
   };
 
   return (
-    <Link
-      onClick={handleClick}
-      disabled={true}
-      href={'/' + href}
-      className={`flex h-10 cursor-pointer select-none items-center overflow-hidden rounded-md px-3 text-xs font-semibold transition ${isMenuActive ? 'bg-[#2962ff] text-white shadow-[0_6px_20px_rgba(41,98,255,.22)]' : theme === 'bg-skin-black' ? 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-white' : 'text-slate-700 hover:bg-slate-100'}`}
-    >
-      <div className="w-5 h-5 flex items-center justify-center mr-2 flex-shrink-0">
-        <i className={icon}></i>
-      </div>
-      <p className={`flex-shrink-0 text-xs font-semibold ${!isSidebarOpen ? 'hidden' : ''}`}>{menuTitle}</p>
-    </Link>
+    <span className="relative flex" onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>
+      <Link
+        ref={anchorRef}
+        onClick={handleClick}
+        disabled={true}
+        href={'/' + href}
+        className={`flex h-10 w-full cursor-pointer select-none items-center overflow-hidden rounded-md px-3 text-xs font-semibold transition ${isMenuActive ? 'bg-[#2962ff] text-white shadow-[0_6px_20px_rgba(41,98,255,.22)]' : theme === 'bg-skin-black' ? 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+      >
+        <div className="w-5 h-5 flex items-center justify-center mr-2 flex-shrink-0">
+          <i className={icon}></i>
+        </div>
+        <p className={`flex-shrink-0 text-xs font-semibold ${!isSidebarOpen ? 'hidden' : ''}`}>{menuTitle}</p>
+      </Link>
+      <AnchoredTooltipPortal pos={pos} label={menuTitle} isDark={isDark} />
+    </span>
   );
 };
 
