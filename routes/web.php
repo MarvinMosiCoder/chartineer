@@ -144,7 +144,13 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/market-metadata', [MarketDataController::class, 'metadata'])->middleware('throttle:60,1')->name('market-metadata.show');
     Route::post('/market-metadata/batch', [MarketDataController::class, 'metadataBatch'])->middleware('throttle:20,1')->name('market-metadata.batch');
     Route::post('/market-symbols', [MarketDataController::class, 'storeSymbol'])->middleware('throttle:market-write')->name('market-symbols.store');
+    Route::put('/market-symbols/favorite', [MarketDataController::class, 'toggleFavoriteSymbol'])->middleware('throttle:market-write')->name('market-symbols.favorite');
+    // Must stay registered before the {marketSymbol} wildcard DELETE below —
+    // otherwise Laravel's implicit route-model binding would try to resolve
+    // "favorites" as a MarketSymbol id and 404 before reaching this route.
+    Route::delete('/market-symbols/favorites', [MarketDataController::class, 'clearAllFavorites'])->middleware('throttle:market-write')->name('market-symbols.favorites.clear');
     Route::delete('/market-symbols/{marketSymbol}', [MarketDataController::class, 'destroySymbol'])->middleware('throttle:market-write')->name('market-symbols.destroy');
+    Route::delete('/market-symbols', [MarketDataController::class, 'destroyAllSymbols'])->middleware('throttle:market-write')->name('market-symbols.destroy-all');
     Route::put('/market-drawings', [MarketDrawingController::class, 'update'])->name('market-drawings.update');
     Route::get('/market-tool-settings', [MarketToolSettingController::class, 'show'])->name('market-tool-settings.show');
     Route::put('/market-tool-settings', [MarketToolSettingController::class, 'update'])->name('market-tool-settings.update');

@@ -9,17 +9,16 @@ export function ToastProvider({ children }) {
 	const timeoutId = useRef(null);
 
 	const handleToast = useCallback((message, messageType, duration = 3000, ...params) => {
-		document.getElementById("app-content").scrollIntoView(true);
 		setMessage(message);
 		setMessageType(messageType);
 
 		if (timeoutId.current) {
 			clearTimeout(timeoutId.current);
 		}
-	
+
 		timeoutId.current = setTimeout(() => {
 			setMessage("");
-			timeoutId.current = null; 
+			timeoutId.current = null;
 		}, duration);
 
 		params.forEach((param) => {
@@ -29,11 +28,23 @@ export function ToastProvider({ children }) {
 		});
 	}, []);
 
+	// Dismiss early (the toast's own close button) instead of waiting out the
+	// duration — clearing the pending timeout too so it can't fire afterward
+	// and stomp on a *different* toast triggered in the meantime.
+	const dismissToast = useCallback(() => {
+		if (timeoutId.current) {
+			clearTimeout(timeoutId.current);
+			timeoutId.current = null;
+		}
+		setMessage("");
+	}, []);
+
 	return (
-		<ToastContext.Provider value={{ message, messageType, handleToast }}>
+		<ToastContext.Provider value={{ message, messageType, handleToast, dismissToast }}>
 			<DissapearingToast
 				type={messageType}
 				message={message}
+				onDismiss={dismissToast}
 			/>
 			{children}
 		</ToastContext.Provider>

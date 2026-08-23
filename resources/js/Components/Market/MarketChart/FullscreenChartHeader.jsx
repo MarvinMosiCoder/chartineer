@@ -39,7 +39,16 @@ export default function FullscreenChartHeader({
   useEffect(() => {
     if (!isWatchlistPanelOpen) return undefined;
     const handleOutsideClick = (event) => {
-      if (event.target?.closest?.('[data-chart-ui="watchlists-panel"]')) return;
+      // Both checks matter here: the watchlists-panel marker also covers
+      // WatchlistPanel.jsx's react-select menu (a document.body portal
+      // tagged with the same attribute — see its menuPortalTarget setup),
+      // and data-confirm-dialog covers useConfirm()'s modal (used by both
+      // this panel's saved-symbol delete flow and WatchlistContext.jsx's
+      // own create/edit/delete-watchlist modals) — neither is a DOM
+      // descendant of this wrapper, so without these a mousedown inside
+      // either one reads as "outside" and closes this popover before the
+      // click can do anything.
+      if (event.target?.closest?.('[data-chart-ui="watchlists-panel"], [data-confirm-dialog]')) return;
       setIsWatchlistPanelOpen(false);
     };
     document.addEventListener('mousedown', handleOutsideClick);

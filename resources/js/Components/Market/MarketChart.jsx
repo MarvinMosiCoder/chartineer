@@ -4988,7 +4988,17 @@ export default function MarketReplayChart({
 
   useEffect(() => {
     async function fetchKlines() {
-      if (replayProgressLoadedKey !== replayProgressKey) return;
+      // Waiting for the saved-progress round trip only matters when this
+      // fetch might auto-resume a bookmarked replay position for the new
+      // symbol (shouldRestoreSavedReplay below, which requires !replayMode) —
+      // that needs the *new* symbol's own progress row, not whatever was left
+      // over from the previous one. While already actively replaying,
+      // shouldRestoreSavedReplay can never be true regardless of how fresh
+      // replayProgressLoadedKey is, so blocking here only added a needless
+      // network round trip before every symbol/timeframe switch could even
+      // start fetching candles — most noticeable (and most likely to time
+      // out) on Replay's already-slower, larger history fetch below.
+      if (!replayMode && replayProgressLoadedKey !== replayProgressKey) return;
       timeframePrefetchCancelRef.current?.();
       timeframePrefetchCancelRef.current = null;
 
@@ -5014,13 +5024,24 @@ export default function MarketReplayChart({
       candleFetchAbortRef.current?.abort();
       const controller = new AbortController();
       candleFetchAbortRef.current = controller;
-      const shouldRestoreSavedReplay =
+      // Replay is per-symbol/exchange/category, not a chart-wide sticky mode:
+      // switching to a different market (isSymbolChange) only continues
+      // Replay if *that* market has its own saved checkpoint
+      // (market_replay_progress row) — it never carries over just because
+      // the market switched away from happened to be mid-replay. A
+      // timeframe change on the same market is a continuation, not a
+      // switch, and simply keeps whatever mode (Live or Replay) was already
+      // active, same as before this distinction existed.
+      const isSymbolChange = !isTimeframeTransition;
+      const hasFreshCheckpointForKey =
         replayAccessAllowed === true
-        &&
-        !replayMode
+        && replayProgressLoadedKey === replayProgressKey
         && restoredReplayProgressKeyRef.current !== replayProgressKey
         && Number.isFinite(Number(savedReplayProgress?.replay_time));
-      const wasInReplay = replayMode || shouldRestoreSavedReplay;
+      const shouldRestoreSavedReplay = hasFreshCheckpointForKey && (isSymbolChange || !replayMode);
+      const wasInReplay = isSymbolChange
+        ? shouldRestoreSavedReplay
+        : (replayMode || shouldRestoreSavedReplay);
       // selectedReplayPriceRef holds a raw price level, not a proportional
       // position — reusing it across a symbol change (rather than just a
       // timeframe change on the same symbol) plots a stale price from the

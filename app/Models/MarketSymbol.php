@@ -16,6 +16,7 @@ class MarketSymbol extends Model
         'quote_coin',
         'category',
         'is_active',
+        'is_favorite',
     ];
 
     public function user()
@@ -25,5 +26,6 @@ class MarketSymbol extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'is_favorite' => 'boolean',
     ];
 }

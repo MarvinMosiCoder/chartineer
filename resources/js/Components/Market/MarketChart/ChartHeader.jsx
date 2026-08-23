@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { createPortal } from 'react-dom';
 import { marketCategoryLabel } from '../../../utils/marketLabels';
-import { Bell, CandlestickChart, Check, ChevronDown, CircleHelp, Info, LoaderCircle, Menu, Play, Search, SlidersHorizontal, Star, X } from 'lucide-react';
+import { Bell, Bookmark, CandlestickChart, Check, ChevronDown, CircleHelp, Info, LoaderCircle, Menu, Play, Search, SlidersHorizontal, Star, Trash2, X } from 'lucide-react';
 import { TIMEFRAMES } from './constants';
 import { formatPrice } from './utils';
 import { useWatchlist } from '../../../Context/WatchlistContext';
+import { useConfirm } from '../../../Hooks/useConfirm';
+import { useToast } from '../../../Context/ToastContext';
 import TimeframeSelector, { DEFAULT_TIMEFRAME_FAVORITES } from './TimeframeSelector';
 
 const searchResultKey = (exchange, category, symbol) => `${String(exchange).toLowerCase()}:${String(category).toLowerCase()}:${String(symbol).toUpperCase()}`;
@@ -40,12 +42,12 @@ function useAnchoredTooltip() {
   return { anchorRef, pos, show, hide, panelPos, openPanel, closePanel };
 }
 
-function HeaderTooltipPortal({ pos, label, isDark }) {
+function HeaderTooltipPortal({ pos, label, isDark, zIndexClass = 'z-[9999]' }) {
   if (!pos || !label || typeof document === 'undefined') return null;
   return createPortal(
     <span
       role="tooltip"
-      className={`pointer-events-none fixed z-[9999] -translate-y-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] font-medium shadow-lg ${
+      className={`pointer-events-none fixed ${zIndexClass} -translate-y-1/2 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] font-medium shadow-lg ${
         isDark ? 'border-[#363a45] bg-[#1e222d] text-white' : 'border-slate-200 bg-white text-slate-800'
       }`}
       style={{ top: pos.top, left: pos.left }}
@@ -53,6 +55,36 @@ function HeaderTooltipPortal({ pos, label, isDark }) {
       {label}
     </span>,
     document.body
+  );
+}
+
+// Same anchored tooltip as the header's other icon-only buttons (replay,
+// alert, info, indicators) instead of a plain browser title — used for the
+// icon-only actions (favorite/watchlist/remove) on each symbol search row.
+// These rows live inside the "Search all symbols" popover, itself portaled
+// at z-[10021] (see the panels documented in trading-chart.md) — a sibling
+// with a *higher* z-index than the header tooltip's default z-[9999] would
+// paint over it, so this needs its own higher value to actually show above
+// the popover it's nested in rather than behind it.
+function IconTooltipButton({ label, isDark, className, onClick, ariaLabel, children }) {
+  const { anchorRef, pos, show, hide } = useAnchoredTooltip();
+  return (
+    <span className="relative flex shrink-0">
+      <button
+        ref={anchorRef}
+        type="button"
+        onClick={onClick}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        aria-label={ariaLabel ?? label}
+        className={className}
+      >
+        {children}
+      </button>
+      <HeaderTooltipPortal pos={pos} label={label} isDark={isDark} zIndexClass="z-[10022]" />
+    </span>
   );
 }
 
@@ -101,7 +133,9 @@ function MarketCategoryTabs({ marketCategory, onCategoryChange, showFavoritesOnl
 }
 
 export default function ChartHeader({ symbol, exchange, marketCategory, symbols, availableSymbols, isSavingSymbol, isLoadingAvailableSymbols, symbolError, timeframe, timeframeOptions = TIMEFRAMES, timeframeFavorites = DEFAULT_TIMEFRAME_FAVORITES, onTimeframeFavoritesChange = () => {}, replayMode, replayAccessStatus = 'idle', liveConnectionStatus = 'polling', currentPrice, selectedReplayPrice, indicators, onSymbolChange, onCategoryChange, onAddSymbol, onTimeframeChange, onToggleReplayMode, onIndicatorsChange, onOpenIndicatorSettings, onCreatePriceAlert, chartTheme, compact = false, className = '' }) {
-  const { watchlists = {}, activeWatchlist: activeWatchlistName = null, addSymbolToWatchlist: onAddToWatchlist = null } = useWatchlist() ?? {};
+  const { watchlists = {}, activeWatchlist: activeWatchlistName = null, addSymbolToWatchlist: onAddToWatchlist = null, savedSymbols = [], toggleFavorite: onToggleFavorite = null, removeAllFavorites: onRemoveAllFavorites = null } = useWatchlist() ?? {};
+  const { confirm, confirmElement } = useConfirm();
+  const { handleToast } = useToast();
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [recentlyAddedKey, setRecentlyAddedKey] = useState(null);
@@ -163,14 +197,53 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
   }, [availableSymbols, symbolSearch]);
 
   const activeWatchlistSymbols = activeWatchlistName ? (watchlists[activeWatchlistName] ?? []) : [];
+  // Favorites is a plain per-symbol flag, independent of watchlist membership
+  // — see docs/superpowers/specs/2026-08-23-symbol-favorites-design.md.
+  const favoritedKeys = useMemo(
+    () => new Set(savedSymbols.filter((item) => item.is_favorite).map((item) => buildSymbolKey(item))),
+    [savedSymbols],
+  );
   const visibleSymbolOptions = showFavoritesOnly
-    ? filteredAddSymbolOptions.filter((item) => activeWatchlistSymbols.includes(buildSymbolKey(item)))
+    ? filteredAddSymbolOptions.filter((item) => favoritedKeys.has(buildSymbolKey(item)))
     : filteredAddSymbolOptions;
   const handleCategoryTabChange = (value) => {
     setShowFavoritesOnly(false);
     onCategoryChange(value);
   };
   const handleSelectFavoritesTab = () => setShowFavoritesOnly(true);
+
+  const handleToggleFavorite = (item) => {
+    if (!onToggleFavorite) return;
+    const nextFavorited = !favoritedKeys.has(buildSymbolKey(item));
+    onToggleFavorite(item, nextFavorited).then(() => {
+      handleToast(nextFavorited ? `Added ${item.symbol} to favorites.` : `Removed ${item.symbol} from favorites.`, 'success');
+    }).catch(() => {
+      handleToast(`Failed to update favorite for ${item.symbol}. Please try again.`, 'error');
+    });
+  };
+  const handleRemoveFavorite = async (item) => {
+    if (!onToggleFavorite) return;
+    if (!(await confirm(`Remove ${item.symbol} from favorites?`, { title: 'Remove favorite?', confirmLabel: 'Remove' }))) return;
+    onToggleFavorite(item, false).then(() => {
+      handleToast(`Removed ${item.symbol} from favorites.`, 'success');
+    }).catch(() => {
+      handleToast(`Failed to remove ${item.symbol} from favorites. Please try again.`, 'error');
+    });
+  };
+  const handleRemoveAllFavorites = async () => {
+    if (!onRemoveAllFavorites) return;
+    const count = favoritedKeys.size;
+    if (!(await confirm(
+      `Remove all ${count} favorites? This only clears their favorite status — they stay saved and stay in any watchlists.`,
+      { title: 'Remove all favorites?', confirmLabel: 'Remove all' }
+    ))) return;
+    try {
+      await onRemoveAllFavorites();
+      handleToast(`Removed ${count} symbol${count === 1 ? '' : 's'} from favorites.`, 'success');
+    } catch {
+      handleToast('Failed to remove favorites. Please try again.', 'error');
+    }
+  };
 
   useEffect(() => {
     if (!isAddOpen || !filteredAddSymbolOptions.length) return undefined;
@@ -284,6 +357,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
 
     return (
       <div className={`flex max-w-full flex-wrap items-center gap-2 rounded-md border p-2 shadow-xl backdrop-blur ${className}`} style={panelStyle}>
+        {confirmElement}
         <button data-chart-ui="mobile-menu" type="button" onClick={() => setIsMobileMenuOpen((open) => !open)} className={`${compactFieldClass} flex items-center gap-2 font-semibold lg:hidden`} aria-expanded={isMobileMenuOpen} aria-label="Menu">
           <Menu size={15} />
           <ChevronDown size={13} className={`transition-transform ${isMobileMenuOpen ? 'rotate-180' : ''}`} />
@@ -315,16 +389,25 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                     isDark={isDark}
                   />
                 </div>
+                {showFavoritesOnly && visibleSymbolOptions.length > 0 && onRemoveAllFavorites && (
+                  <div className={`flex items-center justify-between border-b px-3 py-1.5 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <span className={`text-[9px] font-semibold uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>{visibleSymbolOptions.length} favorite{visibleSymbolOptions.length === 1 ? '' : 's'}</span>
+                    <button type="button" onClick={handleRemoveAllFavorites} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[9px] font-semibold text-red-500 hover:bg-red-500/10">
+                      <Trash2 size={11} /> Remove all
+                    </button>
+                  </div>
+                )}
                 <div className="max-h-72 overflow-y-auto">
                   {visibleSymbolOptions.length ? (
                     visibleSymbolOptions.map((item) => {
                       const meta = searchMetadata[searchResultKey(item.exchange ?? 'bybit', item.category ?? 'spot', item.symbol)];
                       const watchlistItemKey = buildSymbolKey(item);
+                      const isFavorited = favoritedKeys.has(watchlistItemKey);
                       const inActiveWatchlist = activeWatchlistSymbols.includes(watchlistItemKey);
                       const justAddedToWatchlist = recentlyAddedKey === watchlistItemKey;
                       const menuOpen = watchlistMenuOpenKey === watchlistItemKey;
                       return (
-                      <div key={buildSymbolKey(item)} className={`flex items-center gap-2.5 border-b px-3 py-2.5 last:border-b-0 ${isDark ? 'border-gray-700/50' : 'border-gray-100'}`}>
+                      <div key={buildSymbolKey(item)} className={`flex items-center gap-2 border-b px-3 py-2.5 last:border-b-0 ${isDark ? 'border-gray-700/50' : 'border-gray-100'}`}>
                         <span className={`flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
                           {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className="text-[#5b8cff]" />}
                         </span>
@@ -334,16 +417,27 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                             {String(item.exchangeLabel ?? item.exchange).toUpperCase()} {marketCategoryLabel(item.category)}
                           </div>
                         </div>
+                        {onToggleFavorite && (
+                          <IconTooltipButton
+                            label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+                            ariaLabel={isFavorited ? `Remove ${item.symbol} from favorites` : `Add ${item.symbol} to favorites`}
+                            isDark={isDark}
+                            onClick={() => handleToggleFavorite(item)}
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${isFavorited ? 'border-amber-400/40 text-amber-400' : isDark ? 'border-gray-700 text-gray-400 hover:border-amber-400 hover:text-amber-400' : 'border-gray-200 text-slate-500 hover:border-amber-400 hover:text-amber-400'}`}
+                          >
+                            <Star size={12} fill={isFavorited ? 'currentColor' : 'none'} />
+                          </IconTooltipButton>
+                        )}
                         {onAddToWatchlist && watchlistNames.length > 0 && (
                           <div className="relative shrink-0">
-                            <button
-                              type="button"
+                            <IconTooltipButton
+                              label={inActiveWatchlist ? 'In your active watchlist' : 'Add to watchlist'}
+                              isDark={isDark}
                               onClick={() => setWatchlistMenuOpenKey((current) => (current === watchlistItemKey ? null : watchlistItemKey))}
-                              title={inActiveWatchlist ? 'In your active watchlist' : 'Add to watchlist'}
                               className={`flex h-6 w-6 items-center justify-center rounded-md border ${inActiveWatchlist || justAddedToWatchlist ? 'border-[#2962ff]/40 text-[#2962ff]' : isDark ? 'border-gray-700 text-gray-400 hover:border-[#2962ff] hover:text-[#2962ff]' : 'border-gray-200 text-slate-500 hover:border-[#2962ff] hover:text-[#2962ff]'}`}
                             >
-                              <Star size={12} fill={inActiveWatchlist || justAddedToWatchlist ? 'currentColor' : 'none'} />
-                            </button>
+                              <Bookmark size={12} fill={inActiveWatchlist || justAddedToWatchlist ? 'currentColor' : 'none'} />
+                            </IconTooltipButton>
                             {menuOpen && (
                               <div className={`absolute right-0 top-7 z-[130] w-44 overflow-hidden rounded-md border shadow-2xl ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-gray-200 bg-white'}`}>
                                 <div className={`px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>Add to watchlist</div>
@@ -364,6 +458,16 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                               </div>
                             )}
                           </div>
+                        )}
+                        {showFavoritesOnly && onToggleFavorite && (
+                          <IconTooltipButton
+                            label={`Remove ${item.symbol} from favorites`}
+                            isDark={isDark}
+                            onClick={() => handleRemoveFavorite(item)}
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-red-500/10 hover:text-red-500"
+                          >
+                            <X size={12} />
+                          </IconTooltipButton>
                         )}
                         <button type="button" onClick={() => handleSelectSymbol(item)} className="rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-40">
                           Open
@@ -444,6 +548,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
 
   return (
     <div className={`relative z-40 rounded-lg border p-1.5 shadow-sm ${className}`} style={panelStyle}>
+      {confirmElement}
       <button data-chart-ui="mobile-menu" type="button" onClick={() => setIsMobileMenuOpen((open) => !open)} className={`${fieldClass} flex w-full items-center justify-center gap-2 font-semibold lg:hidden`} aria-expanded={isMobileMenuOpen} aria-label="Menu">
         <Menu size={15} />
         <ChevronDown size={14} className={`shrink-0 transition-transform ${isMobileMenuOpen ? 'rotate-180' : ''}`} />
@@ -489,16 +594,25 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                   isDark={isDark}
                 />
               </div>
+              {showFavoritesOnly && visibleSymbolOptions.length > 0 && onRemoveAllFavorites && (
+                <div className={`flex items-center justify-between border-b px-3 py-1.5 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <span className={`text-[9px] font-semibold uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>{visibleSymbolOptions.length} favorite{visibleSymbolOptions.length === 1 ? '' : 's'}</span>
+                  <button type="button" onClick={handleRemoveAllFavorites} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[9px] font-semibold text-red-500 hover:bg-red-500/10">
+                    <Trash2 size={11} /> Remove all
+                  </button>
+                </div>
+              )}
               <div className="max-h-64 overflow-y-auto">
                 {visibleSymbolOptions.length ? (
                   visibleSymbolOptions.map((item) => {
                     const meta = searchMetadata[searchResultKey(item.exchange ?? 'bybit', item.category ?? 'spot', item.symbol)];
                     const watchlistItemKey = buildSymbolKey(item);
+                    const isFavorited = favoritedKeys.has(watchlistItemKey);
                     const inActiveWatchlist = activeWatchlistSymbols.includes(watchlistItemKey);
                     const justAddedToWatchlist = recentlyAddedKey === watchlistItemKey;
                     const menuOpen = watchlistMenuOpenKey === watchlistItemKey;
                     return (
-                    <div key={buildSymbolKey(item)} className={`flex items-center gap-2.5 border-b px-3 py-2.5 last:border-b-0 ${isDark ? 'border-gray-800' : 'border-gray-100'}`}>
+                    <div key={buildSymbolKey(item)} className={`flex items-center gap-2 border-b px-3 py-2.5 last:border-b-0 ${isDark ? 'border-gray-800' : 'border-gray-100'}`}>
                       <span className={`flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
                         {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className="text-[#5b8cff]" />}
                       </span>
@@ -508,16 +622,27 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                           {String(item.exchangeLabel ?? item.exchange ?? '').toUpperCase()} {marketCategoryLabel(item.category)}
                         </div>
                       </div>
+                      {onToggleFavorite && (
+                        <IconTooltipButton
+                          label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+                          ariaLabel={isFavorited ? `Remove ${item.symbol} from favorites` : `Add ${item.symbol} to favorites`}
+                          isDark={isDark}
+                          onClick={() => handleToggleFavorite(item)}
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${isFavorited ? 'border-amber-400/40 text-amber-400' : isDark ? 'border-gray-700 text-gray-400 hover:border-amber-400 hover:text-amber-400' : 'border-gray-200 text-slate-500 hover:border-amber-400 hover:text-amber-400'}`}
+                        >
+                          <Star size={12} fill={isFavorited ? 'currentColor' : 'none'} />
+                        </IconTooltipButton>
+                      )}
                       {onAddToWatchlist && watchlistNames.length > 0 && (
                         <div className="relative shrink-0">
-                          <button
-                            type="button"
+                          <IconTooltipButton
+                            label={inActiveWatchlist ? 'In your active watchlist' : 'Add to watchlist'}
+                            isDark={isDark}
                             onClick={() => setWatchlistMenuOpenKey((current) => (current === watchlistItemKey ? null : watchlistItemKey))}
-                            title={inActiveWatchlist ? 'In your active watchlist' : 'Add to watchlist'}
                             className={`flex h-6 w-6 items-center justify-center rounded-md border ${inActiveWatchlist || justAddedToWatchlist ? 'border-[#2962ff]/40 text-[#2962ff]' : isDark ? 'border-gray-700 text-gray-400 hover:border-[#2962ff] hover:text-[#2962ff]' : 'border-gray-200 text-slate-500 hover:border-[#2962ff] hover:text-[#2962ff]'}`}
                           >
-                            <Star size={12} fill={inActiveWatchlist || justAddedToWatchlist ? 'currentColor' : 'none'} />
-                          </button>
+                            <Bookmark size={12} fill={inActiveWatchlist || justAddedToWatchlist ? 'currentColor' : 'none'} />
+                          </IconTooltipButton>
                           {menuOpen && (
                             <div className={`absolute right-0 top-7 z-[130] w-44 overflow-hidden rounded-md border shadow-2xl ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-gray-200 bg-white'}`}>
                               <div className={`px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>Add to watchlist</div>
@@ -538,6 +663,16 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                             </div>
                           )}
                         </div>
+                      )}
+                      {showFavoritesOnly && onToggleFavorite && (
+                        <IconTooltipButton
+                          label={`Remove ${item.symbol} from favorites`}
+                          isDark={isDark}
+                          onClick={() => handleRemoveFavorite(item)}
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-red-500/10 hover:text-red-500"
+                        >
+                          <X size={12} />
+                        </IconTooltipButton>
                       )}
                       <button type="button" onClick={() => handleSelectSymbol(item)} className="rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-40" title={`Open ${item.symbol}`}>
                         Open

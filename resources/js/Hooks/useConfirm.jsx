@@ -13,6 +13,26 @@ import { useTheme } from '../Context/ThemeContext';
  * if (!ok) return;
  * ...
  * return <>{jsx}{confirmElement}</>;
+ *
+ * z-[10060] is deliberately above every other portal in this app (the
+ * highest otherwise in use is react-select's menuPortal at 10050 —
+ * WatchlistPanel.jsx's "Add a saved market" picker). This hook is called
+ * from many different surfaces, some of which have their own open portal
+ * at the moment confirm() fires (e.g. deleting a saved symbol from inside
+ * that still-open select menu); this modal must render above whichever one
+ * that is, or its buttons render but are visually covered and unclickable —
+ * confirmed live: that was exactly why removing a saved symbol from the
+ * watchlist picker looked like it silently did nothing.
+ *
+ * The portal root also carries `data-confirm-dialog="true"` — a generic
+ * marker any "close this popover on outside click" listener elsewhere in
+ * the app (e.g. FullscreenChartHeader.jsx's Watchlists dropdown) should
+ * check for via `event.target.closest('[data-confirm-dialog]')` before
+ * treating a click as outside. Without it, a mousedown anywhere inside this
+ * portal — including on its own Confirm/Cancel buttons — reads as "outside"
+ * to any such listener (since this is a document.body portal, not a DOM
+ * descendant of whatever triggered confirm()) and can close/unmount the
+ * calling component before it finishes handling the result.
  */
 export function useConfirm() {
     const { theme } = useTheme();
@@ -40,7 +60,8 @@ export function useConfirm() {
 
     const confirmElement = state && typeof document !== 'undefined' ? createPortal(
         <div
-            className="fixed inset-0 z-[10021] flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center"
+            data-confirm-dialog="true"
+            className="fixed inset-0 z-[10060] flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center"
             onMouseDown={(event) => event.target === event.currentTarget && settle(false)}
         >
             <div className={`w-full max-w-sm rounded-2xl border p-5 shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722] text-white' : 'border-slate-200 bg-white text-slate-900'}`}>

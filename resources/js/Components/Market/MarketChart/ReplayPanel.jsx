@@ -275,6 +275,13 @@ function Flyout({ title, icon: Icon, onClose, children, bodyClassName = 'space-y
   );
 }
 
+// Was a native `title` plus an optional, non-portaled CSS group-hover span
+// (only ever opted into by the "Templates" button below) — replaced with
+// the same anchored-portal tooltip as RailButton/RailTooltipPortal above,
+// so every ToolEditorButton gets a real hover label instead of most of them
+// silently having none. `hideTooltip` replaces the old inverted
+// `showTooltip` prop, still used only by "Templates" to avoid the tooltip
+// overlapping its own open presets menu.
 function ToolEditorButton({
   icon: Icon,
   title,
@@ -284,33 +291,41 @@ function ToolEditorButton({
   children,
   className = '',
   chartTheme,
-  showTooltip = false,
+  hideTooltip = false,
 }) {
   const isDark = chartTheme?.mode !== 'light';
+  const { anchorRef, pos, show, hide } = useAnchoredTooltip();
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={title}
-      title={title}
-      className={`group relative inline-flex h-11 shrink-0 items-center justify-center gap-1.5 px-3 transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
-        active
-          ? isDark ? 'bg-[#2a2e39] text-white' : 'bg-slate-200 text-slate-950'
-          : isDark ? 'text-[#d1d4dc] hover:bg-white/[0.06] hover:text-white' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
-      } ${className}`}
-    >
-      {Icon && <Icon size={20} strokeWidth={1.65} className="shrink-0" />}
-      {children}
-      {showTooltip && (
-        <span className={`pointer-events-none absolute left-1/2 top-[calc(100%+6px)] z-[70] -translate-x-1/2 whitespace-nowrap rounded px-2 py-1 text-xs font-semibold opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 ${
-          isDark ? 'bg-[#363a45] text-[#f0f3fa]' : 'bg-slate-800 text-white'
-        }`}>
-          {title}
-        </span>
-      )}
-    </button>
+    // `className` is applied to both this span and the button below: several
+    // call sites pass Tailwind `order-N` (this row's a `flex` with siblings
+    // conditionally rendered out of DOM order) which only takes effect on
+    // the element that's actually the flex item in the parent row — now
+    // this span, not the button it used to be applied to directly. Classes
+    // like `rounded-r-lg` still need to land on the button for its own
+    // visible shape, so it stays on both rather than trying to split them.
+    <span className={`relative inline-flex shrink-0 ${className}`}>
+      <button
+        ref={anchorRef}
+        type="button"
+        onClick={onClick}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        disabled={disabled}
+        aria-label={title}
+        className={`relative inline-flex h-11 shrink-0 items-center justify-center gap-1.5 px-3 transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+          active
+            ? isDark ? 'bg-[#2a2e39] text-white' : 'bg-slate-200 text-slate-950'
+            : isDark ? 'text-[#d1d4dc] hover:bg-white/[0.06] hover:text-white' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+        } ${className}`}
+      >
+        {Icon && <Icon size={20} strokeWidth={1.65} className="shrink-0" />}
+        {children}
+      </button>
+      {!disabled && !hideTooltip && <RailTooltipPortal pos={pos} label={title} isDark={isDark} />}
+    </span>
   );
 }
 
@@ -995,7 +1010,7 @@ function TopToolEditorBar({
             onClick={() => toggleMenu('presets')}
             className="rounded-sm"
             chartTheme={chartTheme}
-            showTooltip={openMenu !== 'presets'}
+            hideTooltip={openMenu === 'presets'}
           />
           {openMenu === 'presets' && (
             <div className={menuPanelClass}>

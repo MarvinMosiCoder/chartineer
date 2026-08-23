@@ -159,6 +159,59 @@ export const WatchlistProvider = ({ children, userId }) => {
         broadcastChange('backtradelab-symbols-changed');
     };
 
+    // Bulk counterpart to deleteSavedSymbol() — one request instead of one
+    // per saved symbol, via the dedicated DELETE /market-symbols endpoint
+    // (a client-side loop of individual deletes would hit the market-write
+    // rate limit, 15/min, well before a user with more saved symbols than
+    // that finished clearing them). Clears every watchlist's items in one
+    // state update rather than pruning them one key at a time.
+    const removeAllSavedSymbols = async () => {
+        await axios.delete('/market-symbols', { headers: { Accept: 'application/json' } });
+        setSavedSymbols([]);
+        setWatchlists((current) => Object.fromEntries(
+            Object.entries(current).map(([name]) => [name, []])
+        ));
+        broadcastChange('backtradelab-symbols-changed');
+    };
+
+    // Favoriting is a plain is_favorite flag on the saved symbol itself,
+    // entirely independent of watchlist membership (see
+    // docs/superpowers/specs/2026-08-23-symbol-favorites-design.md) — this
+    // never touches `watchlists`. PUT /market-symbols/favorite upserts the
+    // symbol server-side, so this also works for a symbol that isn't saved
+    // yet (favorited straight from the search modal's Spot/Futures tabs).
+    const toggleFavorite = async (item, isFavorite) => {
+        const response = await axios.put('/market-symbols/favorite', {
+            symbol: item.symbol,
+            exchange: item.exchange ?? 'bybit',
+            exchange_symbol: item.exchange_symbol ?? item.symbol,
+            coin_name: item.coin_name ?? item.baseCoin ?? item.symbol,
+            base_coin: item.base_coin ?? item.baseCoin ?? '',
+            quote_coin: item.quote_coin ?? item.quoteCoin ?? '',
+            category: item.category ?? 'spot',
+            is_favorite: isFavorite,
+        }, { headers: { Accept: 'application/json' } });
+
+        const saved = response.data.symbol;
+        setSavedSymbols((current) => {
+            const exists = current.some((existing) => existing.id === saved.id);
+            return exists
+                ? current.map((existing) => (existing.id === saved.id ? { ...existing, ...saved } : existing))
+                : [...current, saved];
+        });
+        broadcastChange('backtradelab-symbols-changed');
+    };
+
+    // Bulk-unfavorite counterpart, mirroring removeAllSavedSymbols()'s
+    // one-request-not-N shape — but this only clears is_favorite (an UPDATE),
+    // it never deletes a market_symbols row, so watchlist membership is
+    // untouched.
+    const removeAllFavorites = async () => {
+        await axios.delete('/market-symbols/favorites', { headers: { Accept: 'application/json' } });
+        setSavedSymbols((current) => current.map((item) => (item.is_favorite ? { ...item, is_favorite: false } : item)));
+        broadcastChange('backtradelab-symbols-changed');
+    };
+
     const openCreateWatchlistModal = () => {
         setEditingWatchlist(null);
         setWatchlistError('');
@@ -185,6 +238,9 @@ export const WatchlistProvider = ({ children, userId }) => {
             addSymbolToWatchlist,
             removeSymbolFromWatchlist,
             deleteSavedSymbol,
+            removeAllSavedSymbols,
+            toggleFavorite,
+            removeAllFavorites,
             openCreateWatchlistModal,
             openEditWatchlistModal,
             setDeleteWatchlistName,
@@ -192,8 +248,8 @@ export const WatchlistProvider = ({ children, userId }) => {
             {children}
             {typeof document !== 'undefined' && createPortal(
                 <>
-                    {isWatchlistModalOpen && <div className="fixed inset-0 z-[10020] flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center" onMouseDown={(event) => event.target === event.currentTarget && setIsWatchlistModalOpen(false)}><form onSubmit={createWatchlist} className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722] text-white' : 'border-slate-200 bg-white text-slate-900'}`}><div className="flex items-start justify-between gap-3"><div><div className="text-[10px] font-bold uppercase tracking-[.18em] text-[#2962ff]">Workspace watchlists</div><h2 className="mt-1 text-lg font-bold">{editingWatchlist ? 'Rename watchlist' : 'Create a watchlist'}</h2><p className="mt-1 text-xs text-[#787b86]">{editingWatchlist ? 'Update the group name without changing its markets.' : 'Name a group, then add saved markets from its dropdown.'}</p></div><button type="button" onClick={() => { setEditingWatchlist(null); setIsWatchlistModalOpen(false); }} className={`rounded-lg p-2 text-[#787b86] ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`} aria-label="Close"><X size={17} /></button></div><label className="mt-5 block text-xs font-semibold">Watchlist name<input autoFocus maxLength="60" value={watchlistName} onChange={(event) => { setWatchlistName(event.target.value); setWatchlistError(''); }} placeholder="Example: Swing trades" className={`mt-1.5 h-11 w-full rounded-lg border px-3 text-sm outline-none focus:border-[#2962ff] ${isDark ? 'border-[#2a2e39] bg-[#0b0e14] text-white placeholder:text-gray-600' : 'border-slate-300 bg-white text-slate-900 placeholder:text-slate-400'}`} /></label>{watchlistError && <p className="mt-2 text-xs text-red-500">{watchlistError}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => { setEditingWatchlist(null); setIsWatchlistModalOpen(false); }} className={`h-10 rounded-lg border px-4 text-xs font-semibold ${isDark ? 'border-[#2a2e39] hover:bg-white/5' : 'border-slate-200 hover:bg-slate-50'}`}>Cancel</button><button type="submit" className="h-10 rounded-lg bg-[#2962ff] px-4 text-xs font-bold text-white hover:bg-blue-600">{editingWatchlist ? 'Save changes' : 'Create watchlist'}</button></div></form></div>}
-                    {deleteWatchlistName && <div className="fixed inset-0 z-[10021] flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center"><div className={`w-full max-w-sm rounded-2xl border p-5 shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722] text-white' : 'border-slate-200 bg-white text-slate-900'}`}><span className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10 text-red-500"><Trash2 size={18} /></span><h2 className="mt-4 text-lg font-bold">Delete {deleteWatchlistName}?</h2><p className="mt-2 text-xs leading-5 text-[#787b86]">The group and its market assignments will be removed. Your saved market symbols will not be deleted.</p><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setDeleteWatchlistName(null)} className={`h-10 rounded-lg border px-4 text-xs font-semibold ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>Cancel</button><button type="button" onClick={deleteWatchlist} className="h-10 rounded-lg bg-red-600 px-4 text-xs font-bold text-white hover:bg-red-700">Delete watchlist</button></div></div></div>}
+                    {isWatchlistModalOpen && <div data-chart-ui="watchlists-panel" className="fixed inset-0 z-[10020] flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center" onMouseDown={(event) => event.target === event.currentTarget && setIsWatchlistModalOpen(false)}><form onSubmit={createWatchlist} className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722] text-white' : 'border-slate-200 bg-white text-slate-900'}`}><div className="flex items-start justify-between gap-3"><div><div className="text-[10px] font-bold uppercase tracking-[.18em] text-[#2962ff]">Workspace watchlists</div><h2 className="mt-1 text-lg font-bold">{editingWatchlist ? 'Rename watchlist' : 'Create a watchlist'}</h2><p className="mt-1 text-xs text-[#787b86]">{editingWatchlist ? 'Update the group name without changing its markets.' : 'Name a group, then add saved markets from its dropdown.'}</p></div><button type="button" onClick={() => { setEditingWatchlist(null); setIsWatchlistModalOpen(false); }} className={`rounded-lg p-2 text-[#787b86] ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`} aria-label="Close"><X size={17} /></button></div><label className="mt-5 block text-xs font-semibold">Watchlist name<input autoFocus maxLength="60" value={watchlistName} onChange={(event) => { setWatchlistName(event.target.value); setWatchlistError(''); }} placeholder="Example: Swing trades" className={`mt-1.5 h-11 w-full rounded-lg border px-3 text-sm outline-none focus:border-[#2962ff] ${isDark ? 'border-[#2a2e39] bg-[#0b0e14] text-white placeholder:text-gray-600' : 'border-slate-300 bg-white text-slate-900 placeholder:text-slate-400'}`} /></label>{watchlistError && <p className="mt-2 text-xs text-red-500">{watchlistError}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => { setEditingWatchlist(null); setIsWatchlistModalOpen(false); }} className={`h-10 rounded-lg border px-4 text-xs font-semibold ${isDark ? 'border-[#2a2e39] hover:bg-white/5' : 'border-slate-200 hover:bg-slate-50'}`}>Cancel</button><button type="submit" className="h-10 rounded-lg bg-[#2962ff] px-4 text-xs font-bold text-white hover:bg-blue-600">{editingWatchlist ? 'Save changes' : 'Create watchlist'}</button></div></form></div>}
+                    {deleteWatchlistName && <div data-chart-ui="watchlists-panel" className="fixed inset-0 z-[10021] flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center"><div className={`w-full max-w-sm rounded-2xl border p-5 shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722] text-white' : 'border-slate-200 bg-white text-slate-900'}`}><span className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10 text-red-500"><Trash2 size={18} /></span><h2 className="mt-4 text-lg font-bold">Delete {deleteWatchlistName}?</h2><p className="mt-2 text-xs leading-5 text-[#787b86]">The group and its market assignments will be removed. Your saved market symbols will not be deleted.</p><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setDeleteWatchlistName(null)} className={`h-10 rounded-lg border px-4 text-xs font-semibold ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>Cancel</button><button type="button" onClick={deleteWatchlist} className="h-10 rounded-lg bg-red-600 px-4 text-xs font-bold text-white hover:bg-red-700">Delete watchlist</button></div></div></div>}
                 </>,
                 document.body
             )}

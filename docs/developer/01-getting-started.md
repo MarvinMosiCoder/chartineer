@@ -110,5 +110,6 @@ php artisan optimize:clear
 | OAuth redirect mismatch | Make `APP_URL`, provider redirect URI, and provider console settings identical. |
 | PayMongo unavailable | This is expected while `PAYMONGO_ENABLED=false` or credentials are absent. |
 | Stale routes/config | Run `php artisan optimize:clear`. |
+| One slow/runaway request makes everything else feel stuck | `php artisan serve` on Windows is single-threaded (no `pcntl`, so it cannot fork workers) — confirmed by checking Task Manager/`tasklist` for a single `php.exe` handling the configured port. Any one long-running request (a slow upstream call, a retry loop, an accidental multi-thousand-item batch) blocks every other request on that same process for its full duration, including unrelated ones like a candle fetch — the symptom looks like the *unrelated* request is hanging, when it's actually just queued. Use Laragon's own Apache/Nginx + PHP-FPM virtual host for anything beyond quick single-request checks, since PHP-FPM handles requests concurrently across multiple workers the way production does. |
 
 Next: [Project architecture](02-project-architecture.md).

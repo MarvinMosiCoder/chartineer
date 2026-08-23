@@ -43,12 +43,12 @@ class MarketDataController extends Controller
             'markets.*.symbol' => ['required', 'string', 'max:32', 'regex:/^[A-Za-z0-9]+$/'],
         ]);
 
-        $items = collect($validated['markets'])
+        $markets = collect($validated['markets'])
             ->unique(fn ($market) => strtolower($market['exchange']).':'.strtolower($market['category']).':'.strtoupper($market['symbol']))
-            ->map(fn ($market) => $metadata->get($market['exchange'], $market['category'], $market['symbol']))
-            ->values();
+            ->values()
+            ->all();
 
-        return response()->json(['items' => $items]);
+        return response()->json(['items' => $metadata->getBatch($markets)]);
     }
 
     public function symbols(Request $request)
@@ -67,6 +67,7 @@ class MarketDataController extends Controller
                 'base_coin',
                 'quote_coin',
                 'category',
+                'is_favorite',
             ]);
 
         return response()->json([
@@ -199,6 +200,97 @@ class MarketDataController extends Controller
         ]);
     }
 
+    // Bulk counterpart to destroySymbol() — one transaction instead of one
+    // request per saved symbol. A "remove all" firing N individual DELETEs
+    // from the browser would hit the market-write limiter (15/min) well
+    // before a user with more than 15 saved symbols finished clearing them.
+    public function destroyAllSymbols(Request $request)
+    {
+        $deleted = MarketSymbol::query()->where('adm_user_id', $request->user()->id)->delete();
+
+        return response()->json([
+            'success' => true,
+            'deleted' => $deleted,
+        ]);
+    }
+
+    // Deliberately its own upsert rather than reusing/extending storeSymbol():
+    // favoriting must work for a symbol that isn't saved yet (favorited straight
+    // from the Spot/Futures tabs), and must not depend on ordering with
+    // MarketChart.jsx's separate, unawaited onAddSymbol call — being
+    // self-sufficient here avoids a race where the toggle fires before that
+    // save's row exists. storeSymbol()/handleAddSymbol also already carries
+    // several hard-won timing/CSRF fixes (see docs/developer/trading-chart.md)
+    // and runs on every symbol switch, so it's not worth the regression risk
+    // to extend it for this.
+    public function toggleFavoriteSymbol(Request $request)
+    {
+        $validated = $request->validate([
+            'symbol' => ['required', 'string', 'max:32', 'regex:/^[A-Za-z0-9]+$/'],
+            'exchange' => ['nullable', Rule::in(self::EXCHANGES)],
+            'exchange_symbol' => ['nullable', 'string', 'max:64'],
+            'coin_name' => ['nullable', 'string', 'max:64'],
+            'base_coin' => ['nullable', 'string', 'max:32'],
+            'quote_coin' => ['nullable', 'string', 'max:32'],
+            'category' => ['nullable', Rule::in(['spot', 'linear', 'inverse'])],
+            'is_favorite' => ['required', 'boolean'],
+        ]);
+
+        $symbol = strtoupper($validated['symbol']);
+        $exchange = strtolower($validated['exchange'] ?? 'bybit');
+        $category = $validated['category'] ?? 'spot';
+
+        $marketSymbol = MarketSymbol::query()->updateOrCreate(
+            [
+                'adm_user_id' => $request->user()->id,
+                'exchange' => $exchange,
+                'category' => $category,
+                'symbol' => $symbol,
+            ],
+            [
+                'exchange_symbol' => strtoupper($validated['exchange_symbol'] ?? $symbol),
+                'coin_name' => strtoupper($validated['coin_name'] ?? $validated['base_coin'] ?? ''),
+                'base_coin' => strtoupper($validated['base_coin'] ?? ''),
+                'quote_coin' => strtoupper($validated['quote_coin'] ?? ''),
+                'category' => $category,
+                'is_active' => true,
+                'is_favorite' => $validated['is_favorite'],
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'symbol' => $marketSymbol->only([
+                'id',
+                'symbol',
+                'exchange',
+                'exchange_symbol',
+                'coin_name',
+                'base_coin',
+                'quote_coin',
+                'category',
+                'is_favorite',
+            ]),
+        ]);
+    }
+
+    // Bulk-unfavorite, not a delete: clears is_favorite on every favorited row
+    // for this user without removing any market_symbols row, so watchlist
+    // membership (which references symbols by key, not by favorite status)
+    // is never affected — deliberately not the same shape as destroyAllSymbols().
+    public function clearAllFavorites(Request $request)
+    {
+        $cleared = MarketSymbol::query()
+            ->where('adm_user_id', $request->user()->id)
+            ->where('is_favorite', true)
+            ->update(['is_favorite' => false]);
+
+        return response()->json([
+            'success' => true,
+            'cleared' => $cleared,
+        ]);
+    }
+
     public function klines(Request $request)
     {
         $validated = $request->validate([
@@ -309,75 +401,48 @@ class MarketDataController extends Controller
                     : (int) config('market-data.normal_max_pages', 10);
                 $requests = 0;
 
-                if ($maxCandles <= 5000 && !$start) {
-                    // Fast path: every normal (non-replay) symbol/timeframe switch
-                    // takes this branch. Fetch page 1 synchronously to get a real
-                    // anchor timestamp, then fire the remaining pages concurrently
-                    // (ExchangeMarketDataGateway::pool()) instead of one at a time —
-                    // this is what turns a ~5-page sequential load (each page
-                    // waiting on the last) into one request plus one concurrent
-                    // batch. See fetchAdditionalKlinePages() for why only page 1
-                    // needs to be synchronous.
-                    $page1 = $this->fetchKlineRows(
+                if (!$start) {
+                    // Both the normal (<=5000-candle) and Replay/eager (>5000-
+                    // candle) loads share this strategy whenever there's no
+                    // explicit $start boundary to respect exactly: fetch page 1
+                    // synchronously to get a real anchor timestamp, then fire the
+                    // remaining pages concurrently (ExchangeMarketDataGateway::
+                    // pool()) instead of one at a time. This used to be normal-
+                    // path-only — Replay's up-to-20000-candle load kept the old
+                    // fully sequential loop on the reasoning that its deeper,
+                    // potentially gappier history needed each page's real oldest
+                    // timestamp to anchor the next request. In practice that meant
+                    // every Replay symbol/timeframe switch paid for up to
+                    // replay_max_pages (20) sequential exchange round-trips before
+                    // showing anything — slow enough to trip the frontend's 60s
+                    // failsafe on an unfamiliar symbol/exchange. Predicted page
+                    // boundaries can still drift on gappy history, but that's
+                    // already tolerated by the dedup-by-timestamp ($seen) and
+                    // `partial` reporting below for the normal path — extending it
+                    // to Replay accepts the same, already-proven tradeoff rather
+                    // than introducing a new one. See fetchPooledKlinePages() /
+                    // fetchAdditionalKlinePages() for why only page 1 needs to be
+                    // synchronous.
+                    $paged = $this->fetchPooledKlinePages(
                         $candidateExchange, $exchangeSymbol, $symbol, $category, $interval,
-                        $chunkLimit, $currentEnd, null
+                        $chunkLimit, $currentEnd, $maxCandles, $maxRequests
                     );
 
-                    if (!$page1['success']) {
-                        $fallbackErrors[$candidateExchange] = $page1['payload']['message'] ?? 'Failed to fetch market data';
-                        if (($page1['status'] ?? 0) === 429) {
-                            $retryAfter = max($retryAfter, (int) ($page1['payload']['retry_after'] ?? 1));
-                        }
-                    } else {
-                        $requests = 1;
+                    $candidateRows = $paged['rows'];
+                    $requests = $paged['requests'];
 
-                        foreach ($page1['rows'] as $row) {
-                            $ts = (int) ($row[0] ?? 0);
-                            if ($ts > 0 && !isset($seen[$ts])) {
-                                $seen[$ts] = true;
-                                $candidateRows[] = $row;
-                            }
-                        }
-
-                        $page1Timestamps = array_values(array_filter(
-                            array_map(fn ($row) => (int) ($row[0] ?? 0), $page1['rows']),
-                            fn ($timestamp) => $timestamp > 0
-                        ));
-
-                        if ($page1Timestamps && count($candidateRows) < $maxCandles) {
-                            $anchorEnd = min($page1Timestamps) - 1;
-                            $additionalPages = min($maxRequests - 1, (int) ceil(($maxCandles - count($candidateRows)) / $chunkLimit));
-
-                            if ($additionalPages > 0) {
-                                $pageResults = $this->fetchAdditionalKlinePages(
-                                    $candidateExchange, $exchangeSymbol, $symbol, $category, $interval,
-                                    $chunkLimit, $anchorEnd, $additionalPages
-                                );
-
-                                foreach ($pageResults as $pageResult) {
-                                    $requests++;
-                                    if (!$pageResult['success']) {
-                                        continue;
-                                    }
-
-                                    foreach ($pageResult['rows'] as $row) {
-                                        $ts = (int) ($row[0] ?? 0);
-                                        if ($ts > 0 && !isset($seen[$ts])) {
-                                            $seen[$ts] = true;
-                                            $candidateRows[] = $row;
-                                        }
-                                    }
-                                }
-                            }
+                    if ($paged['error'] !== null && empty($candidateRows)) {
+                        $fallbackErrors[$candidateExchange] = $paged['error'];
+                        if ($paged['retryAfter'] > 0) {
+                            $retryAfter = max($retryAfter, $paged['retryAfter']);
                         }
                     }
                 } else {
-                    // Replay (up to 20000 candles) or a bounded start/end range:
-                    // keep the original adaptive sequential loop. Each page's real
-                    // oldest timestamp anchors the next request, which matters more
-                    // here — replay pages deep into potentially gappy history where
-                    // a predicted (rather than exchange-confirmed) window boundary
-                    // is more likely to drift.
+                    // Bounded start/end range query: keep the original adaptive
+                    // sequential loop regardless of $maxCandles. The caller gave
+                    // an explicit start boundary that must be respected exactly,
+                    // not approximated from a predicted page grid, so each page's
+                    // real oldest timestamp still anchors the next request here.
                     while (count($candidateRows) < $maxCandles && $requests < $maxRequests) {
                         $rowsResult = $this->fetchKlineRows(
                             $candidateExchange,
@@ -940,17 +1005,100 @@ class MarketDataController extends Controller
     }
 
     /**
+     * Fetches page 1 synchronously for a real anchor timestamp, then fetches
+     * up to $maxRequests-1 further pages concurrently via
+     * fetchAdditionalKlinePages() until $maxCandles rows are collected or the
+     * page budget runs out. Shared by the normal (<=5000-candle) and Replay/
+     * eager (>5000-candle) no-$start load shapes in klines() — the two only
+     * ever differed in $maxCandles/$maxRequests, never in fetch strategy.
+     *
+     * @return array{rows: array, requests: int, error: ?string, retryAfter: int}
+     */
+    private function fetchPooledKlinePages(
+        string $exchange,
+        string $exchangeSymbol,
+        string $symbol,
+        string $category,
+        string $interval,
+        int $chunkLimit,
+        ?int $currentEnd,
+        int $maxCandles,
+        int $maxRequests
+    ): array {
+        $candidateRows = [];
+        $seen = [];
+        $requests = 0;
+        $error = null;
+        $retryAfter = 0;
+
+        $page1 = $this->fetchKlineRows($exchange, $exchangeSymbol, $symbol, $category, $interval, $chunkLimit, $currentEnd, null);
+
+        if (!$page1['success']) {
+            $error = $page1['payload']['message'] ?? 'Failed to fetch market data';
+            if (($page1['status'] ?? 0) === 429) {
+                $retryAfter = max($retryAfter, (int) ($page1['payload']['retry_after'] ?? 1));
+            }
+
+            return ['rows' => $candidateRows, 'requests' => $requests, 'error' => $error, 'retryAfter' => $retryAfter];
+        }
+
+        $requests = 1;
+
+        foreach ($page1['rows'] as $row) {
+            $ts = (int) ($row[0] ?? 0);
+            if ($ts > 0 && !isset($seen[$ts])) {
+                $seen[$ts] = true;
+                $candidateRows[] = $row;
+            }
+        }
+
+        $page1Timestamps = array_values(array_filter(
+            array_map(fn ($row) => (int) ($row[0] ?? 0), $page1['rows']),
+            fn ($timestamp) => $timestamp > 0
+        ));
+
+        if ($page1Timestamps && count($candidateRows) < $maxCandles) {
+            $anchorEnd = min($page1Timestamps) - 1;
+            $additionalPages = min($maxRequests - 1, (int) ceil(($maxCandles - count($candidateRows)) / $chunkLimit));
+
+            if ($additionalPages > 0) {
+                $pageResults = $this->fetchAdditionalKlinePages(
+                    $exchange, $exchangeSymbol, $symbol, $category, $interval,
+                    $chunkLimit, $anchorEnd, $additionalPages
+                );
+
+                foreach ($pageResults as $pageResult) {
+                    $requests++;
+                    if (!$pageResult['success']) {
+                        continue;
+                    }
+
+                    foreach ($pageResult['rows'] as $row) {
+                        $ts = (int) ($row[0] ?? 0);
+                        if ($ts > 0 && !isset($seen[$ts])) {
+                            $seen[$ts] = true;
+                            $candidateRows[] = $row;
+                        }
+                    }
+                }
+            }
+        }
+
+        return ['rows' => $candidateRows, 'requests' => $requests, 'error' => $error, 'retryAfter' => $retryAfter];
+    }
+
+    /**
      * Fetches pages 2..N of one exchange's candle history concurrently
      * (Http::pool() under the hood via ExchangeMarketDataGateway::pool()),
      * instead of one at a time. Page 1 must already be fetched by the
-     * caller (via fetchKlineRows()) so we have a real anchor timestamp;
-     * pages 2..N's `end` boundaries are then predicted from that anchor
-     * using the interval's fixed duration, since — unlike page 1, whose
-     * start point is unknown until the exchange responds — every
-     * subsequent page's window is just "one interval-grid further back."
-     * Only used for the normal (non-replay) chart load: replay's up-to-
-     * 20000-candle, anchor-time-sensitive path keeps the original
-     * sequential loop below untouched.
+     * caller (via fetchKlineRows(), see fetchPooledKlinePages()) so we have
+     * a real anchor timestamp; pages 2..N's `end` boundaries are then
+     * predicted from that anchor using the interval's fixed duration, since
+     * — unlike page 1, whose start point is unknown until the exchange
+     * responds — every subsequent page's window is just "one interval-grid
+     * further back." Used by both the normal and Replay/eager load shapes;
+     * only a bounded $start/$end range query keeps the original sequential
+     * loop in klines() instead.
      */
     private function fetchAdditionalKlinePages(
         string $exchange,
