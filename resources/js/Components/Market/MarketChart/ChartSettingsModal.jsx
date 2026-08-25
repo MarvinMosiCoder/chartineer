@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Layers, LineChart, Move, Palette, Rows3, X } from 'lucide-react';
+import { ChevronDown, Layers, LineChart, Move, MoreHorizontal, Palette, Rows3, Trash2, X } from 'lucide-react';
 import { useAnchoredTooltip, AnchoredTooltipPortal } from '../../Tooltip/AnchoredTooltip';
+import { ConfirmOverwriteDialog } from './ReplayPanel';
+import { DEFAULT_CANDLE_COLORS, DEFAULT_CANDLE_SIZE, DEFAULT_CHART_DISPLAY } from './constants';
 
 const TABS = [
   { key: 'symbol', label: 'Symbol', icon: Rows3 },
@@ -61,8 +63,7 @@ function SymbolTab({ isDark, fieldClass, draftColors, setDraftColors, draftSize,
     <div className="space-y-6">
       <div>
         <SectionLabel isDark={isDark}>Candles</SectionLabel>
-        <div className="flex items-center gap-2 py-1.5 text-sm">
-          <span className="min-w-0 flex-1">Body</span>
+        <CheckRow isDark={isDark} checked={candles.bodyEnabled} onToggle={() => onCandlesChange({ bodyEnabled: !candles.bodyEnabled })} label="Body">
           <ColorPair
             isDark={isDark}
             up={draftColors.up}
@@ -70,7 +71,7 @@ function SymbolTab({ isDark, fieldClass, draftColors, setDraftColors, draftSize,
             onUpChange={(value) => setDraftColors((current) => ({ ...current, up: value }))}
             onDownChange={(value) => setDraftColors((current) => ({ ...current, down: value }))}
           />
-        </div>
+        </CheckRow>
         <CheckRow isDark={isDark} checked={candles.borderEnabled} onToggle={() => onCandlesChange({ borderEnabled: !candles.borderEnabled })} label="Borders">
           <ColorPair
             isDark={isDark}
@@ -166,16 +167,21 @@ function CanvasTab({ isDark, canvas, onChange }) {
 
 const DRAG_MARGIN = 32;
 
-export default function ChartSettingsModal({ open, onClose, isDark, candleColors, candleSize, chartDisplay, onCandleColorChange, onCandleSizeChange, onChartDisplayChange }) {
+export default function ChartSettingsModal({ open, onClose, isDark, candleColors, candleSize, chartDisplay, onCandleColorChange, onCandleSizeChange, onChartDisplayChange, presetItems = [], onSavePreset, onDeletePreset }) {
   const [activeTab, setActiveTab] = useState('symbol');
   const [draftColors, setDraftColors] = useState(candleColors);
   const [draftSize, setDraftSize] = useState(candleSize);
   const [draftDisplay, setDraftDisplay] = useState(chartDisplay);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const [showSaveAsDialog, setShowSaveAsDialog] = useState(false);
+  const [templateNameDraft, setTemplateNameDraft] = useState('');
+  const [pendingOverwriteName, setPendingOverwriteName] = useState(null);
   const panelRef = useRef(null);
   const dragCleanupRef = useRef(null);
   const dragHandleTooltip = useAnchoredTooltip();
+  const canUsePresets = typeof onSavePreset === 'function';
 
   useEffect(() => {
     if (!open) return;
@@ -184,6 +190,9 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
     setDraftSize(candleSize);
     setDraftDisplay(chartDisplay);
     setDragOffset({ x: 0, y: 0 });
+    setShowTemplateMenu(false);
+    setShowSaveAsDialog(false);
+    setPendingOverwriteName(null);
     // Only re-seed the draft when the modal opens, not on every parent re-render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -201,6 +210,38 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
     onCandleSizeChange(draftSize);
     onChartDisplayChange(draftDisplay);
     onClose();
+  };
+
+  const handleApplyDefaults = () => {
+    setDraftColors(DEFAULT_CANDLE_COLORS);
+    setDraftSize(DEFAULT_CANDLE_SIZE);
+    setDraftDisplay(DEFAULT_CHART_DISPLAY);
+    setShowTemplateMenu(false);
+  };
+
+  const handleApplyPreset = (preset) => {
+    if (preset?.settings?.candleColors) setDraftColors(preset.settings.candleColors);
+    if (Number.isFinite(preset?.settings?.candleSize)) setDraftSize(preset.settings.candleSize);
+    if (preset?.settings?.chartDisplay) setDraftDisplay(preset.settings.chartDisplay);
+    setShowTemplateMenu(false);
+  };
+
+  const commitSaveTemplate = (name) => {
+    onSavePreset?.(name, { candleColors: draftColors, candleSize: draftSize, chartDisplay: draftDisplay });
+    setShowSaveAsDialog(false);
+    setTemplateNameDraft('');
+    setPendingOverwriteName(null);
+  };
+
+  const attemptSavePreset = () => {
+    const name = templateNameDraft.trim();
+    if (!name) return;
+    const existing = presetItems.find((item) => String(item.name).toLowerCase() === name.toLowerCase());
+    if (existing) {
+      setPendingOverwriteName(existing.name);
+      return;
+    }
+    commitSaveTemplate(name);
   };
 
   const handleDragHandlePointerDown = (event) => {
@@ -308,11 +349,96 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
             )}
           </div>
         </div>
-        <div className={`flex justify-end gap-2 border-t px-5 py-4 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-          <button type="button" onClick={onClose} className={`h-9 rounded-md border px-4 text-xs font-semibold ${isDark ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-50'}`}>Cancel</button>
-          <button type="button" onClick={handleOk} className="h-9 rounded-md bg-[#2962ff] px-5 text-xs font-bold text-white hover:bg-blue-600">Ok</button>
+        <div className={`flex items-center justify-between gap-2 border-t px-5 py-4 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+          {canUsePresets ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowTemplateMenu((current) => !current)}
+                className={`flex h-9 w-9 items-center justify-center rounded-md border ${isDark ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-50'}`}
+                aria-label="Chart settings templates"
+                aria-expanded={showTemplateMenu}
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              {showTemplateMenu && (
+                <>
+                  <button type="button" className="fixed inset-0 z-[10031] cursor-default" onClick={() => setShowTemplateMenu(false)} aria-label="Close template menu" tabIndex={-1} />
+                  <div className={`absolute bottom-full left-0 z-[10032] mb-2 w-56 overflow-hidden rounded-lg border py-1.5 shadow-2xl ${panelClass}`}>
+                    <button
+                      type="button"
+                      onClick={() => { setTemplateNameDraft(''); setShowSaveAsDialog(true); setShowTemplateMenu(false); }}
+                      className={`block w-full px-4 py-2.5 text-left text-sm ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}
+                    >
+                      Save as...
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleApplyDefaults}
+                      className={`block w-full px-4 py-2.5 text-left text-sm ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}
+                    >
+                      Apply defaults
+                    </button>
+                    {presetItems.length > 0 && (
+                      <div className={`mt-1 max-h-48 overflow-y-auto border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+                        {presetItems.map((preset) => (
+                          <div key={preset.id ?? preset.name} className={`flex items-center justify-between gap-2 px-4 py-2 text-sm ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}>
+                            <button type="button" onClick={() => handleApplyPreset(preset)} className="min-w-0 flex-1 truncate text-left">{preset.name}</button>
+                            <button type="button" onClick={() => onDeletePreset?.(preset)} aria-label={`Delete template ${preset.name}`} className={`shrink-0 rounded p-1 ${isDark ? 'text-gray-500 hover:bg-white/10 hover:text-white' : 'text-gray-400 hover:bg-slate-200 hover:text-gray-900'}`}>
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className={`h-9 rounded-md border px-4 text-xs font-semibold ${isDark ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-50'}`}>Cancel</button>
+            <button type="button" onClick={handleOk} className="h-9 rounded-md bg-[#2962ff] px-5 text-xs font-bold text-white hover:bg-blue-600">Ok</button>
+          </div>
         </div>
       </div>
+      {showSaveAsDialog && (
+        <div className="fixed inset-0 z-[10033] flex items-center justify-center bg-black/40 px-3" data-chart-ui>
+          <section className={`w-full max-w-sm overflow-hidden rounded-md border shadow-2xl ${panelClass}`} role="dialog" aria-modal="true" aria-label="Save chart settings template as">
+            <header className="flex items-center justify-between px-6 pb-4 pt-6">
+              <h2 className="text-lg font-semibold">Save chart settings as</h2>
+              <button type="button" onClick={() => setShowSaveAsDialog(false)} className={`flex h-9 w-9 items-center justify-center rounded transition ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`} aria-label="Close"><X size={20} /></button>
+            </header>
+            <div className="px-6 pb-6">
+              <label className="mb-1 block text-sm font-medium">
+                Template name:
+                <input
+                  type="text"
+                  autoFocus
+                  value={templateNameDraft}
+                  onChange={(event) => setTemplateNameDraft(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === 'Enter' && templateNameDraft.trim()) attemptSavePreset(); }}
+                  className={`mt-2 h-11 w-full rounded-lg border px-3 text-sm outline-none ${fieldClass}`}
+                />
+              </label>
+            </div>
+            <footer className={`flex items-center justify-end gap-3 border-t px-6 py-4 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+              <button type="button" onClick={() => setShowSaveAsDialog(false)} className={`h-10 rounded-lg border px-4 text-sm font-semibold ${fieldClass}`}>Cancel</button>
+              <button type="button" onClick={attemptSavePreset} disabled={!templateNameDraft.trim()} className="h-10 rounded-lg bg-[#2962ff] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Save</button>
+            </footer>
+          </section>
+        </div>
+      )}
+      {pendingOverwriteName && (
+        <ConfirmOverwriteDialog
+          isDark={isDark}
+          templateName={pendingOverwriteName}
+          subjectLabel="chart settings"
+          onCancel={() => setPendingOverwriteName(null)}
+          onConfirm={() => commitSaveTemplate(pendingOverwriteName)}
+          overlayClassName="fixed inset-0"
+        />
+      )}
     </div>
   );
 }

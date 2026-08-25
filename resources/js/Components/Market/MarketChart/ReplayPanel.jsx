@@ -459,7 +459,7 @@ function parseDrawingDateTime(value, fallback) {
   return Number.isFinite(milliseconds) ? Math.floor(milliseconds / 1000) : fallback;
 }
 
-function ConfirmOverwriteDialog({ isDark, templateName, onCancel, onConfirm, overlayClassName = 'fixed inset-0' }) {
+export function ConfirmOverwriteDialog({ isDark, templateName, onCancel, onConfirm, overlayClassName = 'fixed inset-0', subjectLabel = 'tool settings' }) {
   const surfaceClass = isDark ? 'border-[#363a45] bg-[#1e222d] text-[#d1d4dc]' : 'border-slate-200 bg-white text-slate-800';
   const fieldClass = isDark ? 'border-[#434651] bg-[#1e222d] text-[#d1d4dc]' : 'border-slate-300 bg-white text-slate-800';
   const mutedClass = isDark ? 'text-[#b2b5be]' : 'text-slate-600';
@@ -472,7 +472,7 @@ function ConfirmOverwriteDialog({ isDark, templateName, onCancel, onConfirm, ove
           <h2 className="text-lg font-semibold">Overwrite template?</h2>
         </header>
         <div className={`px-6 pb-6 text-sm ${mutedClass}`}>
-          Overwrite the “{templateName}” template with the current tool settings? This can’t be undone.
+          Overwrite the “{templateName}” template with the current {subjectLabel}? This can’t be undone.
         </div>
         <footer className={`flex items-center justify-end gap-3 border-t px-6 py-5 ${dividerClass}`}>
           <button type="button" onClick={onCancel} className={`h-11 rounded-lg border px-5 text-sm font-semibold ${fieldClass}`}>Cancel</button>

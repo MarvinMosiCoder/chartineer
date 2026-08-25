@@ -27,7 +27,17 @@ Authenticated pages share a role-aware shell. Traders receive compact market nav
 
 `GET /dashboard` uses `auth` and `account.active`. `GET /market` is the normal trader workspace.
 
-For superadmins, `/dashboard` includes user health, verified PHP subscription revenue and transaction status, customer-support workload, and the five latest subscription and feedback records. Thirty-day values use a rolling window; subscription revenue includes only verified `paid` PHP transactions and uses `paid_at`.
+For superadmins, `/dashboard` includes user health, verified PHP subscription revenue and transaction status, live subscriber access status, customer-support workload, and the five latest subscription and feedback records. Thirty-day values use a rolling window; subscription revenue includes only verified `paid` PHP transactions and uses `paid_at`.
+
+### Subscriber status (Active / Expired / Not yet subscribed)
+
+The "Subscriber status" section (`subscriptionStatusMetrics` prop, `DashboardController::index()`) counts every `adm_users` row into exactly one of three buckets, computed live off `replay_access_ends_at` rather than a stored status column:
+
+- **Active** — `replay_access_ends_at` is set and `>= now()`.
+- **Expired** — `replay_access_ends_at` is set and `< now()`.
+- **Not yet subscribed** — `replay_access_ends_at` is `null` (never completed a paid subscription; trial-only users still land here since trial and paid access are tracked separately).
+
+This mirrors the exact active/expired computation `ReplayAccessController::userPage()`/`status()` already use for a single user's own subscription page (see [Subscriptions, trials, and PayMongo](subscriptions-trials-and-paymongo.md)) — there is no separate cron job or migration keeping these in sync. A user renewing (`ReplayAccessController::adminRestoreAccess`, reachable from the `/admin/subscriptions` Payments page) pushes `replay_access_ends_at` into the future, so they fall out of Expired and into Active automatically the next time `/dashboard` loads; an access period lapsing naturally does the reverse. Like the existing `userMetrics.total`/`active` counts on this same dashboard, this does **not** exclude superadmin/staff accounts from the tally.
 
 `GET /admin/workspace` is superadmin-only and reuses the complete trader workspace in an explicit workspace mode. Its **Workspace Chart** link is an `adm_menuses` record with a superadmin privilege mapping, so it is loaded into the main `MENU` sidebar exactly like Market and PNL rather than being hard-coded or placed in the legacy `ADMIN MENU` section. It keeps the administration overview at `/dashboard` while giving administrators access to watchlists, chart controls, Replay, drawings, alerts, and simulated orders.
 
@@ -106,6 +116,7 @@ Shows only after a 150ms delay from `start` (cleared on `finish`) so a fast/cach
 
 - Trader and superadmin landing pages.
 - Empty and populated subscription/support dashboard summaries and recent lists.
+- Subscriber status counts (Active/Expired/Not yet subscribed) sum to the total user count and match a manual count of `adm_users.replay_access_ends_at` against the current time; renewing a user's access via `/admin/subscriptions` moves them from Expired to Active on the next dashboard load.
 - Normal-user denial and superadmin access for `/admin/workspace`.
 - Desktop/mobile sidebar and navbar behavior.
 - Trader sidebar starts closed (not overlaying content) on a fresh mobile page load, opens with a dismissible backdrop via the hamburger, and closes on backdrop tap or nav-link tap.

@@ -119,3 +119,19 @@ export const DRAWING_COLORS = [
 export const CHART_HEIGHT = 720;
 export const DRAWING_COLOR = '#60a5fa';
 export const DRAWING_FILL = 'rgba(96, 165, 250, 0.16)';
+
+export const DEFAULT_CANDLE_COLORS = {
+  up: '#089981',
+  down: '#f23645',
+};
+export const DEFAULT_CANDLE_SIZE = 24;
+export const MIN_CANDLE_SIZE = 3;
+export const MAX_CANDLE_SIZE = 24;
+
+export const DEFAULT_CHART_DISPLAY = {
+  candles: { bodyEnabled: true, borderEnabled: true, borderUp: null, borderDown: null, wickEnabled: true, wickUp: null, wickDown: null },
+  priceLines: { last: true, previousClose: false, highLow: false },
+  statusLine: { symbol: true, exchange: true, ohlc: true, change: true },
+  scales: { precision: 'default', autoScale: true, logScale: false },
+  canvas: { background: null, gridColor: null },
+};

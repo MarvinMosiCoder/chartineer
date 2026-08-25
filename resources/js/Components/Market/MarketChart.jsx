@@ -31,8 +31,13 @@ import WorkspaceTour from './WorkspaceTour';
 import { useAnchoredTooltip, AnchoredTooltipPortal } from '../Tooltip/AnchoredTooltip';
 import {
   CHART_HEIGHT,
+  DEFAULT_CANDLE_COLORS,
+  DEFAULT_CANDLE_SIZE,
+  DEFAULT_CHART_DISPLAY,
   DRAWING_COLOR,
   INTERVAL_MAP,
+  MAX_CANDLE_SIZE,
+  MIN_CANDLE_SIZE,
   TIMEFRAME_SECONDS,
   supportedTimeframes,
 } from './MarketChart/constants';
@@ -57,16 +62,12 @@ import {
   offsetDrawing,
 } from './MarketChart/utils';
 
-const DEFAULT_CANDLE_COLORS = {
-  up: '#089981',
-  down: '#f23645',
-};
-const DEFAULT_CANDLE_SIZE = 24;
-const MIN_CANDLE_SIZE = 3;
-const MAX_CANDLE_SIZE = 24;
-
 const MAX_DRAWING_UNDO_STEPS = 25;
 const POSITION_MONITOR_GAP_LIMIT = 500;
+// Synthetic "tool type" key so chart-settings templates reuse the exact same
+// named-preset storage (toolSettings.presets[type], saved via /market-tool-settings)
+// as drawing tool templates, rather than a second, parallel preset system.
+const CHART_SETTINGS_PRESET_TYPE = 'chartSettings';
 const MARKET_DATA_POLL_SECONDS = Math.max(5, Number(import.meta.env.VITE_MARKET_DATA_POLL_SECONDS ?? 10));
 const WEBSOCKET_DELAY_SECONDS = 45;
 
@@ -171,14 +172,6 @@ const CHART_THEMES = {
 function resolveChartTheme(adminTheme) {
   return adminTheme === 'bg-skin-black' ? CHART_THEMES.dark : CHART_THEMES.light;
 }
-
-const DEFAULT_CHART_DISPLAY = {
-  candles: { borderEnabled: true, borderUp: null, borderDown: null, wickEnabled: true, wickUp: null, wickDown: null },
-  priceLines: { last: true, previousClose: false, highLow: false },
-  statusLine: { symbol: true, exchange: true, ohlc: true, change: true },
-  scales: { precision: 'default', autoScale: true, logScale: false },
-  canvas: { background: null, gridColor: null },
-};
 
 function ChartDotsLoader({ isDark }) {
   return (
@@ -3829,11 +3822,15 @@ export default function MarketReplayChart({
     const candleSeries = candleSeriesRef.current;
     if (!candleSeries) return;
 
-    const { borderEnabled, borderUp, borderDown, wickEnabled, wickUp, wickDown } = chartDisplay.candles;
+    const { bodyEnabled, borderEnabled, borderUp, borderDown, wickEnabled, wickUp, wickDown } = chartDisplay.candles;
+    // lightweight-charts has no bodyVisible option — the body is always
+    // upColor/downColor fill, so "hiding" it means making that fill
+    // transparent (hollow candle) rather than toggling a visibility flag.
+    const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 
     candleSeries.applyOptions({
-      upColor: candleColors.up,
-      downColor: candleColors.down,
+      upColor: bodyEnabled ? candleColors.up : TRANSPARENT,
+      downColor: bodyEnabled ? candleColors.down : TRANSPARENT,
       borderVisible: borderEnabled,
       borderUpColor: borderUp || candleColors.up,
       borderDownColor: borderDown || candleColors.down,
@@ -6379,7 +6376,7 @@ export default function MarketReplayChart({
     positionId,
     closePrice = executionPrice,
     closeTime = executionTime,
-    { silent = false } = {}
+    { silent = false, closeReason = null } = {}
   ) => {
     const exitPrice = getPositiveNumber(closePrice);
 
@@ -6398,6 +6395,7 @@ export default function MarketReplayChart({
       const response = await axios.post(`/market-backtest/positions/${positionId}/close`, {
         price: exitPrice,
         executed_at_time: closeTime,
+        ...(closeReason ? { close_reason: closeReason } : {}),
       });
 
       setBacktestAccount(response.data?.account ?? null);
@@ -6509,8 +6507,75 @@ export default function MarketReplayChart({
       .filter((position) => position.symbol === symbol)
       .filter((position) => position.liquidationPrice || position.trailingStopPercent || position.breakEvenTriggerPercent || position.partialTakeProfitPercent);
 
+    const triggeredPositions = backtestAccount.openPositions
+      .filter((position) => position.symbol === symbol)
+      .filter((position) => !position.liquidationPrice && !position.trailingStopPercent && !position.breakEvenTriggerPercent && !position.partialTakeProfitPercent)
+      .map((position) => {
+        const stopLoss = Number(position.stopLoss);
+        const takeProfit = Number(position.takeProfit);
+        const hasStopLoss = Number.isFinite(stopLoss) && stopLoss > 0;
+        const hasTakeProfit = Number.isFinite(takeProfit) && takeProfit > 0;
+
+        const positionCandles = candlesToCheck.filter(
+          (candle) => Number(candle.time) > Number(position.openedAtTime)
+        );
+
+        for (const candle of positionCandles) {
+          const candleHigh = Number(candle.high);
+          const candleLow = Number(candle.low);
+          if (!Number.isFinite(candleHigh) || !Number.isFinite(candleLow)) continue;
+
+          let exitPrice = null;
+          let trigger = null;
+
+          if (position.side === 'long') {
+            if (hasStopLoss && candleLow <= stopLoss) {
+              exitPrice = stopLoss;
+              trigger = 'sl';
+            } else if (hasTakeProfit && candleHigh >= takeProfit) {
+              exitPrice = takeProfit;
+              trigger = 'tp';
+            }
+          }
+
+          if (position.side === 'short') {
+            if (hasStopLoss && candleHigh >= stopLoss) {
+              exitPrice = stopLoss;
+              trigger = 'sl';
+            } else if (hasTakeProfit && candleLow <= takeProfit) {
+              exitPrice = takeProfit;
+              trigger = 'tp';
+            }
+          }
+
+          if (exitPrice) {
+            return {
+              id: position.id,
+              exitPrice,
+              trigger,
+              candleTime: candle.time,
+              key: `${position.id}:${candle.time}:${trigger}`,
+            };
+          }
+        }
+
+        return null;
+      })
+      .filter(Boolean)
+      .filter((item) => !autoClosedPositionRef.current.has(item.key));
+
+    // Managed and simple positions are checked in the same effect pass — they used to be
+    // mutually exclusive (an early `return` after handling managed positions meant any simple
+    // position sharing a symbol with a managed one never got its TP/SL checked at all). That
+    // was unreachable dead code before Spot positions existed (every position always had a
+    // truthy liquidationPrice, so `triggeredPositions` was always empty in practice) but became
+    // a real bug once Spot positions (liquidationPrice === null) could coexist on the same
+    // symbol as a leveraged position.
+    if (!managedPositions.length && !triggeredPositions.length) return;
+
+    let cancelled = false;
+
     if (managedPositions.length) {
-      let cancelled = false;
       const processManagedPositions = async () => {
         const snapshot = await captureBacktestSnapshot();
         for (const position of managedPositions) {
@@ -6580,84 +6645,27 @@ export default function MarketReplayChart({
         }
       };
       processManagedPositions();
-      return () => { cancelled = true; };
     }
 
-    const triggeredPositions = backtestAccount.openPositions
-      .filter((position) => position.symbol === symbol)
-      .filter((position) => !position.liquidationPrice && !position.trailingStopPercent && !position.breakEvenTriggerPercent && !position.partialTakeProfitPercent)
-      .map((position) => {
-        const stopLoss = Number(position.stopLoss);
-        const takeProfit = Number(position.takeProfit);
-        const hasStopLoss = Number.isFinite(stopLoss) && stopLoss > 0;
-        const hasTakeProfit = Number.isFinite(takeProfit) && takeProfit > 0;
+    if (triggeredPositions.length) {
+      const closeTriggeredPositions = async () => {
+        setBacktestError('');
 
-        const positionCandles = candlesToCheck.filter(
-          (candle) => Number(candle.time) > Number(position.openedAtTime)
-        );
-
-        for (const candle of positionCandles) {
-          const candleHigh = Number(candle.high);
-          const candleLow = Number(candle.low);
-          if (!Number.isFinite(candleHigh) || !Number.isFinite(candleLow)) continue;
-
-          let exitPrice = null;
-          let trigger = null;
-
-          if (position.side === 'long') {
-            if (hasStopLoss && candleLow <= stopLoss) {
-              exitPrice = stopLoss;
-              trigger = 'sl';
-            } else if (hasTakeProfit && candleHigh >= takeProfit) {
-              exitPrice = takeProfit;
-              trigger = 'tp';
-            }
-          }
-
-          if (position.side === 'short') {
-            if (hasStopLoss && candleHigh >= stopLoss) {
-              exitPrice = stopLoss;
-              trigger = 'sl';
-            } else if (hasTakeProfit && candleLow <= takeProfit) {
-              exitPrice = takeProfit;
-              trigger = 'tp';
-            }
-          }
-
-          if (exitPrice) {
-            return {
-              id: position.id,
-              exitPrice,
-              trigger,
-              candleTime: candle.time,
-              key: `${position.id}:${candle.time}:${trigger}`,
-            };
+        for (const item of triggeredPositions) {
+          if (cancelled) return;
+          autoClosedPositionRef.current.add(item.key);
+          const didClose = await closeBacktestPositionRef.current?.(item.id, item.exitPrice, item.candleTime, {
+            silent: true,
+            closeReason: item.trigger === 'sl' ? 'stop_loss' : 'take_profit',
+          });
+          if (!didClose) {
+            autoClosedPositionRef.current.delete(item.key);
           }
         }
+      };
 
-        return null;
-      })
-      .filter(Boolean)
-      .filter((item) => !autoClosedPositionRef.current.has(item.key));
-
-    if (!triggeredPositions.length) return;
-
-    let cancelled = false;
-
-    const closeTriggeredPositions = async () => {
-      setBacktestError('');
-
-      for (const item of triggeredPositions) {
-        if (cancelled) return;
-        autoClosedPositionRef.current.add(item.key);
-        const didClose = await closeBacktestPositionRef.current?.(item.id, item.exitPrice, item.candleTime, { silent: true });
-        if (!didClose) {
-          autoClosedPositionRef.current.delete(item.key);
-        }
-      }
-    };
-
-    closeTriggeredPositions();
+      closeTriggeredPositions();
+    }
 
     return () => {
       cancelled = true;
@@ -6817,6 +6825,9 @@ export default function MarketReplayChart({
       onCandleColorChange={setCandleColors}
       onCandleSizeChange={setCandleSize}
       onChartDisplayChange={updateChartDisplay}
+      presetItems={getToolPresetsForType(CHART_SETTINGS_PRESET_TYPE)}
+      onSavePreset={(name, settings) => saveToolPreset(CHART_SETTINGS_PRESET_TYPE, { name, settings })}
+      onDeletePreset={(preset) => deleteToolPreset(CHART_SETTINGS_PRESET_TYPE, preset)}
     />
     {alertModalOpen && <aside className={`fixed bottom-4 right-4 z-[10003] w-[min(92vw,320px)] rounded-xl border p-4 shadow-2xl sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2 ${chartTheme.mode === 'dark' ? 'border-[#2a2e39] bg-[#131722] text-white' : 'border-slate-200 bg-white text-slate-900'}`}><div className="flex items-center justify-between"><h3 className="text-sm font-bold">Alert settings</h3><button onClick={toggleAlertSound} className="rounded-md border px-2 py-1 text-xs font-semibold">Sound {alertSoundEnabled ? 'on' : 'off'}</button></div><p className="mt-2 text-[11px] text-[#787b86]">Alerts monitor live markets in the background. Replay alerts are disabled.</p><div className="mt-3 max-h-44 space-y-2 overflow-y-auto">{priceAlerts.map(alert => <div key={alert.id} className="flex items-center justify-between rounded-md border p-2 text-xs"><span>{alert.direction} {formatOverlayPrice(Number(alert.target_price))}</span><button onClick={() => cancelPriceAlert(alert.id)} className="text-red-400" aria-label="Cancel alert"><Trash2 size={14}/></button></div>)}{!priceAlerts.length && <div className="text-xs text-[#787b86]">No active alerts for this market.</div>}</div></aside>}
     {chartContextMenu && (
