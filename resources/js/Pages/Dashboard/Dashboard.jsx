@@ -4,9 +4,9 @@ import MarketChart from "../../Components/Market/MarketChart";
 import TradeInsightsWidget from "../../Components/Market/TradeInsightsWidget";
 import { useTheme } from "../../Context/ThemeContext";
 import { WatchlistProvider } from "../../Context/WatchlistContext";
-import { Activity, AlertCircle, ArrowRight, CircleDollarSign, Clock3, CreditCard, Inbox, MessageSquareText, UserCheck, UserMinus, Users } from 'lucide-react';
+import { Activity, AlertCircle, ArrowRight, CircleDollarSign, Clock3, CreditCard, Inbox, MessageSquareText, UserCheck, UserMinus, UserX, Users } from 'lucide-react';
 
-const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, feedbackMetrics = {}, recentSubscriptions = [], recentFeedback = [], workspaceMode = false }) => {
+const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, subscriptionStatusMetrics = {}, feedbackMetrics = {}, recentSubscriptions = [], recentFeedback = [], workspaceMode = false }) => {
     const { auth } = usePage().props;
     const { theme } = useTheme();
     const isDark = theme === 'bg-skin-black';
@@ -103,6 +103,14 @@ const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, feedbackMetrics
                             <MetricCard label="Last 30 days" value={formatMoney(subscriptionMetrics.revenueLast30DaysPhp)} detail={`${formatCount(subscriptionMetrics.paidLast30Days)} verified payments`} icon={CreditCard} color="#2962ff" isDark={isDark}/>
                             <MetricCard label="Pending review" value={formatCount(subscriptionMetrics.pending)} detail="Creating or pending" icon={Clock3} color="#f59e0b" isDark={isDark}/>
                             <MetricCard label="Failed / expired" value={formatCount(subscriptionMetrics.failedOrExpired)} detail="Provider sessions needing attention" icon={AlertCircle} color="#ef4444" isDark={isDark}/>
+                        </div>
+                    </AdminSection>
+
+                    <AdminSection title="Subscriber status" subtitle="Live count of users by current access status — renewing an expired user moves them back to Active automatically." links={[['Renew access','/admin/subscriptions']]} isDark={isDark}>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                            <MetricCard label="Active subscription" value={formatCount(subscriptionStatusMetrics.active)} detail="Access currently valid" icon={UserCheck} color="#10b981" isDark={isDark}/>
+                            <MetricCard label="Expired subscription" value={formatCount(subscriptionStatusMetrics.expired)} detail="Access period has lapsed — needs renewal" icon={AlertCircle} color="#ef4444" isDark={isDark}/>
+                            <MetricCard label="Not yet subscribed" value={formatCount(subscriptionStatusMetrics.notSubscribed)} detail="Never completed a paid subscription" icon={UserX} color="#f59e0b" isDark={isDark}/>
                         </div>
                     </AdminSection>
 

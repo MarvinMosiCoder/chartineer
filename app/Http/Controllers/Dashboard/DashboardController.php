@@ -41,6 +41,17 @@ class DashboardController extends Controller
         $paidPhp = (clone $paid)->where('currency', 'PHP');
         $feedbackOpenStatuses = ['submitted', 'reviewing', 'planned', 'in_progress'];
 
+        // Live access status per user, mirrored from ReplayAccessController's
+        // active/expired computation (replay_access_ends_at vs now) rather than a
+        // stored status column — renewing a user's access (adminRestoreAccess)
+        // pushes them back into "active" here automatically on next load, and an
+        // access period lapsing moves them into "expired" the same way.
+        $now = now();
+        $subscribedUsers = AdmUser::query()->whereNotNull('replay_access_ends_at');
+        $activeSubscribers = (clone $subscribedUsers)->where('replay_access_ends_at', '>=', $now)->count();
+        $expiredSubscribers = (clone $subscribedUsers)->where('replay_access_ends_at', '<', $now)->count();
+        $notYetSubscribed = AdmUser::query()->whereNull('replay_access_ends_at')->count();
+
         return Inertia::render('Dashboard/Dashboard', [
             'menus' => $sidebarMenus,
             'workspaceMode' => false,
@@ -57,6 +68,11 @@ class DashboardController extends Controller
                 'revenueLast30DaysPhp' => (float) (clone $paidPhp)->where('paid_at', '>=', $since)->sum('amount'),
                 'pending' => SubscriptionRequest::query()->whereIn('status', ['creating', 'pending'])->count(),
                 'failedOrExpired' => SubscriptionRequest::query()->whereIn('status', ['failed', 'expired'])->count(),
+            ],
+            'subscriptionStatusMetrics' => [
+                'active' => $activeSubscribers,
+                'expired' => $expiredSubscribers,
+                'notSubscribed' => $notYetSubscribed,
             ],
             'feedbackMetrics' => [
                 'total' => UserFeedback::query()->count(),

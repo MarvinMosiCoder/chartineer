@@ -5827,14 +5827,16 @@ export default function MarketReplayChart({
     });
   };
 
-  const handleDrawingWidthChange = (strokeWidth) => {
+  const handleDrawingWidthChange = (strokeWidth, options = {}) => {
     const selectedId = selectedDrawingIdRef.current;
     const selected = drawingsRef.current.find((drawing) => drawing.id === selectedId);
     const targetType = selected?.type ?? tempDrawingRef.current?.type ?? toolRef.current;
 
     if (!targetType) return;
 
-    saveToolSettingsForType(targetType, { strokeWidth });
+    if (!options.skipDefaultSave) {
+      saveToolSettingsForType(targetType, { strokeWidth });
+    }
 
     if (tempDrawingRef.current?.type === targetType) {
       setTempDrawing((prev) => (prev ? { ...prev, strokeWidth } : prev));
@@ -5855,7 +5857,7 @@ export default function MarketReplayChart({
     saveDrawings(next);
   };
 
-  const handleDrawingLineStyleChange = (lineStyle) => {
+  const handleDrawingLineStyleChange = (lineStyle, options = {}) => {
     const selectedId = selectedDrawingIdRef.current;
     const selected = drawingsRef.current.find((drawing) => drawing.id === selectedId);
     const targetType = selected?.type ?? tempDrawingRef.current?.type ?? toolRef.current;
@@ -5863,7 +5865,9 @@ export default function MarketReplayChart({
 
     if (!targetType) return;
 
-    saveToolSettingsForType(targetType, { lineStyle: normalizedStyle });
+    if (!options.skipDefaultSave) {
+      saveToolSettingsForType(targetType, { lineStyle: normalizedStyle });
+    }
 
     if (tempDrawingRef.current?.type === targetType) {
       setTempDrawing((prev) => (prev ? { ...prev, lineStyle: normalizedStyle } : prev));
@@ -5884,7 +5888,7 @@ export default function MarketReplayChart({
     saveDrawings(next);
   };
 
-  const handleDrawingColorChange = (color) => {
+  const handleDrawingColorChange = (color, options = {}) => {
     const selectedId = selectedDrawingIdRef.current;
     const selected = drawingsRef.current.find((drawing) => drawing.id === selectedId);
     const targetType = selected?.type ?? tempDrawingRef.current?.type ?? toolRef.current;
@@ -5895,7 +5899,7 @@ export default function MarketReplayChart({
       setTempDrawing((prev) => (prev ? { ...prev, color } : prev));
     }
 
-    if (targetType) {
+    if (targetType && !options.skipDefaultSave) {
       saveToolSettingsForType(targetType, { color });
     }
 
@@ -5910,7 +5914,7 @@ export default function MarketReplayChart({
     saveDrawings(next);
   };
 
-  const handleDrawingLabelChange = (updates) => {
+  const handleDrawingLabelChange = (updates, options = {}) => {
     const selectedId = selectedDrawingIdRef.current;
     const selected = drawingsRef.current.find((drawing) => drawing.id === selectedId);
     const targetType = selected?.type ?? tempDrawingRef.current?.type ?? toolRef.current;
@@ -5928,7 +5932,9 @@ export default function MarketReplayChart({
         }
       : updates;
 
-    saveToolSettingsForType(targetType, settingsUpdate);
+    if (!options.skipDefaultSave) {
+      saveToolSettingsForType(targetType, settingsUpdate);
+    }
 
     if (TEXT_MARKER_TYPES.includes(targetType) && typeof settingsUpdate.labelText === 'string') {
       setTextDraft(settingsUpdate.labelText);

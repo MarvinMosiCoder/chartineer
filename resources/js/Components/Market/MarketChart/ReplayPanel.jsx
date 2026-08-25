@@ -416,6 +416,11 @@ const WIDTH_TOOL_TYPES = TOOL_BUTTONS.map(item => item.type).filter(type => !TEX
 const LINE_STYLE_TOOL_TYPES = WIDTH_TOOL_TYPES;
 const LABEL_TOOL_TYPES = WIDTH_TOOL_TYPES;
 const PRESET_TOOL_TYPES = TOOL_BUTTONS.map(item => item.type);
+// Long/Short position zones and entry line render with fixed profit/loss colors
+// (ChartStage.jsx's isPositionDrawing branch) and never read drawing.color, so
+// exposing a color control for them would silently do nothing.
+const POSITION_TOOL_TYPES = ['long-position', 'short-position'];
+const COLOR_TOOL_TYPES = PRESET_TOOL_TYPES.filter(type => !POSITION_TOOL_TYPES.includes(type));
 
 function normalizeHexColor(value) {
   if (typeof value !== 'string') return null;
@@ -487,6 +492,7 @@ function DrawingSettingsDialog({
   timeframe,
   chartTheme,
   canUsePresets,
+  canEditColor,
   presetItems,
   onSaveTemplate,
   onDeleteToolPreset,
@@ -503,6 +509,11 @@ function DrawingSettingsDialog({
   const [pendingOverwriteName, setPendingOverwriteName] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  // True right after "Apply defaults" resets the draft and no field has been
+  // manually re-picked since — lets Ok skip re-saving the tool type's default
+  // style, so resetting *this* drawing doesn't also overwrite the user's saved
+  // default for every future new drawing of this type.
+  const [defaultsJustApplied, setDefaultsJustApplied] = useState(false);
   const panelRef = useRef(null);
   const dragCleanupRef = useRef(null);
   const tabs = ['style', 'text', 'coordinates', 'visibility'];
@@ -519,6 +530,7 @@ function DrawingSettingsDialog({
     setDraft({ ...drawing });
     setActiveTab('style');
     setDragOffset({ x: 0, y: 0 });
+    setDefaultsJustApplied(false);
   }, [drawing?.id]);
 
   useEffect(() => () => dragCleanupRef.current?.(), []);
@@ -566,10 +578,17 @@ function DrawingSettingsDialog({
     });
   };
 
+  // Any manual style/text edit after "Apply defaults" is an explicit choice —
+  // it should still update the tool type's saved default on Ok, same as before.
+  const updateStyleDraft = (patch) => {
+    setDraft((current) => ({ ...current, ...patch }));
+    setDefaultsJustApplied(false);
+  };
+
   const handleApplyDefaults = () => {
     setDraft((current) => ({
       ...current,
-      color: DRAWING_COLORS[0],
+      ...(canEditColor ? { color: DRAWING_COLORS[0] } : {}),
       strokeWidth: 1,
       lineStyle: 'solid',
       textBold: false,
@@ -578,6 +597,7 @@ function DrawingSettingsDialog({
       labelVertical: 'top',
       labelHorizontal: 'center',
     }));
+    setDefaultsJustApplied(true);
     setShowTemplateMenu(false);
   };
 
@@ -655,22 +675,24 @@ function DrawingSettingsDialog({
         <div className="min-h-[278px] px-6 py-7">
           {activeTab === 'style' && (
             <div className="space-y-5">
-              <label className="flex items-center justify-between gap-4 text-sm font-medium">
-                Line color
-                <div className="flex items-center gap-2">
-                  <input type="color" value={normalizeHexColor(draft.color) ?? '#60a5fa'} onChange={(event) => setDraft((current) => ({ ...current, color: event.target.value }))} className={`h-11 w-11 cursor-pointer rounded-lg border p-1 ${fieldClass}`} />
-                  <input value={draft.color ?? ''} onChange={(event) => setDraft((current) => ({ ...current, color: event.target.value }))} className={`h-11 w-28 rounded-lg border px-3 font-mono text-sm outline-none ${fieldClass}`} aria-label="Line color value" />
-                </div>
-              </label>
+              {canEditColor && (
+                <label className="flex items-center justify-between gap-4 text-sm font-medium">
+                  Line color
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={normalizeHexColor(draft.color) ?? '#60a5fa'} onChange={(event) => updateStyleDraft({ color: event.target.value })} className={`h-11 w-11 cursor-pointer rounded-lg border p-1 ${fieldClass}`} />
+                    <input value={draft.color ?? ''} onChange={(event) => updateStyleDraft({ color: event.target.value })} className={`h-11 w-28 rounded-lg border px-3 font-mono text-sm outline-none ${fieldClass}`} aria-label="Line color value" />
+                  </div>
+                </label>
+              )}
               <label className="flex items-center justify-between gap-4 text-sm font-medium">
                 Line width
-                <select value={draft.strokeWidth ?? 1} onChange={(event) => setDraft((current) => ({ ...current, strokeWidth: Number(event.target.value) }))} className={`h-11 w-44 rounded-lg border px-3 outline-none ${fieldClass}`}>
+                <select value={draft.strokeWidth ?? 1} onChange={(event) => updateStyleDraft({ strokeWidth: Number(event.target.value) })} className={`h-11 w-44 rounded-lg border px-3 outline-none ${fieldClass}`}>
                   {DRAWING_WIDTHS.map((width) => <option key={width} value={width}>{width}px</option>)}
                 </select>
               </label>
               <label className="flex items-center justify-between gap-4 text-sm font-medium">
                 Line style
-                <select value={draft.lineStyle ?? 'solid'} onChange={(event) => setDraft((current) => ({ ...current, lineStyle: event.target.value }))} className={`h-11 w-44 rounded-lg border px-3 outline-none ${fieldClass}`}>
+                <select value={draft.lineStyle ?? 'solid'} onChange={(event) => updateStyleDraft({ lineStyle: event.target.value })} className={`h-11 w-44 rounded-lg border px-3 outline-none ${fieldClass}`}>
                   <option value="solid">Solid</option>
                   <option value="dashed">Dashed</option>
                 </select>
@@ -685,18 +707,20 @@ function DrawingSettingsDialog({
                 Text
               </label>
               <div className="flex items-center gap-2">
-                <input type="color" value={normalizeHexColor(draft.color) ?? '#ffffff'} onChange={(event) => setDraft((current) => ({ ...current, color: event.target.value }))} className={`h-11 w-11 cursor-pointer rounded-lg border p-1 ${fieldClass}`} aria-label="Text color" />
-                <button type="button" onClick={() => setDraft((current) => ({ ...current, textBold: !current.textBold }))} className={`h-11 w-11 rounded-lg border text-lg font-bold ${fieldClass} ${draft.textBold ? 'ring-1 ring-[#2962ff]' : ''}`}>B</button>
-                <button type="button" onClick={() => setDraft((current) => ({ ...current, textItalic: !current.textItalic }))} className={`h-11 w-11 rounded-lg border text-lg italic ${fieldClass} ${draft.textItalic ? 'ring-1 ring-[#2962ff]' : ''}`}>I</button>
-                <select value={Number(draft.textSize) || 12} onChange={(event) => setDraft((current) => ({ ...current, textSize: Number(event.target.value) }))} className={`h-11 flex-1 rounded-lg border px-2 text-sm outline-none ${fieldClass}`} aria-label="Text size">
+                {canEditColor && (
+                  <input type="color" value={normalizeHexColor(draft.color) ?? '#ffffff'} onChange={(event) => updateStyleDraft({ color: event.target.value })} className={`h-11 w-11 cursor-pointer rounded-lg border p-1 ${fieldClass}`} aria-label="Text color" />
+                )}
+                <button type="button" onClick={() => updateStyleDraft({ textBold: !draft.textBold })} className={`h-11 w-11 rounded-lg border text-lg font-bold ${fieldClass} ${draft.textBold ? 'ring-1 ring-[#2962ff]' : ''}`}>B</button>
+                <button type="button" onClick={() => updateStyleDraft({ textItalic: !draft.textItalic })} className={`h-11 w-11 rounded-lg border text-lg italic ${fieldClass} ${draft.textItalic ? 'ring-1 ring-[#2962ff]' : ''}`}>I</button>
+                <select value={Number(draft.textSize) || 12} onChange={(event) => updateStyleDraft({ textSize: Number(event.target.value) })} className={`h-11 flex-1 rounded-lg border px-2 text-sm outline-none ${fieldClass}`} aria-label="Text size">
                   {TEXT_SIZES.map((size) => <option key={size} value={size}>{size}px</option>)}
                 </select>
               </div>
-              <textarea value={draft.text ?? draft.labelText ?? ''} onChange={(event) => setDraft((current) => ({ ...current, text: event.target.value, labelText: event.target.value }))} disabled={draft.showText === false} className={`h-28 w-full resize-none rounded-lg border p-3 text-sm outline-none ${fieldClass} disabled:opacity-40`} placeholder="Drawing text" />
+              <textarea value={draft.text ?? draft.labelText ?? ''} onChange={(event) => updateStyleDraft({ text: event.target.value, labelText: event.target.value })} disabled={draft.showText === false} className={`h-28 w-full resize-none rounded-lg border p-3 text-sm outline-none ${fieldClass} disabled:opacity-40`} placeholder="Drawing text" />
               <div className="grid grid-cols-[1fr_1fr_1fr] items-center gap-2">
                 <span className="text-sm font-medium">Text alignment</span>
-                <select value={draft.labelVertical ?? 'top'} onChange={(event) => setDraft((current) => ({ ...current, labelVertical: event.target.value }))} className={`h-11 rounded-lg border px-3 outline-none ${fieldClass}`}><option value="top">Top</option><option value="middle">Inside</option><option value="bottom">Bottom</option></select>
-                <select value={draft.labelHorizontal ?? 'center'} onChange={(event) => setDraft((current) => ({ ...current, labelHorizontal: event.target.value }))} className={`h-11 rounded-lg border px-3 outline-none ${fieldClass}`}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+                <select value={draft.labelVertical ?? 'top'} onChange={(event) => updateStyleDraft({ labelVertical: event.target.value })} className={`h-11 rounded-lg border px-3 outline-none ${fieldClass}`}><option value="top">Top</option><option value="middle">Inside</option><option value="bottom">Bottom</option></select>
+                <select value={draft.labelHorizontal ?? 'center'} onChange={(event) => updateStyleDraft({ labelHorizontal: event.target.value })} className={`h-11 rounded-lg border px-3 outline-none ${fieldClass}`}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
               </div>
             </div>
           )}
@@ -799,7 +823,7 @@ function DrawingSettingsDialog({
           </div>
           <div className="flex items-center gap-3">
             <button type="button" onClick={onClose} className={`h-11 rounded-lg border px-5 text-sm font-semibold ${fieldClass}`}>Cancel</button>
-            <button type="button" onClick={() => onApply(draft)} className="h-11 rounded-lg bg-emerald-400 px-5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300">Ok</button>
+            <button type="button" onClick={() => onApply(draft, { skipDefaultSave: defaultsJustApplied })} className="h-11 rounded-lg bg-emerald-400 px-5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300">Ok</button>
           </div>
         </footer>
       </section>
@@ -861,6 +885,7 @@ function TopToolEditorBar({
   canEditLineStyle,
   canEditLabel,
   canEditText,
+  canEditColor,
   canUsePresets,
   presetItems,
   presetNameDraft,
@@ -910,9 +935,12 @@ function TopToolEditorBar({
   };
 
   const handleApplyToolDefaults = () => {
-    onDrawingColorChange(DRAWING_COLORS[0]);
-    if (canEditWidth) onDrawingWidthChange(1);
-    if (canEditLineStyle) onDrawingLineStyleChange('solid');
+    // skipDefaultSave: this resets the *selected drawing* back to the system
+    // defaults — it must not also overwrite the user's saved default style for
+    // this tool type (toolSettings[type], used to seed future new drawings).
+    if (canEditColor) onDrawingColorChange(DRAWING_COLORS[0], { skipDefaultSave: true });
+    if (canEditWidth) onDrawingWidthChange(1, { skipDefaultSave: true });
+    if (canEditLineStyle) onDrawingLineStyleChange('solid', { skipDefaultSave: true });
     if (canEditLabel || canEditText) {
       onDrawingLabelChange({
         textBold: false,
@@ -920,7 +948,7 @@ function TopToolEditorBar({
         textSize: 12,
         labelVertical: 'top',
         labelHorizontal: 'center',
-      });
+      }, { skipDefaultSave: true });
     }
     setOpenMenu(null);
   };
@@ -1135,64 +1163,66 @@ function TopToolEditorBar({
           <span className="absolute bottom-1 left-3 right-3 h-0.5 rounded-full" style={{ backgroundColor: displayColor }} />
         </ToolEditorButton>
 
-        <div className="relative order-3">
-          <ToolEditorButton
-            icon={PaintBucket}
-            title="Color"
-            active={openMenu === 'color'}
-            onClick={() => toggleMenu('color')}
-            chartTheme={chartTheme}
-          >
-            <span className="absolute bottom-1 left-3 right-3 h-0.5 rounded-full" style={{ backgroundColor: displayColor }} />
-          </ToolEditorButton>
-          {openMenu === 'color' && (
-            <div className={menuPanelClass}>
-              <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${editorLabelClass}`}>Color</div>
-              <div className="mb-3 flex items-center gap-2">
-                <span
-                  className="h-8 w-8 shrink-0 rounded-sm border border-gray-500"
-                  style={{ backgroundColor: displayColor }}
-                  aria-hidden="true"
-                />
-                <input
-                  value={hexColorDraft}
-                  onChange={(event) => handleHexColorChange(event.target.value)}
-                  onBlur={() => {
-                    const normalizedColor = normalizeHexColor(hexColorDraft);
-                    setHexColorDraft(normalizedColor ?? displayColor);
-                  }}
-                  maxLength={7}
-                  spellCheck={false}
-                  placeholder="#60a5fa"
-                  className={`h-8 min-w-0 flex-1 rounded border px-2 text-xs font-mono uppercase outline-none ${editorFieldClass}`}
-                  aria-label="Hex color"
-                />
-              </div>
-              <div className="grid grid-cols-6 gap-1.5">
-                {DRAWING_COLORS.map((color) => {
-                  const isActive = activeColor?.toLowerCase() === color.toLowerCase();
+        {canEditColor && (
+          <div className="relative order-3">
+            <ToolEditorButton
+              icon={PaintBucket}
+              title="Color"
+              active={openMenu === 'color'}
+              onClick={() => toggleMenu('color')}
+              chartTheme={chartTheme}
+            >
+              <span className="absolute bottom-1 left-3 right-3 h-0.5 rounded-full" style={{ backgroundColor: displayColor }} />
+            </ToolEditorButton>
+            {openMenu === 'color' && (
+              <div className={menuPanelClass}>
+                <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${editorLabelClass}`}>Color</div>
+                <div className="mb-3 flex items-center gap-2">
+                  <span
+                    className="h-8 w-8 shrink-0 rounded-sm border border-gray-500"
+                    style={{ backgroundColor: displayColor }}
+                    aria-hidden="true"
+                  />
+                  <input
+                    value={hexColorDraft}
+                    onChange={(event) => handleHexColorChange(event.target.value)}
+                    onBlur={() => {
+                      const normalizedColor = normalizeHexColor(hexColorDraft);
+                      setHexColorDraft(normalizedColor ?? displayColor);
+                    }}
+                    maxLength={7}
+                    spellCheck={false}
+                    placeholder="#60a5fa"
+                    className={`h-8 min-w-0 flex-1 rounded border px-2 text-xs font-mono uppercase outline-none ${editorFieldClass}`}
+                    aria-label="Hex color"
+                  />
+                </div>
+                <div className="grid grid-cols-6 gap-1.5">
+                  {DRAWING_COLORS.map((color) => {
+                    const isActive = activeColor?.toLowerCase() === color.toLowerCase();
 
-                  return (
-                    <IconTooltipButton
-                      key={color}
-                      label={color}
-                      isDark={isDark}
-                      ariaLabel={`Use color ${color}`}
-                      onClick={() => {
-                        onDrawingColorChange(color);
-                        setOpenMenu(null);
-                      }}
-                      className={`h-8 w-8 rounded-sm border ${
-                        isActive ? 'border-white ring-2 ring-white' : 'border-gray-500'
-                      }`}
-                      style={{ backgroundColor: color }}
-                    />
-                  );
-                })}
+                    return (
+                      <IconTooltipButton
+                        key={color}
+                        label={color}
+                        isDark={isDark}
+                        ariaLabel={`Use color ${color}`}
+                        onClick={() => {
+                          onDrawingColorChange(color);
+                          setOpenMenu(null);
+                        }}
+                        className={`h-8 w-8 rounded-sm border ${
+                          isActive ? 'border-white ring-2 ring-white' : 'border-gray-500'
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {canEditWidth && (
           <div className="relative order-5">
@@ -1352,14 +1382,16 @@ function TopToolEditorBar({
           timeframe={timeframe}
           chartTheme={chartTheme}
           canUsePresets={canUsePresets}
+          canEditColor={canEditColor}
           presetItems={presetItems}
           onSaveTemplate={onSaveSelectedToolPreset}
           onDeleteToolPreset={onDeleteToolPreset}
           onClose={() => setOpenMenu(null)}
-          onApply={(nextDrawing) => {
-            if (nextDrawing.color !== activeColor) onDrawingColorChange(nextDrawing.color);
-            if (canEditWidth && nextDrawing.strokeWidth !== activeStrokeWidth) onDrawingWidthChange(nextDrawing.strokeWidth);
-            if (canEditLineStyle && nextDrawing.lineStyle !== activeLineStyle) onDrawingLineStyleChange(nextDrawing.lineStyle);
+          onApply={(nextDrawing, applyOptions = {}) => {
+            const skipDefaultSave = Boolean(applyOptions.skipDefaultSave);
+            if (canEditColor && nextDrawing.color !== activeColor) onDrawingColorChange(nextDrawing.color, { skipDefaultSave });
+            if (canEditWidth && nextDrawing.strokeWidth !== activeStrokeWidth) onDrawingWidthChange(nextDrawing.strokeWidth, { skipDefaultSave });
+            if (canEditLineStyle && nextDrawing.lineStyle !== activeLineStyle) onDrawingLineStyleChange(nextDrawing.lineStyle, { skipDefaultSave });
             onDrawingLabelChange({
               labelText: nextDrawing.labelText ?? '',
               ...(TEXT_MARKER_TYPES.includes(nextDrawing.type) ? { text: nextDrawing.text ?? nextDrawing.labelText ?? '' } : {}),
@@ -1375,7 +1407,7 @@ function TopToolEditorBar({
               ...(nextDrawing.end ? { end: nextDrawing.end } : {}),
               ...(nextDrawing.point ? { point: nextDrawing.point } : {}),
               ...(nextDrawing.points ? { points: nextDrawing.points } : {}),
-            });
+            }, { skipDefaultSave });
             setOpenMenu(null);
           }}
         />,
@@ -2212,6 +2244,7 @@ export default function ReplayPanel({
   const canEditLineStyle = LINE_STYLE_TOOL_TYPES.includes(editorType);
   const canEditLabel = LABEL_TOOL_TYPES.includes(editorType);
   const canEditText = TEXT_MARKER_TYPES.includes(editorType);
+  const canEditColor = COLOR_TOOL_TYPES.includes(editorType);
   const hasToolEditor = Boolean(editorType);
   const activeToolIcon = useMemo(() => {
     return TOOL_BUTTONS.find((item) => item.type === tool)?.icon ?? MousePointer2;
@@ -3435,6 +3468,7 @@ export default function ReplayPanel({
           canEditLineStyle={canEditLineStyle}
           canEditLabel={canEditLabel}
           canEditText={canEditText}
+          canEditColor={canEditColor}
           canUsePresets={canUsePresets}
           presetItems={presetItems}
           presetNameDraft={presetNameDraft}
