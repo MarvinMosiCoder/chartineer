@@ -231,16 +231,18 @@ export default function TradeReport({ refreshKey = 0 }) {
   const playbookPerformance = report.playbookPerformance ?? [];
   const advanced = report.advanced ?? {};
   const monteCarlo = report.monteCarlo ?? {};
+  // Sorted by real creation time (when the trade was actually entered in the
+  // browser), not `closedAtTime` (the simulated backtest/candle date) — a user
+  // can replay old historical dates today and recent ones tomorrow, so the
+  // simulated date doesn't reflect the order trades were actually made in.
   const sortedTrades = useMemo(() => {
     return [...report.trades].sort((a, b) => {
-      const aTime = Number(a.closedAtTime ?? 0);
-      const bTime = Number(b.closedAtTime ?? 0);
+      const aCreated = new Date(a.createdAt ?? 0).getTime();
+      const bCreated = new Date(b.createdAt ?? 0).getTime();
 
-      if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) {
-        return bTime - aTime;
-      }
+      if (aCreated !== bCreated) return bCreated - aCreated;
 
-      return new Date(b.updatedAt ?? b.createdAt ?? 0) - new Date(a.updatedAt ?? a.createdAt ?? 0);
+      return Number(b.id ?? 0) - Number(a.id ?? 0);
     });
   }, [report.trades]);
   const availableSymbols = useMemo(() => (

@@ -19,8 +19,13 @@ class MarketBacktestReportService
             ->where('status', 'closed')
             ->when($symbol, fn ($query) => $query->where('symbol', $symbol))
             ->when($sessionId, fn ($query) => $query->where('market_backtest_session_id', $sessionId))
-            ->orderByDesc('closed_at_time')
-            ->orderByDesc('updated_at')
+            // Sorted by real insert time, not the simulated backtest/candle time
+            // (`closed_at_time`) — a user can replay old historical dates today and
+            // recent ones tomorrow, so simulated time doesn't reflect the order trades
+            // were actually entered by the user. `id` is a tiebreaker for rows created
+            // within the same second (created_at has only second precision).
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->limit($limit)
             ->get();
     }
