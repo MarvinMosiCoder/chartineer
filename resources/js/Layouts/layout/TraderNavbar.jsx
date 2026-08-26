@@ -75,7 +75,10 @@ export default function TraderNavbar() {
                 setUnreadNotifications(Number(data.unread_notifications) || 0);
                 setNotifications(data.notifications ?? []);
                 alertSoundEnabledRef.current = data.alert_sound_enabled !== false;
-                const alerts = (data.notifications ?? []).filter(item => item.type === 'price alert');
+                // Same toast path also carries Cross liquidation notices, so a background-monitor
+                // liquidation (no browser tab dispatched the event) still surfaces within one poll.
+                const toastableTypes = ['price alert', 'cross liquidation'];
+                const alerts = (data.notifications ?? []).filter(item => toastableTypes.includes(item.type));
                 const newestAlert = alerts.reduce((newest, item) => Number(item.id) > Number(newest?.id ?? 0) ? item : newest, null);
                 if (initialized && newestAlert) showAlertToast(newestAlert, alertSoundEnabledRef.current);
                 if (!initialized && newestAlert) {
@@ -90,8 +93,13 @@ export default function TraderNavbar() {
             showAlertToast(event.detail, alertSoundEnabledRef.current);
         };
         window.addEventListener('backtradelab-alert-triggered', handleTriggeredAlert);
+        window.addEventListener('backtradelab-cross-liquidated', handleTriggeredAlert);
         poll(); const timer = window.setInterval(poll, 5000);
-        return () => { stopped = true; window.clearInterval(timer); window.clearTimeout(toastTimer); window.removeEventListener('backtradelab-alert-triggered', handleTriggeredAlert); };
+        return () => {
+            stopped = true; window.clearInterval(timer); window.clearTimeout(toastTimer);
+            window.removeEventListener('backtradelab-alert-triggered', handleTriggeredAlert);
+            window.removeEventListener('backtradelab-cross-liquidated', handleTriggeredAlert);
+        };
     }, [auth?.user?.id]);
 
     useEffect(() => {

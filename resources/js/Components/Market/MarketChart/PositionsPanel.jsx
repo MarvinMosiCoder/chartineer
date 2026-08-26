@@ -355,7 +355,7 @@ export default function PositionsPanel({
             <table className="w-full min-w-[860px] border-collapse text-left text-xs">
               <thead>
                 <tr className={headerClass}>
-                  {['Symbol', 'Side', 'Size', 'Entry Price', 'Mark Price', 'PnL (ROI%)', 'Margin', 'Liq. Price', 'TP / SL', ''].map((col) => (
+                  {['Symbol', 'Mode', 'Side', 'Size', 'Entry Price', 'Mark Price', 'PnL (ROI%)', 'Margin', 'Liq. Price', 'TP / SL', ''].map((col) => (
                     <th key={col} className="whitespace-nowrap px-3 py-2 font-medium">{col}</th>
                   ))}
                 </tr>
@@ -371,6 +371,13 @@ export default function PositionsPanel({
                   return (
                     <tr key={position.id} className={`border-t ${rowBorderClass}`}>
                       <td className={`px-3 py-2.5 font-semibold ${cellClass}`}>{position.symbol}</td>
+                      <td className="px-3 py-2.5">
+                        {position.marginMode === 'cross' ? (
+                          <span className="rounded bg-[#5b8cff]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5b8cff]">Cross</span>
+                        ) : (
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
+                        )}
+                      </td>
                       <td className={`px-3 py-2.5 font-semibold ${position.side === 'short' ? 'text-red-400' : 'text-emerald-400'}`}>
                         {positionSideLabel(position)}
                       </td>
@@ -429,7 +436,7 @@ export default function PositionsPanel({
             <table className="w-full min-w-[720px] border-collapse text-left text-xs">
               <thead>
                 <tr className={headerClass}>
-                  {['Symbol', 'Side', 'Trigger Price', 'Size', 'Margin', 'SL', 'TP', ''].map((col) => (
+                  {['Symbol', 'Mode', 'Side', 'Trigger Price', 'Size', 'Margin', 'SL', 'TP', ''].map((col) => (
                     <th key={col} className="whitespace-nowrap px-3 py-2 font-medium">{col}</th>
                   ))}
                 </tr>
@@ -438,6 +445,13 @@ export default function PositionsPanel({
                 {pendingPositions.map((position) => (
                   <tr key={position.id} className={`border-t ${rowBorderClass}`}>
                     <td className={`px-3 py-2.5 font-semibold ${cellClass}`}>{position.symbol}</td>
+                    <td className="px-3 py-2.5">
+                      {position.marginMode === 'cross' ? (
+                        <span className="rounded bg-[#5b8cff]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5b8cff]">Cross</span>
+                      ) : (
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
+                      )}
+                    </td>
                     <td className={`px-3 py-2.5 font-semibold ${position.side === 'short' ? 'text-red-400' : 'text-emerald-400'}`}>
                       {positionSideLabel(position)}
                     </td>

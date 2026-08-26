@@ -666,19 +666,25 @@ function formatToastQuantity(value) {
   return number.toLocaleString(undefined, { maximumFractionDigits: 8 });
 }
 
+function getMarginModeLabel(position) {
+  return position?.marginMode === 'cross' ? 'Cross' : 'Isolated';
+}
+
 function buildFillToastMessage(position) {
   const symbol = position?.symbol ?? '';
   const sideLabel = getPositionSideLabel(position);
+  const modeLabel = getMarginModeLabel(position);
   const quantity = formatToastQuantity(position?.quantity);
   const price = formatOverlayPrice(position?.entryPrice);
   const verb = position?.status === 'pending' ? 'order placed' : 'filled';
-  return { type: 'success', message: `${symbol} ${sideLabel} ${verb} · ${quantity} @ ${price}` };
+  return { type: 'success', message: `${symbol} ${sideLabel} ${verb} · ${modeLabel} · ${quantity} @ ${price}` };
 }
 
 function buildCancelToastMessage(position) {
   const symbol = position?.symbol ?? '';
   const sideLabel = getPositionSideLabel(position);
-  return { type: 'success', message: `${symbol} ${sideLabel} order cancelled` };
+  const modeLabel = getMarginModeLabel(position);
+  return { type: 'success', message: `${symbol} ${sideLabel} order cancelled · ${modeLabel}` };
 }
 
 // `position` is the pre-close snapshot looked up by the caller before the close request fires.
@@ -687,6 +693,7 @@ function buildCloseToastMessage(closedTrade, position) {
   if (!closedTrade) return null;
 
   const symbol = closedTrade.symbol ?? position?.symbol ?? '';
+  const modeLabel = getMarginModeLabel(position ?? closedTrade);
   const netPnl = Number(closedTrade.netPnl);
   const safeNetPnl = Number.isFinite(netPnl) ? netPnl : 0;
   const sign = safeNetPnl >= 0 ? '+' : '-';
@@ -700,19 +707,19 @@ function buildCloseToastMessage(closedTrade, position) {
 
   switch (closedTrade.reason) {
     case 'take_profit':
-      return { type: 'success', message: `${symbol} closed — Take Profit hit · ${sign}${pnlText}${pnlPercentText}` };
+      return { type: 'success', message: `${symbol} closed — Take Profit hit · ${modeLabel} · ${sign}${pnlText}${pnlPercentText}` };
     case 'partial_take_profit': {
       const percent = Number(position?.partialTakeProfitPercent);
       const percentText = Number.isFinite(percent) ? `${percent}% ` : '';
-      return { type: 'success', message: `${symbol} partial take-profit · ${percentText}closed · ${sign}${pnlText}` };
+      return { type: 'success', message: `${symbol} partial take-profit · ${percentText}closed · ${modeLabel} · ${sign}${pnlText}` };
     }
     case 'stop_loss':
-      return { type: 'error', message: `${symbol} closed — Stop Loss hit · ${sign}${pnlText}${pnlPercentText}` };
+      return { type: 'error', message: `${symbol} closed — Stop Loss hit · ${modeLabel} · ${sign}${pnlText}${pnlPercentText}` };
     case 'liquidation':
-      return { type: 'error', message: `${symbol} liquidated · ${sign}${pnlText}` };
+      return { type: 'error', message: `${symbol} liquidated · ${modeLabel} · ${sign}${pnlText}` };
     case 'manual':
     default:
-      return { type: safeNetPnl >= 0 ? 'success' : 'error', message: `${symbol} closed · ${sign}${pnlText}` };
+      return { type: safeNetPnl >= 0 ? 'success' : 'error', message: `${symbol} closed · ${modeLabel} · ${sign}${pnlText}` };
   }
 }
 
@@ -6404,10 +6411,17 @@ export default function MarketReplayChart({
           const liquidation = evaluateResponse.data?.liquidation;
           if (!liquidation) return;
           setBacktestAccount(evaluateResponse.data?.account ?? null);
-          handleToast(
-            `Cross portfolio liquidated · ${liquidation.closedTrades?.length ?? 0} position(s) closed`,
-            'error'
-          );
+          // The notification is persisted server-side (CrossLiquidationService), so dispatch the
+          // same event TraderNavbar's poll uses for background-triggered liquidations — this shows
+          // the toast immediately instead of waiting up to 5s for the next feed poll, and the
+          // shared dedup-by-id in TraderNavbar prevents that poll from showing it a second time.
+          window.dispatchEvent(new CustomEvent('backtradelab-cross-liquidated', {
+            detail: {
+              id: Number(liquidation.notificationId),
+              content: liquidation.notificationContent
+                ?? `Cross portfolio liquidated · ${liquidation.closedTrades?.length ?? 0} position(s) closed`,
+            },
+          }));
         }).catch(() => {});
       }
     } catch (err) {

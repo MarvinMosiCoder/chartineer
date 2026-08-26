@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AdmModels\AdmNotifications;
 use App\Models\MarketBacktestAccount;
 use App\Models\MarketBacktestSession;
 use App\Models\MarketBacktestTrade;
@@ -76,6 +77,7 @@ class CrossLiquidationService
             $cashDelta = 0.0;
             $realizedPnlDelta = 0.0;
             $feesDelta = 0.0;
+            $firstTradeId = null;
 
             foreach ($openPositions as $position) {
                 $key = $this->crossMarginService->marketKey($position);
@@ -100,7 +102,7 @@ class CrossLiquidationService
                     'close_reason' => 'cross_liquidation',
                 ]);
 
-                MarketBacktestTrade::query()->create([
+                $trade = MarketBacktestTrade::query()->create([
                     'market_backtest_account_id' => $account->id,
                     'market_backtest_session_id' => $position->market_backtest_session_id,
                     'market_backtest_position_id' => $position->id,
@@ -114,6 +116,7 @@ class CrossLiquidationService
                     'pnl' => $netPnl,
                     'executed_at_time' => $candleTime,
                 ]);
+                $firstTradeId ??= $trade->id;
 
                 $cashDelta += $margin + $grossPnl - $exitFee;
                 $realizedPnlDelta += $netPnl;
@@ -135,17 +138,38 @@ class CrossLiquidationService
                 'fees_paid' => round((float) $account->fees_paid + $feesDelta, 8),
             ]);
 
-            return $this->result('maintenance_breached', $metrics, true, $closedTrades);
+            $content = 'Cross portfolio liquidated · '.count($closedTrades).' position(s) closed';
+            $notification = AdmNotifications::query()->firstOrCreate(
+                ['source_type' => 'cross_liquidation', 'source_id' => $firstTradeId],
+                [
+                    'adm_user_id' => $account->adm_user_id,
+                    'type' => 'cross liquidation',
+                    'content' => $content,
+                    'metadata' => ['account_id' => $account->id, 'closed_trades' => $closedTrades],
+                    'url' => '/notifications/view-all-notifications',
+                    'is_read' => false,
+                ]
+            );
+
+            return $this->result('maintenance_breached', $metrics, true, $closedTrades, $notification->id, $notification->content);
         });
     }
 
-    private function result(string $reason, ?array $metrics = null, bool $liquidated = false, array $closedTrades = []): array
-    {
+    private function result(
+        string $reason,
+        ?array $metrics = null,
+        bool $liquidated = false,
+        array $closedTrades = [],
+        ?int $notificationId = null,
+        ?string $notificationContent = null
+    ): array {
         return [
             'liquidated' => $liquidated,
             'reason' => $reason,
             'metrics' => $metrics,
             'closedTrades' => $closedTrades,
+            'notificationId' => $notificationId,
+            'notificationContent' => $notificationContent,
         ];
     }
 }

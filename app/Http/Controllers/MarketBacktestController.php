@@ -1135,6 +1135,8 @@ class MarketBacktestController extends Controller
             'liquidation' => $result['liquidated'] ? [
                 'reason' => $result['reason'],
                 'closedTrades' => $result['closedTrades'],
+                'notificationId' => $result['notificationId'],
+                'notificationContent' => $result['notificationContent'],
             ] : null,
         ]);
     }

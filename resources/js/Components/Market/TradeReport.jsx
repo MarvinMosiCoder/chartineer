@@ -705,6 +705,7 @@ export default function TradeReport({ refreshKey = 0 }) {
                 <tr>
                   <th className="px-3 py-2">Closed</th>
                   <th className="px-3 py-2">Symbol</th>
+                  <th className="px-3 py-2">Mode</th>
                   <th className="px-3 py-2">Side</th>
                   <th className="px-3 py-2 text-right">Entry</th>
                   <th className="px-3 py-2 text-right">Exit</th>
@@ -728,6 +729,13 @@ export default function TradeReport({ refreshKey = 0 }) {
                         <tr className={rowHoverClass}>
                           <td className={`whitespace-nowrap px-3 py-2 ${bodyTextClass}`}>{formatTradeDate(trade)}</td>
                           <td className={`whitespace-nowrap px-3 py-2 font-semibold ${valueTextClass}`}>{trade.symbol}</td>
+                          <td className="whitespace-nowrap px-3 py-2">
+                            {trade.marginMode === 'cross' ? (
+                              <span className="rounded bg-[#5b8cff]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5b8cff]">Cross</span>
+                            ) : (
+                              <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
+                            )}
+                          </td>
                           <td className="whitespace-nowrap px-3 py-2">
                             <span className={trade.side === 'long' ? longTextClass : shortTextClass}>
                               {trade.category === 'spot' ? 'BUY' : String(trade.side ?? '').toUpperCase()}

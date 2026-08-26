@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\MarketBacktestController;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Models\AdmModels\AdmNotifications;
 use App\Models\AdmUser;
 use App\Models\MarketBacktestAccount;
 use App\Models\MarketBacktestMark;
@@ -58,6 +59,12 @@ class MarketBacktestCrossLiquidationTest extends TestCase
         $this->assertTrue($response->json('liquidation.reason') === 'maintenance_breached');
         $this->assertCount(2, $response->json('liquidation.closedTrades'));
 
+        $this->assertSame(1, AdmNotifications::query()->where('type', 'cross liquidation')->count());
+        $notification = AdmNotifications::query()->where('type', 'cross liquidation')->firstOrFail();
+        $this->assertSame($account->adm_user_id, $notification->adm_user_id);
+        $this->assertSame('Cross portfolio liquidated · 2 position(s) closed', $notification->content);
+        $this->assertSame($response->json('liquidation.notificationId'), $notification->id);
+
         $this->assertSame('closed', $btc->fresh()->status);
         $this->assertSame('cross_liquidation', $btc->fresh()->close_reason);
         $this->assertSame('closed', $eth->fresh()->status);
@@ -88,6 +95,7 @@ class MarketBacktestCrossLiquidationTest extends TestCase
 
         $this->assertNull($second->json('liquidation'));
         $this->assertSame(1, MarketBacktestTrade::query()->where('action', 'close')->count());
+        $this->assertSame(1, AdmNotifications::query()->where('type', 'cross liquidation')->count());
     }
 
     public function test_no_liquidation_when_equity_is_comfortably_above_maintenance(): void
@@ -323,6 +331,20 @@ class MarketBacktestCrossLiquidationTest extends TestCase
             $table->timestamp('observed_at');
             $table->string('status', 16)->default('fresh');
             $table->timestamps();
+        });
+        Schema::create('adm_notifications', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('adm_user_id');
+            $table->string('type')->default('info');
+            $table->string('source_type', 50)->nullable();
+            $table->unsignedBigInteger('source_id')->nullable();
+            $table->json('metadata')->nullable();
+            $table->string('content');
+            $table->string('url')->nullable();
+            $table->boolean('is_read')->default(false);
+            $table->timestamp('dismissed_at')->nullable();
+            $table->timestamps();
+            $table->unique(['source_type', 'source_id'], 'adm_notifications_source_unique');
         });
     }
 }

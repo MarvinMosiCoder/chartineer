@@ -247,5 +247,19 @@ class CrossMarginLiveMonitorTest extends TestCase
             $table->string('status', 16)->default('fresh');
             $table->timestamps();
         });
+        Schema::create('adm_notifications', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('adm_user_id');
+            $table->string('type')->default('info');
+            $table->string('source_type', 50)->nullable();
+            $table->unsignedBigInteger('source_id')->nullable();
+            $table->json('metadata')->nullable();
+            $table->string('content');
+            $table->string('url')->nullable();
+            $table->boolean('is_read')->default(false);
+            $table->timestamp('dismissed_at')->nullable();
+            $table->timestamps();
+            $table->unique(['source_type', 'source_id'], 'adm_notifications_source_unique');
+        });
     }
 }

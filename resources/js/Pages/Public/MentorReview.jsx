@@ -163,6 +163,7 @@ export default function MentorReview({ shareLink = {}, trades = [], analytics = 
               <thead className="sticky top-0 bg-white text-[10px] uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-3 py-2">Symbol</th>
+                  <th className="px-3 py-2">Mode</th>
                   <th className="px-3 py-2">Side</th>
                   <th className="px-3 py-2 text-right">Entry</th>
                   <th className="px-3 py-2 text-right">Exit</th>
@@ -181,6 +182,13 @@ export default function MentorReview({ shareLink = {}, trades = [], analytics = 
                   return (
                     <tr key={trade.id} className="hover:bg-slate-50">
                       <td className="whitespace-nowrap px-3 py-2 font-semibold text-slate-900">{trade.symbol}</td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        {trade.marginMode === 'cross' ? (
+                          <span className="rounded bg-[#5b8cff]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5b8cff]">Cross</span>
+                        ) : (
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">Isolated</span>
+                        )}
+                      </td>
                       <td className="whitespace-nowrap px-3 py-2">
                         <span className={trade.side === 'long' ? 'text-emerald-700' : 'text-red-700'}>
                           {String(trade.side ?? '').toUpperCase()}

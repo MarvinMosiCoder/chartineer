@@ -162,7 +162,11 @@ Display:
 - available margin;
 - margin ratio and escalating warning state.
 
-Position, open-order, history, journal, export, and mentor-review surfaces label margin mode. Cross positions show `Cross` and no fixed liquidation-price value. A portfolio liquidation creates one user notification/toast summarizing the batch and individual trade records for reporting.
+Position, open-order, history, journal, export, and mentor-review surfaces label margin mode. Cross positions show `Cross` and no fixed liquidation-price value.
+
+- The closed-trades journal table (`TradeReport.jsx`) adds a **Mode** column showing a `Cross`/`Isolated` badge per row, styled consistently with the badges already used on the Positions and Open Orders panels. The journal's export and symbol/side/result/journal-status filters are unaffected; Mode is a display column only for version one.
+- Every entry toast — the order-placed/filled notification fired on a new position or triggered pending order — states the margin mode alongside symbol, side, quantity, and price (e.g. `BTCUSDT Long filled · Cross · 0.01 @ 65,000.00`), not only the batch liquidation summary below.
+- A portfolio liquidation creates one user notification/toast summarizing the batch (always `Cross`, since Isolated positions are never included) and individual trade records for reporting.
 
 ## Failure and safety behavior
 
@@ -176,11 +180,11 @@ Position, open-order, history, journal, export, and mentor-review surfaces label
 
 ## Delivery phases
 
-1. **Core persistence and calculations:** migrations, model fields, pure service, payload metrics, unit tests.
-2. **Order lifecycle:** Cross entry/pending/trigger/cancel/manual close with transaction tests.
-3. **Multi-symbol marks and monitoring:** ledger, Live worker, Replay evaluator, stale-data behavior.
-4. **Atomic portfolio liquidation:** batch close, notifications, concurrency/idempotency tests.
-5. **UI and reporting:** selector, metrics, labels, histories, exports, documentation.
+1. **Core persistence and calculations:** migrations, model fields, pure service, payload metrics, unit tests. — Delivered.
+2. **Order lifecycle:** Cross entry/pending/trigger/cancel/manual close with transaction tests. — Delivered.
+3. **Multi-symbol marks and monitoring:** ledger, Live worker, Replay evaluator, stale-data behavior. — Live worker delivered; the Replay evaluator is tracked as separate outstanding follow-up work (see `docs/developer/backtesting-and-orders.md`'s "Replay evaluation is intentionally not built yet").
+4. **Atomic portfolio liquidation:** batch close, notifications, concurrency/idempotency tests. — Delivered, including a persisted `AdmNotifications` row on liquidation (not just the batch close itself), surfaced via the existing notification feed/toast mechanism regardless of which client triggered the check.
+5. **UI and reporting:** selector, metrics, labels, histories, exports, documentation. — Delivered: every position/order/history/journal/export/mentor-review surface labels margin mode, entry/cancel/close toasts state it, and docs are updated (see `docs/developer/backtesting-and-orders.md`).
 
 Each phase must keep Isolated and Spot behavior passing before proceeding. A hidden/config-gated rollout is acceptable until phases 1-4 are complete; users must not receive a selectable Cross mode backed by incomplete monitoring.
 
