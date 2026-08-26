@@ -331,6 +331,51 @@ export default function TraderNavbar() {
                                             <div className="mt-2 grid grid-cols-2 gap-2 text-xs"><span>Open positions</span><strong className="text-right">{assetsAccount.openPositions?.length ?? 0}</strong><span>Pending entries</span><strong className="text-right">{assetsAccount.pendingPositions?.length ?? 0}</strong><span>Session</span><strong className="truncate text-right">{assetsAccount.activeSession?.name ?? 'None'}</strong></div>
                                         </div>
 
+                                        {assetsAccount.cross && (Number(assetsAccount.cross.initialMargin) > 0 || Number(assetsAccount.cross.pendingReserve) > 0) && (
+                                            <div className={`rounded-lg border p-3 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#787b86]">Cross Margin portfolio</div>
+                                                    {(() => {
+                                                        const cross = assetsAccount.cross;
+                                                        if (!cross.complete) {
+                                                            return <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-400">Marks stale</span>;
+                                                        }
+                                                        const ratio = cross.marginRatio;
+                                                        if (ratio == null) return null;
+                                                        const danger = ratio < 1.5;
+                                                        const warning = !danger && ratio < 3;
+                                                        return (
+                                                            <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+                                                                danger ? 'bg-red-500/10 text-red-400' : warning ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'
+                                                            }`}>
+                                                                {danger ? 'At risk' : warning ? 'Watch' : 'Healthy'}
+                                                            </span>
+                                                        );
+                                                    })()}
+                                                </div>
+                                                <div className="mt-2 grid grid-cols-2 gap-y-1.5 gap-x-2 text-xs">
+                                                    {[
+                                                        ['Equity', formatAssetMoney(assetsAccount.cross.equity)],
+                                                        ['Unrealized PnL', formatAssetMoney(assetsAccount.cross.unrealizedPnl)],
+                                                        ['Initial margin', formatAssetMoney(assetsAccount.cross.initialMargin)],
+                                                        ['Pending reserve', formatAssetMoney(assetsAccount.cross.pendingReserve)],
+                                                        ['Maintenance', formatAssetMoney(assetsAccount.cross.maintenanceRequirement)],
+                                                        ['Available margin', formatAssetMoney(assetsAccount.cross.availableMargin)],
+                                                    ].map(([label, value]) => (
+                                                        <React.Fragment key={label}>
+                                                            <span className="text-[#787b86]">{label}</span>
+                                                            <strong className="truncate text-right">{value}</strong>
+                                                        </React.Fragment>
+                                                    ))}
+                                                </div>
+                                                {!assetsAccount.cross.complete && assetsAccount.cross.missingMarkets?.length > 0 && (
+                                                    <div className="mt-2 text-[10px] text-amber-400">
+                                                        Missing a current price for: {assetsAccount.cross.missingMarkets.join(', ')}.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
                                         <div>
                                             <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#787b86]">Recent demo transactions</div>
                                             <div className="max-h-36 space-y-1 overflow-y-auto">

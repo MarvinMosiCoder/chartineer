@@ -227,6 +227,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::post('/market-backtest/positions/{position}/close', [MarketBacktestController::class, 'closePosition'])->middleware(['replay.access', 'throttle:backtest-write'])->name('market-backtest.positions.close');
     Route::post('/market-backtest/positions/{position}/process-candle', [MarketBacktestController::class, 'processPositionCandle'])->middleware(['replay.access', 'throttle:backtest-write'])->name('market-backtest.positions.process-candle');
     Route::post('/market-backtest/positions/{position}/snapshot', [MarketBacktestController::class, 'uploadPositionSnapshot'])->middleware(['replay.access', 'throttle:backtest-heavy'])->name('market-backtest.positions.snapshot');
+    Route::post('/market-backtest/cross/evaluate', [MarketBacktestController::class, 'evaluateCrossPortfolio'])->middleware(['replay.access', 'throttle:backtest-write'])->name('market-backtest.cross.evaluate');
     Route::put('/market-backtest/trades/{position}/journal', [MarketBacktestController::class, 'updateTradeJournal'])->middleware('throttle:backtest-write')->name('market-backtest.trades.journal');
 
     // Imported (real) trades — a separate dataset from simulated backtest trades.
@@ -263,6 +264,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::post('/profile/avatar', [ProfilePageController::class, 'selectAvatar'])->name('profile.avatar.select');
     Route::put('/profile/details', [ProfilePageController::class, 'updateDetails'])->name('profile.details.update');
     Route::patch('/profile/timezone', [ProfilePageController::class, 'updateTimezone'])->name('profile.timezone.update');
+    Route::patch('/profile/last-market-symbol', [ProfilePageController::class, 'updateLastMarketSymbol'])->name('profile.last-market-symbol.update');
     Route::post('/profile/deactivate', [ProfilePageController::class, 'deactivate'])->middleware('throttle:market-write')->name('profile.deactivate');
     Route::post('/update-theme', [ProfilePageController::class, 'updateTheme'])->name('update-theme');
     //CHANGE PASSWORD

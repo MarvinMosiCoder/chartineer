@@ -9,6 +9,9 @@
 - `resources/js/Components/Market/RiskGuardrailSettings.jsx` — risk guardrail settings interface.
 - `app/Services/MarketBacktestAdvancedAnalyticsService.php` — equity, drawdown, streak, grouped-performance, and Monte Carlo calculations.
 - `database/migrations/2026_08_13_000003_add_advanced_exit_rules_to_market_backtest_positions.php` — liquidation, managed-exit, close-reason, and original-size fields.
+- `app/Services/CrossMarginService.php`, `CrossMarkService.php`, `CrossLiquidationService.php` — BacktradeLab Cross Margin's pure portfolio calculator, mark ledger, and atomic liquidation transaction.
+- `app/Services/CrossMarginLiveMonitor.php`, `app/Console/Commands/MonitorCrossMargin.php`, `config/cross-margin.php` — the Live Cross monitor (`php artisan cross-margin:monitor`) and its enable/poll-interval config.
+- `app/Models/MarketBacktestMark.php`, `database/migrations/2026_08_26_000001_add_cross_margin_support_to_market_backtest.php` — the Cross mark ledger table and `exchange`/`margin_mode` position columns.
 
 Use this index to find the feature owner of a source file. Detailed behavior belongs in the linked guide.
 
@@ -29,6 +32,7 @@ Use this index to find the feature owner of a source file. Detailed behavior bel
 | `liveCandleStream.js` | [Live streaming](live-market-streaming.md) |
 | `MarketReplayProgressController.php`, `MarketReplayProgress.php` | [Replay](replay-and-progress.md) |
 | `MarketBacktestController.php`, `MarketBacktest*.php` | [Backtesting](backtesting-and-orders.md) and [Reports](trade-reports-and-journals.md) |
+| `Cross*.php`, `MonitorCrossMargin.php`, `config/cross-margin.php` | [Backtesting](backtesting-and-orders.md#backtradelab-cross-margin) |
 | `MarketPriceAlertController.php`, `NotificationsController.php` | [Alerts and notifications](price-alerts-and-notifications.md) |
 | `ReplayAccessController.php`, `Services/Payments/*`, `PayMongoWebhookController.php` | [Subscriptions and PayMongo](subscriptions-trials-and-paymongo.md) |
 | `UserFeedbackController.php`, `Pages/Feedback/*` | [Feedback](feedback.md) |

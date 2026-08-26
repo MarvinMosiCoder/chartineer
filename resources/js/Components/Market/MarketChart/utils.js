@@ -221,7 +221,9 @@ export function estimateDrawingLogicalFromTime(candles, time, intervalSeconds = 
   // start times after switching to 15m or higher. Snap them to the candle
   // that contains the original timestamp so Lightweight Charts receives a
   // valid logical bar coordinate on the coarser series.
-  if (intervalSeconds >= 900) {
+  const lastCandleTime = Number(candles[candles.length - 1]?.time);
+
+  if (intervalSeconds >= 900 && numericTime <= lastCandleTime) {
     const containingIndex = candles.findIndex((candle, index) => {
       const nextCandle = candles[index + 1];
       return (
@@ -235,6 +237,9 @@ export function estimateDrawingLogicalFromTime(candles, time, intervalSeconds = 
     }
   }
 
+  // A drawing placed after the newest live candle is a projection into future
+  // whitespace, not part of the unbounded final candle. Extrapolate its logical
+  // position so the anchor stays exactly where the user clicked.
   return estimateLogicalFromTime(candles, numericTime);
 }
 

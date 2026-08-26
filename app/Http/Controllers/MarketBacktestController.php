@@ -11,6 +11,9 @@ use App\Models\MarketBacktestSession;
 use App\Models\MarketBacktestRiskSetting;
 use App\Models\MarketBacktestSnapshot;
 use App\Models\MarketBacktestTrade;
+use App\Services\CrossLiquidationService;
+use App\Services\CrossMarginService;
+use App\Services\CrossMarkService;
 use App\Services\MarketBacktestInsightService;
 use App\Services\MarketBacktestReportService;
 use App\Services\MarketBacktestRiskGuardrailService;
@@ -18,18 +21,22 @@ use App\Services\MarketBacktestAdvancedAnalyticsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class MarketBacktestController extends Controller
 {
     private const DEFAULT_BALANCE = 10000;
-    private const FEE_RATE = 0.0004;
+    private const FEE_RATE = CrossMarginService::FEE_RATE;
 
     public function __construct(
         private MarketBacktestReportService $reportService,
         private MarketBacktestInsightService $insightService,
         private MarketBacktestRiskGuardrailService $riskGuardrailService,
-        private MarketBacktestAdvancedAnalyticsService $advancedAnalyticsService
+        private MarketBacktestAdvancedAnalyticsService $advancedAnalyticsService,
+        private CrossMarginService $crossMarginService,
+        private CrossMarkService $crossMarkService,
+        private CrossLiquidationService $crossLiquidationService
     ) {
     }
 
@@ -40,6 +47,8 @@ class MarketBacktestController extends Controller
             'exchange' => ['nullable', 'string', 'max:32'],
             'category' => ['nullable', 'string', 'max:32'],
             'timeframe' => ['nullable', 'string', 'max:16'],
+            'mode' => ['nullable', Rule::in(['live', 'replay'])],
+            'candle_time' => ['nullable', 'integer', 'min:0'],
             'price' => ['nullable', 'numeric', 'gt:0'],
         ]);
 
@@ -47,6 +56,19 @@ class MarketBacktestController extends Controller
         $symbol = isset($validated['symbol']) ? strtoupper($validated['symbol']) : null;
         $price = isset($validated['price']) ? (float) $validated['price'] : null;
         $session = $this->getActiveSession($request, $account);
+
+        if ($symbol && $price) {
+            $this->crossMarkService->record(
+                $account,
+                $session,
+                $validated['exchange'] ?? $session?->exchange ?? 'bybit',
+                $validated['category'] ?? $session?->market_category ?? 'linear',
+                $symbol,
+                $validated['mode'] ?? 'live',
+                $price,
+                (int) ($validated['candle_time'] ?? time())
+            );
+        }
 
         return response()->json([
             'success' => true,
@@ -61,6 +83,7 @@ class MarketBacktestController extends Controller
             'symbol' => ['required', 'string', 'max:32', 'regex:/^[A-Za-z0-9]+$/'],
             'exchange' => ['nullable', 'string', 'max:32'],
             'category' => ['nullable', 'string', 'max:32'],
+            'margin_mode' => ['nullable', Rule::in(['isolated', 'cross'])],
             'timeframe' => ['nullable', 'string', 'max:16'],
             'started_at_time' => ['nullable', 'integer', 'min:0'],
         ]);
@@ -157,7 +180,7 @@ class MarketBacktestController extends Controller
         $limit = $validated['limit'] ?? 50;
 
         $trades = $account->trades()
-            ->with('position:id,order_type,leverage,stop_loss,take_profit,category')
+            ->with('position:id,order_type,leverage,stop_loss,take_profit,category,margin_mode')
             ->when($session, fn ($query) => $query->where('market_backtest_session_id', $session->id))
             ->orderByDesc('created_at')
             ->limit($limit)
@@ -190,6 +213,7 @@ class MarketBacktestController extends Controller
                 'fee' => (float) $trade->fee,
                 'reduceOnly' => false,
                 'leverage' => $position ? $this->getPositionLeverage($position) : null,
+                'marginMode' => $position?->margin_mode ?? 'isolated',
                 'hasStopLoss' => $position?->stop_loss !== null,
                 'hasTakeProfit' => $position?->take_profit !== null,
                 'status' => 'complete',
@@ -215,6 +239,7 @@ class MarketBacktestController extends Controller
                 'fee' => 0,
                 'reduceOnly' => false,
                 'leverage' => $this->getPositionLeverage($position),
+                'marginMode' => $position->margin_mode ?? 'isolated',
                 'hasStopLoss' => $position->stop_loss !== null,
                 'hasTakeProfit' => $position->take_profit !== null,
                 'status' => 'cancelled',
@@ -459,6 +484,7 @@ class MarketBacktestController extends Controller
             'session_id' => ['nullable', 'integer', 'min:1'],
             'exchange' => ['nullable', 'string', 'max:32'],
             'category' => ['nullable', 'string', 'max:32'],
+            'margin_mode' => ['nullable', Rule::in(['isolated', 'cross'])],
             'timeframe' => ['nullable', 'string', 'max:16'],
             'notional' => ['required', 'numeric', 'min:1', 'max:1000000000'],
             'leverage' => ['nullable', 'numeric', 'min:1', 'max:125'],
@@ -496,6 +522,8 @@ class MarketBacktestController extends Controller
             $session = $this->resolveSessionForTrade($request, $account, $validated);
             $category = $validated['category'] ?? 'linear';
             $isSpot = $category === 'spot';
+            $marginMode = $isSpot ? 'isolated' : ($validated['margin_mode'] ?? 'isolated');
+            $exchange = strtolower($validated['exchange'] ?? $session?->exchange ?? 'bybit');
 
             if ($isSpot && $validated['side'] === 'short') {
                 abort(response()->json([
@@ -508,6 +536,13 @@ class MarketBacktestController extends Controller
                 abort(response()->json([
                     'success' => false,
                     'message' => 'Spot positions do not support leverage.',
+                ], 422));
+            }
+
+            if ($isSpot && ($validated['margin_mode'] ?? 'isolated') === 'cross') {
+                abort(response()->json([
+                    'success' => false,
+                    'message' => 'Spot positions do not support Cross Margin.',
                 ], 422));
             }
 
@@ -579,12 +614,16 @@ class MarketBacktestController extends Controller
                 }
             }
 
-            $sizing = $this->resolveEntrySizing(
-                $requestedMargin,
-                $leverage,
-                $price,
-                (float) $account->cash_balance
-            );
+            // Cross sizing is never trimmed/rejected against the account's raw cash_balance —
+            // a Cross entry can be legitimately backed by unrealized profit sitting in other
+            // open Cross positions (pooled equity), which cash_balance alone doesn't reflect.
+            // cash_balance is still the actual ledger this entry's margin+fee gets deducted
+            // from below (and can go negative, exactly like a real cross account borrowing
+            // against portfolio equity), but affordability is decided by the shared
+            // cross_available_margin check further down, not this isolated-style cap.
+            $sizing = $marginMode === 'cross'
+                ? $this->resolveCrossEntrySizing($requestedMargin, $leverage, $price)
+                : $this->resolveEntrySizing($requestedMargin, $leverage, $price, (float) $account->cash_balance);
 
             if (!$sizing) {
                 $entryFee = round($requestedMargin * $leverage * self::FEE_RATE, 8);
@@ -596,7 +635,38 @@ class MarketBacktestController extends Controller
                 ], 422));
             }
 
-            $position = MarketBacktestPosition::query()->create([
+            if ($marginMode === 'cross') {
+                $this->crossMarkService->record(
+                    $account,
+                    $session,
+                    $exchange,
+                    $category,
+                    $validated['symbol'],
+                    isset($validated['executed_at_time']) ? 'replay' : 'live',
+                    $price,
+                    (int) ($validated['executed_at_time'] ?? time())
+                );
+                $cross = $this->buildCrossMetrics(
+                    $account,
+                    isset($validated['executed_at_time']) ? 'replay' : 'live',
+                    $session
+                );
+                if (!$cross['complete']) {
+                    abort(response()->json([
+                        'success' => false,
+                        'message' => 'Cross Margin is unavailable until every open Cross market has a current simulated mark.',
+                        'missingMarkets' => $cross['missingMarkets'],
+                    ], 422));
+                }
+                if ($sizing['requiredCash'] > $cross['availableMargin']) {
+                    abort(response()->json([
+                        'success' => false,
+                        'message' => 'Insufficient shared Cross available margin.',
+                    ], 422));
+                }
+            }
+
+            $positionData = [
                 'market_backtest_account_id' => $account->id,
                 'market_backtest_session_id' => $session?->id,
                 'market_backtest_playbook_id' => $playbook?->id,
@@ -615,7 +685,7 @@ class MarketBacktestController extends Controller
                 'opened_at_time' => $validated['executed_at_time'] ?? null,
                 'stop_loss' => $stopLoss,
                 'take_profit' => $takeProfit,
-                'liquidation_price' => $isSpot ? null : $this->liquidationPrice($validated['side'], $price, $leverage),
+                'liquidation_price' => ($isSpot || $marginMode === 'cross') ? null : $this->liquidationPrice($validated['side'], $price, $leverage),
                 'trailing_stop_percent' => $validated['trailing_stop_percent'] ?? null,
                 'break_even_trigger_percent' => $validated['break_even_trigger_percent'] ?? null,
                 'partial_take_profit_percent' => $validated['partial_take_profit_percent'] ?? null,
@@ -635,7 +705,19 @@ class MarketBacktestController extends Controller
                     'checklist' => array_values($playbook->checklist ?? []),
                 ] : null,
                 'checklist_answers' => $playbook ? $checklistAnswers : null,
-            ]);
+            ];
+            if (Schema::hasColumn('market_backtest_positions', 'exchange')) {
+                $positionData['exchange'] = $exchange;
+            }
+            if (Schema::hasColumn('market_backtest_positions', 'margin_mode')) {
+                $positionData['margin_mode'] = $marginMode;
+            } elseif ($marginMode === 'cross') {
+                abort(response()->json([
+                    'success' => false,
+                    'message' => 'Cross Margin requires the latest database migration.',
+                ], 503));
+            }
+            $position = MarketBacktestPosition::query()->create($positionData);
 
             if ($isPendingOrder) {
                 return ['account' => $account->fresh(), 'riskGuardrails' => $riskEvaluation];
@@ -834,18 +916,45 @@ class MarketBacktestController extends Controller
 
             $entryPrice = (float) $position->entry_price;
             $leverage = $this->getPositionLeverage($position);
-            $sizing = $this->resolveEntrySizing(
-                (float) $position->margin,
-                $leverage,
-                $entryPrice,
-                (float) $account->cash_balance
-            );
+            $isCross = Schema::hasColumn('market_backtest_positions', 'margin_mode') && $position->margin_mode === 'cross';
+            $sizing = $isCross
+                ? $this->resolveCrossEntrySizing((float) $position->margin, $leverage, $entryPrice)
+                : $this->resolveEntrySizing((float) $position->margin, $leverage, $entryPrice, (float) $account->cash_balance);
 
             if (!$sizing) {
                 abort(response()->json([
                     'success' => false,
                     'message' => 'Insufficient paper balance to trigger this pending entry.',
                 ], 422));
+            }
+
+            if ($isCross) {
+                $session = $this->getActiveSession($request, $account);
+                $mode = isset($validated['executed_at_time']) ? 'replay' : 'live';
+                $this->crossMarkService->record(
+                    $account,
+                    $session,
+                    $position->exchange ?? 'bybit',
+                    $position->category,
+                    $position->symbol,
+                    $mode,
+                    (float) $validated['price'],
+                    (int) ($validated['executed_at_time'] ?? time())
+                );
+                $cross = $this->buildCrossMetrics($account, $mode, $session, $position->id);
+                if (!$cross['complete']) {
+                    abort(response()->json([
+                        'success' => false,
+                        'message' => 'Cross Margin is unavailable until every open Cross market has a current simulated mark.',
+                        'missingMarkets' => $cross['missingMarkets'],
+                    ], 422));
+                }
+                if ($sizing['requiredCash'] > $cross['availableMargin']) {
+                    abort(response()->json([
+                        'success' => false,
+                        'message' => 'Insufficient shared Cross available margin to trigger this pending entry.',
+                    ], 422));
+                }
             }
 
             $position->update([
@@ -917,7 +1026,7 @@ class MarketBacktestController extends Controller
             'quantity_percent' => ['nullable', 'numeric', 'min:1', 'max:100'],
         ]);
 
-        $account = DB::transaction(function () use ($request, $position, $validated) {
+        $result = DB::transaction(function () use ($request, $position, $validated) {
             $account = $this->getOrCreateAccount($request, true);
 
             $position = MarketBacktestPosition::query()
@@ -927,7 +1036,7 @@ class MarketBacktestController extends Controller
                 ->firstOrFail();
 
             if ($position->status !== 'open') {
-                return $account->fresh();
+                return ['account' => $account->fresh(), 'closedTrade' => null];
             }
 
             $exitPrice = (float) $validated['price'];
@@ -980,12 +1089,53 @@ class MarketBacktestController extends Controller
                 'fees_paid' => round((float) $account->fees_paid + $exitFee, 8),
             ]);
 
-            return $account->fresh();
+            return [
+                'account' => $account->fresh(),
+                'closedTrade' => [
+                    'positionId' => $position->id,
+                    'symbol' => $position->symbol,
+                    'side' => $position->side,
+                    'category' => $position->category,
+                    'reason' => $validated['close_reason'] ?? 'manual',
+                    'isPartial' => $isPartial,
+                    'quantity' => $closeQuantity,
+                    'price' => $exitPrice,
+                    'netPnl' => $netPnl,
+                ],
+            ];
         });
+
+        $account = $result['account'];
 
         return response()->json([
             'success' => true,
             'account' => $this->buildPayload($account, $position->symbol, (float) $validated['price'], $this->getActiveSession($request, $account)),
+            'closedTrade' => $result['closedTrade'],
+        ]);
+    }
+
+    public function evaluateCrossPortfolio(Request $request)
+    {
+        $validated = $request->validate([
+            'mode' => ['nullable', Rule::in(['live', 'replay'])],
+            'session_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $account = $this->getOrCreateAccount($request);
+        $mode = $validated['mode'] ?? 'live';
+        $session = $mode === 'replay' ? $this->resolveSessionForEvaluation($request, $account, $validated) : null;
+
+        $result = $this->crossLiquidationService->evaluate($account->id, $mode, $session?->id, self::FEE_RATE);
+
+        $account = $account->fresh();
+
+        return response()->json([
+            'success' => true,
+            'account' => $this->buildPayload($account, null, null, $this->getActiveSession($request, $account)),
+            'liquidation' => $result['liquidated'] ? [
+                'reason' => $result['reason'],
+                'closedTrades' => $result['closedTrades'],
+            ] : null,
         ]);
     }
 
@@ -1053,6 +1203,20 @@ class MarketBacktestController extends Controller
             ->where('status', 'active')
             ->latest()
             ->first();
+    }
+
+    private function resolveSessionForEvaluation(Request $request, MarketBacktestAccount $account, array $validated): ?MarketBacktestSession
+    {
+        if (!empty($validated['session_id'])) {
+            return MarketBacktestSession::query()
+                ->where('id', $validated['session_id'])
+                ->where('adm_user_id', $request->user()->id)
+                ->where('market_backtest_account_id', $account->id)
+                ->where('status', 'active')
+                ->first();
+        }
+
+        return $this->getActiveSession($request, $account);
     }
 
     private function getOrCreateActiveSession(Request $request, MarketBacktestAccount $account, array $data): MarketBacktestSession
@@ -1177,6 +1341,34 @@ class MarketBacktestController extends Controller
         return round((float) $position->margin * $this->getPositionLeverage($position), 8);
     }
 
+    private function buildCrossMetrics(
+        MarketBacktestAccount $account,
+        string $mode,
+        ?MarketBacktestSession $session = null,
+        ?int $excludePositionId = null
+    ): array {
+        $marks = $this->crossMarkService->mapForAccount(
+            $account,
+            $mode,
+            $session,
+            $mode === 'live' ? now()->subMinutes(2) : null
+        );
+
+        return $this->crossMarginService->calculate(
+            (float) $account->cash_balance,
+            $account->positions()->where('status', 'open')->when(
+                $excludePositionId,
+                fn ($query) => $query->where('id', '!=', $excludePositionId)
+            )->get(),
+            $account->positions()->where('status', 'pending')->when(
+                $excludePositionId,
+                fn ($query) => $query->where('id', '!=', $excludePositionId)
+            )->get(),
+            $marks,
+            self::FEE_RATE
+        );
+    }
+
     private function liquidationPrice(string $side, float $entryPrice, float $leverage): float
     {
         $maintenanceMarginRate = 0.005;
@@ -1242,6 +1434,35 @@ class MarketBacktestController extends Controller
         ];
     }
 
+    /**
+     * Cross's counterpart to resolveEntrySizing() — deliberately has no cashBalance
+     * parameter and never trims/rejects based on it. A Cross entry's affordability is
+     * decided by the pooled cross_available_margin check the caller runs separately
+     * (which already accounts for unrealized profit in other open Cross positions);
+     * gating on raw cash_balance here would reject entries the portfolio can actually
+     * cover.
+     */
+    private function resolveCrossEntrySizing(float $requestedMargin, float $leverage, float $price): ?array
+    {
+        $margin = round($requestedMargin, 8);
+        $leverage = round(max($leverage, 1), 2);
+
+        if ($margin <= 0 || $price <= 0) {
+            return null;
+        }
+
+        $positionNotional = round($margin * $leverage, 8);
+        $entryFee = round($positionNotional * self::FEE_RATE, 8);
+
+        return [
+            'margin' => $margin,
+            'positionNotional' => $positionNotional,
+            'entryFee' => $entryFee,
+            'requiredCash' => round($margin + $entryFee, 8),
+            'quantity' => round($positionNotional / $price, 10),
+        ];
+    }
+
     private function buildPayload(
         MarketBacktestAccount $account,
         ?string $symbol = null,
@@ -1264,6 +1485,34 @@ class MarketBacktestController extends Controller
             ->orderByDesc('created_at')
             ->limit(30)
             ->get();
+
+        $crossOpenPositions = $account->positions()->where('status', 'open')->get();
+        $crossPendingPositions = $account->positions()->where('status', 'pending')->get();
+        $crossMarks = $this->crossMarkService->mapForAccount($account, 'live', null, now()->subMinutes(2));
+        if ($session) {
+            $crossMarks = array_merge($crossMarks, $this->crossMarkService->mapForAccount($account, 'replay', $session));
+        }
+        if ($symbol && $price) {
+            // Matching by symbol alone is only safe when exactly one Cross market uses that
+            // symbol string for this account — buildPayload() isn't told which exchange the
+            // incoming price belongs to, and overlaying it onto every same-named position would
+            // write one exchange's price onto another exchange's distinct market (e.g. both an
+            // okx:linear:BTCUSDT and a bybit:linear:BTCUSDT Cross position). When that ambiguity
+            // exists, skip the overlay and rely on each market's own already-persisted mark.
+            $symbolMatches = $crossOpenPositions->concat($crossPendingPositions)
+                ->filter(fn (MarketBacktestPosition $position) => $position->symbol === $symbol);
+            $distinctMarkets = $symbolMatches->map(fn (MarketBacktestPosition $position) => $this->crossMarginService->marketKey($position))->unique();
+            if ($distinctMarkets->count() === 1) {
+                $crossMarks[$distinctMarkets->first()] = $price;
+            }
+        }
+        $crossMetrics = $this->crossMarginService->calculate(
+            (float) $account->cash_balance,
+            $crossOpenPositions,
+            $crossPendingPositions,
+            $crossMarks,
+            self::FEE_RATE
+        );
 
         $unrealizedPnl = $openPositions->sum(function (MarketBacktestPosition $position) use ($symbol, $price) {
             if (!$price || !$symbol || $position->symbol !== $symbol) {
@@ -1290,6 +1539,7 @@ class MarketBacktestController extends Controller
             'realizedPnl' => (float) $account->realized_pnl,
             'feesPaid' => (float) $account->fees_paid,
             'feeRate' => self::FEE_RATE,
+            'cross' => $crossMetrics,
             'activeSession' => $session ? [
                 'id' => $session->id,
                 'name' => $session->name,
@@ -1306,7 +1556,9 @@ class MarketBacktestController extends Controller
                 'id' => $position->id,
                 'sessionId' => $position->market_backtest_session_id,
                 'symbol' => $position->symbol,
+                'exchange' => $position->exchange ?? 'bybit',
                 'category' => $position->category,
+                'marginMode' => $position->margin_mode ?? 'isolated',
                 'side' => $position->side,
                 'status' => $position->status,
                 'quantity' => (float) $position->quantity,
@@ -1338,7 +1590,9 @@ class MarketBacktestController extends Controller
                 'id' => $position->id,
                 'sessionId' => $position->market_backtest_session_id,
                 'symbol' => $position->symbol,
+                'exchange' => $position->exchange ?? 'bybit',
                 'category' => $position->category,
+                'marginMode' => $position->margin_mode ?? 'isolated',
                 'side' => $position->side,
                 'status' => $position->status,
                 'quantity' => (float) $position->quantity,

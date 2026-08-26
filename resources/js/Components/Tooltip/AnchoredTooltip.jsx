@@ -85,6 +85,7 @@ export function IconTooltipButton({
   label,
   isDark,
   className,
+  wrapperClassName,
   style,
   onClick,
   onMouseDown,
@@ -100,7 +101,7 @@ export function IconTooltipButton({
   const tooltipEnabled = !disabled || showTooltipWhenDisabled;
   return (
     <span
-      className={`relative inline-flex shrink-0 ${className ?? ''}`}
+      className={`relative inline-flex shrink-0 ${wrapperClassName ?? className ?? ''}`}
       onMouseEnter={show}
       onMouseLeave={hide}
       onFocus={show}

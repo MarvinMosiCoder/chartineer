@@ -26,7 +26,7 @@ Only a valid normalized candle should change the UI to `Live`. Repeated timestam
 - Encapsulate exchange message shapes and subscription payloads in the stream module.
 - Clear sockets, reconnect timers, stale watchdogs, and polling on dependency change/unmount.
 - Keep production CSP/firewall access for all configured WebSocket hosts.
-- Avoid `fitContent()` during every tick; preserve the user's viewport.
+- Avoid `fitContent()` during every tick; preserve the user's viewport. This also covers a subtler case than a literal `fitContent()` call: the tick-driven `candleSeries.setData(visibleCandles...)`/`volumeSeries.setData(visibleVolume)` effect in `MarketChart.jsx` captures the visible logical range before each call and restores it afterward whenever the user isn't already pinned to the live edge, because `lightweight-charts`' own `shiftVisibleRangeOnNewBar` (on by default) silently re-anchors the viewport on `setData()` when the bar count grows — this is not dead code to simplify away; removing it reproduces the "can't place a drawing tool in the live chart's future whitespace" regression documented in [Trading chart](trading-chart.md).
 - REST fallback polls every 10 seconds by default, pauses while the tab is hidden or offline, and resumes immediately when visible/online. The server coalesces identical latest-candle requests for five seconds.
 - Reconnect delays include jitter. BingX uses separate Spot and swap WebSocket hosts. MEXC Spot decodes the current protobuf K-line channel; unsupported MEXC timeframes are not offered.
 

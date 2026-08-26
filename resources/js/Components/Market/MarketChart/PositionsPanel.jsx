@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
-import { FileText } from 'lucide-react';
+import { FileText, X } from 'lucide-react';
 import { IconTooltipButton } from '../../Tooltip/AnchoredTooltip';
+import { estimatePriceFromPnlPercent, estimatePnlPercentFromPrice, TpSlAdvancedField } from './ReplayPanel';
 
 const TABS = [
   { key: 'positions', label: 'Positions' },
@@ -40,15 +42,6 @@ function formatOrderTime(epochSeconds) {
   });
 }
 
-function estimateLiquidationPrice(position) {
-  if (position?.category === 'spot') return null;
-  const entry = Number(position?.entryPrice);
-  const leverage = Number(position?.leverage);
-  if (!Number.isFinite(entry) || !Number.isFinite(leverage) || leverage <= 0) return null;
-  const buffer = 1 / leverage;
-  return position?.side === 'short' ? entry * (1 + buffer) : entry * (1 - buffer);
-}
-
 function positionSideLabel(item) {
   if (item?.category === 'spot') return 'Buy';
   return item?.side === 'short' ? 'Short' : 'Long';
@@ -82,6 +75,169 @@ function EmptyState({ label = 'No Data', isDark }) {
   );
 }
 
+// Reuses ReplayPanel's Advanced TP/SL field (same Price/PnL% toggle + preview text the entry
+// ticket uses) so a position/pending order opened without SL/TP set has a way to add it —
+// dragging the chart's SL/TP line only works when a line already exists (buildLine() in
+// MarketChart.jsx renders nothing for a null price), so a forgotten SL/TP had no way back in.
+function PositionRiskModal({ position, isDark, onClose, onSave }) {
+  const side = position.side;
+  const entryPrice = Number(position.entryPrice);
+  const leverage = Number(position.leverage) || 1;
+  const originalStopLoss = position.stopLoss != null ? Number(position.stopLoss) : null;
+  const originalTakeProfit = position.takeProfit != null ? Number(position.takeProfit) : null;
+
+  const [stopLossMode, setStopLossMode] = useState('price');
+  const [stopLossPrice, setStopLossPrice] = useState(originalStopLoss != null ? String(originalStopLoss) : '');
+  const [stopLossPnl, setStopLossPnl] = useState('');
+  const [takeProfitMode, setTakeProfitMode] = useState('price');
+  const [takeProfitPrice, setTakeProfitPrice] = useState(originalTakeProfit != null ? String(originalTakeProfit) : '');
+  const [takeProfitPnl, setTakeProfitPnl] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const surfaceClass = isDark ? 'border-gray-700 bg-[#151617] text-white' : 'border-slate-200 bg-white text-slate-900';
+  const fieldClass = isDark
+    ? 'border-gray-700 bg-black-table-color text-white placeholder:text-gray-500 focus:border-gray-500'
+    : 'border-slate-300 bg-white text-slate-900 placeholder:text-slate-400';
+  const mutedClass = isDark ? 'text-gray-400' : 'text-slate-500';
+  const segmentBorderClass = isDark ? 'border-gray-700' : 'border-slate-300';
+
+  const stopLossPreview = stopLossMode === 'price'
+    ? (() => {
+        const pct = estimatePnlPercentFromPrice(side, entryPrice, leverage, stopLossPrice);
+        return pct != null ? `≈ ${pct.toFixed(2)}% PnL at this price` : 'Enter a trigger price';
+      })()
+    : (() => {
+        const price = estimatePriceFromPnlPercent(side, entryPrice, leverage, stopLossPnl, true);
+        return price != null ? `≈ Triggers at ${price.toFixed(price < 1 ? 8 : 2)}` : 'Enter a % of margin to lose';
+      })();
+
+  const takeProfitPreview = takeProfitMode === 'price'
+    ? (() => {
+        const pct = estimatePnlPercentFromPrice(side, entryPrice, leverage, takeProfitPrice);
+        return pct != null ? `≈ ${pct.toFixed(2)}% PnL at this price` : 'Enter a trigger price';
+      })()
+    : (() => {
+        const price = estimatePriceFromPnlPercent(side, entryPrice, leverage, takeProfitPnl, false);
+        return price != null ? `≈ Triggers at ${price.toFixed(price < 1 ? 8 : 2)}` : 'Enter a % of margin to gain';
+      })();
+
+  // No clear/remove action this round: a field that already had a value reverts to that
+  // original value if left blank or typed invalid, rather than saving as "none". A field
+  // that started blank (fallback null) stays unset until a valid value is entered.
+  const resolveField = (mode, priceValue, pnlValue, isLoss, fallback) => {
+    if (mode === 'pnl') {
+      return estimatePriceFromPnlPercent(side, entryPrice, leverage, pnlValue, isLoss) ?? fallback;
+    }
+    const trimmed = String(priceValue ?? '').trim();
+    if (trimmed === '') return fallback;
+    const price = Number(trimmed);
+    return Number.isFinite(price) && price > 0 ? price : fallback;
+  };
+
+  const handleSave = async () => {
+    const resolvedStopLoss = resolveField(stopLossMode, stopLossPrice, stopLossPnl, true, originalStopLoss);
+    const resolvedTakeProfit = resolveField(takeProfitMode, takeProfitPrice, takeProfitPnl, false, originalTakeProfit);
+
+    if (side === 'long') {
+      if (resolvedStopLoss != null && resolvedStopLoss >= entryPrice) {
+        setError('Long stop loss must be below entry price.');
+        return;
+      }
+      if (resolvedTakeProfit != null && resolvedTakeProfit <= entryPrice) {
+        setError('Long take profit must be above entry price.');
+        return;
+      }
+    } else {
+      if (resolvedStopLoss != null && resolvedStopLoss <= entryPrice) {
+        setError('Short stop loss must be above entry price.');
+        return;
+      }
+      if (resolvedTakeProfit != null && resolvedTakeProfit >= entryPrice) {
+        setError('Short take profit must be below entry price.');
+        return;
+      }
+    }
+
+    setError('');
+    setIsSaving(true);
+    try {
+      await onSave(position.id, { stopLoss: resolvedStopLoss, takeProfit: resolvedTakeProfit });
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.message ?? err.message ?? 'Failed to update stop loss / take profit');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10040] flex items-center justify-center bg-black/40 px-3" data-chart-ui>
+      <section className={`w-full max-w-sm overflow-hidden rounded-lg border p-5 shadow-2xl ${surfaceClass}`} role="dialog" aria-modal="true" aria-label="Take profit and stop loss">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold">{position.symbol} · Take Profit / Stop Loss</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className={`flex h-8 w-8 items-center justify-center rounded transition ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}
+            aria-label="Close"
+          >
+            <X size={18} strokeWidth={1.6} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <TpSlAdvancedField
+            label="Take Profit"
+            accentClass="text-emerald-500"
+            mode={takeProfitMode}
+            onModeChange={setTakeProfitMode}
+            priceValue={takeProfitPrice}
+            onPriceChange={setTakeProfitPrice}
+            pnlValue={takeProfitPnl}
+            onPnlChange={setTakeProfitPnl}
+            previewText={takeProfitPreview}
+            fieldClass={fieldClass}
+            mutedClass={mutedClass}
+            segmentBorderClass={segmentBorderClass}
+            isDark={isDark}
+          />
+          <TpSlAdvancedField
+            label="Stop Loss"
+            accentClass="text-red-500"
+            mode={stopLossMode}
+            onModeChange={setStopLossMode}
+            priceValue={stopLossPrice}
+            onPriceChange={setStopLossPrice}
+            pnlValue={stopLossPnl}
+            onPnlChange={setStopLossPnl}
+            previewText={stopLossPreview}
+            fieldClass={fieldClass}
+            mutedClass={mutedClass}
+            segmentBorderClass={segmentBorderClass}
+            isDark={isDark}
+          />
+        </div>
+
+        {error && (
+          <div className="mt-4 rounded-md border border-red-900 bg-red-950/60 px-2 py-1.5 text-[11px] text-red-200">
+            {error}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isSaving}
+          className="mt-5 h-11 w-full rounded-md bg-[#2962ff] text-sm font-bold text-white transition hover:bg-[#1f52e0] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isSaving ? 'Saving...' : 'Save'}
+        </button>
+      </section>
+    </div>
+  );
+}
+
 export default function PositionsPanel({
   backtestAccount,
   symbol,
@@ -89,8 +245,10 @@ export default function PositionsPanel({
   chartTheme,
   onClosePosition,
   onCancelOrder,
+  onUpdatePositionRisk,
 }) {
   const [activeTab, setActiveTab] = useState('positions');
+  const [riskEditorPosition, setRiskEditorPosition] = useState(null);
   const [orderHistory, setOrderHistory] = useState([]);
   const [isOrderHistoryLoading, setIsOrderHistoryLoading] = useState(false);
   const [orderHistoryError, setOrderHistoryError] = useState('');
@@ -167,6 +325,7 @@ export default function PositionsPanel({
   const rowBorderClass = isDark ? 'border-gray-800' : 'border-slate-200';
 
   return (
+    <>
     <div className={`mt-2 flex min-h-[240px] flex-col rounded-lg border ${isDark ? 'border-gray-800 bg-[#151617]' : 'border-slate-200 bg-white'}`}>
       <div className={`flex items-center gap-5 overflow-x-auto border-b px-3 ${rowBorderClass}`}>
         {TABS.map((tab) => (
@@ -196,7 +355,7 @@ export default function PositionsPanel({
             <table className="w-full min-w-[860px] border-collapse text-left text-xs">
               <thead>
                 <tr className={headerClass}>
-                  {['Symbol', 'Side', 'Size', 'Entry Price', 'Mark Price', 'PnL (ROI%)', 'Margin', 'Liq. Price (est.)', 'TP / SL', ''].map((col) => (
+                  {['Symbol', 'Side', 'Size', 'Entry Price', 'Mark Price', 'PnL (ROI%)', 'Margin', 'Liq. Price', 'TP / SL', ''].map((col) => (
                     <th key={col} className="whitespace-nowrap px-3 py-2 font-medium">{col}</th>
                   ))}
                 </tr>
@@ -207,7 +366,6 @@ export default function PositionsPanel({
                   const markPrice = isActiveSymbol ? Number(executionPrice) : null;
                   const pnl = position.unrealizedPnl;
                   const roi = computeRoi(position, pnl);
-                  const liqPrice = estimateLiquidationPrice(position);
                   const pnlPositive = Number(pnl) >= 0;
 
                   return (
@@ -224,22 +382,37 @@ export default function PositionsPanel({
                         {roi != null ? <span className="ml-1 opacity-80">({pnlPositive ? '+' : ''}{formatNum(roi)}%)</span> : null}
                       </td>
                       <td className={`px-3 py-2.5 ${cellClass}`}>{formatNum(position.margin)} {quoteCurrency}</td>
-                      <td className={`px-3 py-2.5 ${cellClass}`}>{liqPrice != null ? formatNum(liqPrice) : '---'}</td>
+                      <td className={`px-3 py-2.5 ${cellClass}`}>
+                        {position.liquidationPrice
+                          ? formatNum(position.liquidationPrice)
+                          : (position.marginMode === 'cross' ? 'Portfolio' : '---')}
+                      </td>
                       <td className={`px-3 py-2.5 ${cellClass}`}>
                         {position.takeProfit ? formatNum(position.takeProfit) : '--'} / {position.stopLoss ? formatNum(position.stopLoss) : '--'}
                       </td>
                       <td className="px-3 py-2.5 text-right">
-                        <IconTooltipButton
-                          label={isActiveSymbol ? 'Close position' : `Switch to ${position.symbol} to close`}
-                          isDark={isDark}
-                          onClick={() => isActiveSymbol && onClosePosition?.(position.id)}
-                          disabled={!isActiveSymbol}
-                          className={`rounded border px-2.5 py-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
-                            isDark ? 'border-gray-700 text-gray-200 hover:bg-white/10' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          Close
-                        </IconTooltipButton>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setRiskEditorPosition(position)}
+                            className={`rounded border px-2.5 py-1 text-[11px] font-semibold ${
+                              isDark ? 'border-gray-700 text-gray-200 hover:bg-white/10' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            TP/SL
+                          </button>
+                          <IconTooltipButton
+                            label={isActiveSymbol ? 'Close position' : `Switch to ${position.symbol} to close`}
+                            isDark={isDark}
+                            onClick={() => isActiveSymbol && onClosePosition?.(position.id)}
+                            disabled={!isActiveSymbol}
+                            className={`rounded border px-2.5 py-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                              isDark ? 'border-gray-700 text-gray-200 hover:bg-white/10' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            Close
+                          </IconTooltipButton>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -274,15 +447,26 @@ export default function PositionsPanel({
                     <td className={`px-3 py-2.5 ${cellClass}`}>{position.stopLoss ? formatNum(position.stopLoss) : '--'}</td>
                     <td className={`px-3 py-2.5 ${cellClass}`}>{position.takeProfit ? formatNum(position.takeProfit) : '--'}</td>
                     <td className="px-3 py-2.5 text-right">
-                      <button
-                        type="button"
-                        onClick={() => onCancelOrder?.(position.id)}
-                        className={`rounded border px-2.5 py-1 text-[11px] font-semibold ${
-                          isDark ? 'border-gray-700 text-gray-200 hover:bg-white/10' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        Cancel
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setRiskEditorPosition(position)}
+                          className={`rounded border px-2.5 py-1 text-[11px] font-semibold ${
+                            isDark ? 'border-gray-700 text-gray-200 hover:bg-white/10' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          TP/SL
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onCancelOrder?.(position.id)}
+                          className={`rounded border px-2.5 py-1 text-[11px] font-semibold ${
+                            isDark ? 'border-gray-700 text-gray-200 hover:bg-white/10' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -322,7 +506,11 @@ export default function PositionsPanel({
                         <div className="font-semibold">{order.symbol}</div>
                         <div className="mt-1 flex items-center gap-1 text-[10px]">
                           {!isSpotOrder && (
-                            <span className={`rounded px-1.5 py-0.5 ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
+                            order.marginMode === 'cross' ? (
+                              <span className="rounded bg-[#5b8cff]/20 px-1.5 py-0.5 font-bold uppercase tracking-wide text-[#5b8cff]">Cross</span>
+                            ) : (
+                              <span className={`rounded px-1.5 py-0.5 ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
+                            )
                           )}
                           {!isSpotOrder && order.leverage != null && (
                             <span className={`rounded px-1.5 py-0.5 ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>{formatNum(order.leverage, 0)}X</span>
@@ -392,7 +580,11 @@ export default function PositionsPanel({
                         <div className="font-semibold">{order.symbol}</div>
                         <div className="mt-1 flex items-center gap-1 text-[10px]">
                           {!isSpotOrder && (
-                            <span className={`rounded px-1.5 py-0.5 ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
+                            order.marginMode === 'cross' ? (
+                              <span className="rounded bg-[#5b8cff]/20 px-1.5 py-0.5 font-bold uppercase tracking-wide text-[#5b8cff]">Cross</span>
+                            ) : (
+                              <span className={`rounded px-1.5 py-0.5 ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
+                            )
                           )}
                           {!isSpotOrder && order.leverage != null && (
                             <span className={`rounded px-1.5 py-0.5 ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>{formatNum(order.leverage, 0)}X</span>
@@ -440,7 +632,11 @@ export default function PositionsPanel({
                         <span className={`font-semibold ${position.side === 'short' ? 'text-red-400' : 'text-emerald-400'}`}>
                           {positionSideLabel(position)}
                         </span>
-                        <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
+                        {position.marginMode === 'cross' ? (
+                          <span className="rounded bg-[#5b8cff]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5b8cff]">Cross</span>
+                        ) : (
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
+                        )}
                         <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>{formatNum(position.leverage, 0)}X</span>
                       </div>
                       <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-slate-500'}`}>Closed</span>
@@ -486,5 +682,16 @@ export default function PositionsPanel({
         )}
       </div>
     </div>
+
+    {riskEditorPosition && typeof document !== 'undefined' && createPortal(
+      <PositionRiskModal
+        position={riskEditorPosition}
+        isDark={isDark}
+        onClose={() => setRiskEditorPosition(null)}
+        onSave={onUpdatePositionRisk}
+      />,
+      document.body
+    )}
+    </>
   );
 }

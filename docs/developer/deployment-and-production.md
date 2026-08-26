@@ -85,3 +85,27 @@ MARKET_ALERT_POLL_SECONDS=5
 ```
 
 After deployment, run migrations before starting the worker. Only one worker should run unless alert-market partitioning is introduced.
+# BacktradeLab Cross Margin worker
+
+**Required before any real (non-local) deployment where the Cross selector is reachable.** The Enter Position ticket's Isolated/Cross pill is now functional for every user (see [Backtesting and Orders](backtesting-and-orders.md#backtradelab-cross-margin)) — there is no feature flag gating it. The frontend's own `/market-backtest/cross/evaluate` call after opening a Cross position is a best-effort nicety, not a substitute for this worker: without it running, a Cross portfolio that breaches maintenance while a user is simply watching price (not submitting new orders) is never liquidated. Enable and supervise the same way as the alert worker above:
+
+```ini
+[program:backtradelab-cross-margin]
+command=php /var/www/backtradelab/artisan cross-margin:monitor
+directory=/var/www/backtradelab
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/backtradelab-cross-margin.log
+redirect_stderr=true
+```
+
+Production environment:
+
+```env
+CROSS_MARGIN_MONITOR_ENABLED=true
+CROSS_MARGIN_MONITOR_POLL_SECONDS=5
+```
+
+Without this worker running, `--force`d manual runs aside, no open Cross portfolio is ever liquidated on maintenance breach — the frontend's own `/market-backtest/cross/evaluate` call is only an optimization, never authoritative. Only one worker should run unless Cross-market partitioning is introduced, same caveat as the alert worker.

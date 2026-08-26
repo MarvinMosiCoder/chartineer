@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Head, Link, usePage } from "@inertiajs/react";
+import axios from "axios";
 import MarketChart from "../../Components/Market/MarketChart";
 import TradeInsightsWidget from "../../Components/Market/TradeInsightsWidget";
 import { useTheme } from "../../Context/ThemeContext";
@@ -12,6 +13,18 @@ const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, subscriptionSta
     const isDark = theme === 'bg-skin-black';
     const isSuperAdmin = Boolean(auth?.role?.isSuperadmin);
     const [activeSymbol, setActiveSymbol] = useState(() => {
+        // The account-level value (present on every Inertia visit once a user has ever
+        // switched symbols) wins over the device-local one, so a different browser/device
+        // restores the same market instead of falling back to the hardcoded default.
+        if (auth?.user?.last_market_symbol) {
+            return {
+                symbol: auth.user.last_market_symbol,
+                exchange: auth.user.last_market_exchange ?? 'bingx',
+                category: auth.user.last_market_category ?? 'linear',
+                timeframe: auth.user.last_market_timeframe ?? '15m',
+            };
+        }
+
         if (typeof window === "undefined") {
             return null;
         }
@@ -32,14 +45,45 @@ const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, subscriptionSta
     }, [activeSymbol]);
     const [chartTourCompleted, setChartTourCompleted] = useState(Boolean(auth?.user?.chart_tour_completed_at));
 
-    useEffect(() => {
-        if (activeSymbol?.symbol) localStorage.setItem(`backtradelab-active-symbol:${auth?.user?.id ?? 'guest'}`, JSON.stringify(activeSymbol));
-    }, [activeSymbol, auth?.user?.id]);
+    const persistTimeoutRef = useRef(null);
+
+    // Called on every symbol/exchange/category/timeframe change regardless of where it came
+    // from (the chart's own dropdown, or an external switch like the nav search) — unlike
+    // setActiveSymbol below, this never triggers a chart remount, so it's safe to call
+    // unconditionally. localStorage is written immediately as a same-device fallback; the
+    // account-level save is debounced so rapidly hopping between symbols doesn't spam writes.
+    const persistLastMarketSymbol = (detail) => {
+        if (!detail?.symbol) return;
+
+        const payload = {
+            symbol: detail.symbol,
+            exchange: detail.exchange ?? 'bingx',
+            category: detail.category ?? 'linear',
+            timeframe: detail.timeframe ?? activeSymbol?.timeframe ?? '15m',
+        };
+
+        localStorage.setItem(`backtradelab-active-symbol:${auth?.user?.id ?? 'guest'}`, JSON.stringify(payload));
+
+        if (!auth?.user?.id) return;
+
+        if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+        persistTimeoutRef.current = setTimeout(() => {
+            axios.patch('/profile/last-market-symbol', payload).catch(() => {});
+        }, 800);
+    };
 
     useEffect(() => {
         const handleSymbolChange = (event) => {
-            if (event.detail?.symbol) {
-                setActiveSymbol(event.detail);
+            if (!event.detail?.symbol) return;
+
+            persistLastMarketSymbol(event.detail);
+
+            // A chart-originated change means the chart already internally became this —
+            // feeding it back into activeSymbol/chartKey here would force an unnecessary
+            // full remount. Only an externally-originated switch (the nav search, which has
+            // no live chart instance to update in place) needs that remount.
+            if (event.detail.origin !== 'chart') {
+                setActiveSymbol((current) => ({ ...event.detail, timeframe: event.detail.timeframe ?? current?.timeframe }));
             }
         };
 
@@ -54,7 +98,7 @@ const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, subscriptionSta
                 handleSymbolChange
             );
         };
-    }, []);
+    }, [activeSymbol, auth?.user?.id]);
 
     return (
         <>
@@ -78,6 +122,7 @@ const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, subscriptionSta
                                 initialSymbol={activeSymbol?.symbol ?? "BTCUSDT"}
                                 initialExchange={activeSymbol?.exchange ?? "bingx"}
                                 initialMarketCategory={activeSymbol?.category ?? "linear"}
+                                initialTimeframe={activeSymbol?.timeframe ?? "15m"}
                                 tourCompleted={chartTourCompleted}
                                 onTourComplete={() => setChartTourCompleted(true)}
                             />

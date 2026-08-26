@@ -15,6 +15,7 @@ import {
 } from 'lightweight-charts';
 import { useTheme } from '../../Context/ThemeContext';
 import { useAuth } from '../../Context/AuthContext';
+import { useToast } from '../../Context/ToastContext';
 import { broadcastChange, subscribeToChange } from '../../utils/crossTabSync';
 import { useConfirm } from '../../Hooks/useConfirm';
 import ChartHeader from './MarketChart/ChartHeader';
@@ -644,6 +645,77 @@ function formatOverlayPnl(value) {
   });
 }
 
+// TEMPORARY diagnostic instrumentation for the "can't plot a drawing tool past
+// the last live candle" investigation. Silent unless a user opts in via the
+// browser console (`window.__debugDrawing = true`), so it's a no-op for
+// everyone else. Remove once the root cause is confirmed and fixed.
+function logDrawDebug(label, data) {
+  if (typeof window !== 'undefined' && window.__debugDrawing) {
+    console.log(`[debug-draw] ${label}`, data);
+  }
+}
+
+function getPositionSideLabel(position) {
+  if (position?.category === 'spot') return 'Buy';
+  return position?.side === 'short' ? 'Short' : 'Long';
+}
+
+function formatToastQuantity(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '0';
+  return number.toLocaleString(undefined, { maximumFractionDigits: 8 });
+}
+
+function buildFillToastMessage(position) {
+  const symbol = position?.symbol ?? '';
+  const sideLabel = getPositionSideLabel(position);
+  const quantity = formatToastQuantity(position?.quantity);
+  const price = formatOverlayPrice(position?.entryPrice);
+  const verb = position?.status === 'pending' ? 'order placed' : 'filled';
+  return { type: 'success', message: `${symbol} ${sideLabel} ${verb} · ${quantity} @ ${price}` };
+}
+
+function buildCancelToastMessage(position) {
+  const symbol = position?.symbol ?? '';
+  const sideLabel = getPositionSideLabel(position);
+  return { type: 'success', message: `${symbol} ${sideLabel} order cancelled` };
+}
+
+// `position` is the pre-close snapshot looked up by the caller before the close request fires.
+// closedTrade (server) doesn't carry margin/partialTakeProfitPercent, so those come from here.
+function buildCloseToastMessage(closedTrade, position) {
+  if (!closedTrade) return null;
+
+  const symbol = closedTrade.symbol ?? position?.symbol ?? '';
+  const netPnl = Number(closedTrade.netPnl);
+  const safeNetPnl = Number.isFinite(netPnl) ? netPnl : 0;
+  const sign = safeNetPnl >= 0 ? '+' : '-';
+  const pnlText = formatOverlayPnl(safeNetPnl) ?? '0.00';
+
+  const margin = Number(position?.margin);
+  const pnlPercent = Number.isFinite(margin) && margin > 0 ? (safeNetPnl / margin) * 100 : null;
+  const pnlPercentText = pnlPercent != null
+    ? ` (${pnlPercent >= 0 ? '+' : '-'}${Math.abs(pnlPercent).toFixed(1)}%)`
+    : '';
+
+  switch (closedTrade.reason) {
+    case 'take_profit':
+      return { type: 'success', message: `${symbol} closed — Take Profit hit · ${sign}${pnlText}${pnlPercentText}` };
+    case 'partial_take_profit': {
+      const percent = Number(position?.partialTakeProfitPercent);
+      const percentText = Number.isFinite(percent) ? `${percent}% ` : '';
+      return { type: 'success', message: `${symbol} partial take-profit · ${percentText}closed · ${sign}${pnlText}` };
+    }
+    case 'stop_loss':
+      return { type: 'error', message: `${symbol} closed — Stop Loss hit · ${sign}${pnlText}${pnlPercentText}` };
+    case 'liquidation':
+      return { type: 'error', message: `${symbol} liquidated · ${sign}${pnlText}` };
+    case 'manual':
+    default:
+      return { type: safeNetPnl >= 0 ? 'success' : 'error', message: `${symbol} closed · ${sign}${pnlText}` };
+  }
+}
+
 function formatFeedAge(seconds) {
   if (!Number.isFinite(seconds)) return 'Waiting for first update';
   if (seconds < 1) return 'Just now';
@@ -918,6 +990,7 @@ export default function MarketReplayChart({
 }) {
   const { theme: adminTheme } = useTheme();
   const { confirm, confirmElement } = useConfirm();
+  const { handleToast } = useToast();
   const { auth: pageAuth } = usePage().props;
   const authContext = useAuth();
   const auth = authContext?.auth ?? pageAuth;
@@ -964,7 +1037,11 @@ export default function MarketReplayChart({
   const candleFetchAbortRef = useRef(null);
   const symbolPersistIdRef = useRef(0);
   const loadSymbolsRequestIdRef = useRef(0);
-  const justSwitchedSymbolKeyRef = useRef(null);
+  // Seeded with the initial (possibly restored) symbol rather than null: loadMarketSymbols()
+  // treats a key match here as "the user meant this one, don't second-guess it" — a symbol
+  // restored from a saved account preference deserves exactly that same trust as one just
+  // picked from the search/watchlist, even though it isn't itself on the saved-symbols list.
+  const justSwitchedSymbolKeyRef = useRef(`${initialExchange}:${initialMarketCategory}:${initialSymbol}`);
   const timeframePrefetchCancelRef = useRef(null);
   const isSpacePressedRef = useRef(false);
   const toolRef = useRef(null);
@@ -988,6 +1065,7 @@ export default function MarketReplayChart({
   const pendingVisibleLogicalRangeRef = useRef(null);
   const pendingVisibleViewRef = useRef(null);
   const pendingBackToLiveRef = useRef(false);
+  const previousVisibleCandleCountRef = useRef(0);
   const viewportInitializedKeyRef = useRef(null);
   const quickOpenBacktestPositionRef = useRef(null);
   const cancelBacktestPositionRef = useRef(null);
@@ -1739,6 +1817,24 @@ export default function MarketReplayChart({
     }
   }, [exchange, marketCategory, symbol]);
 
+  const hasDispatchedInitialSymbolRef = useRef(false);
+
+  // Tells whoever's listening (Dashboard.jsx, the navbars) that the chart itself now shows a
+  // different market/timeframe than before — the `origin: 'chart'` marker lets Dashboard.jsx
+  // persist this without also remounting the chart via its chartKey, which it must still do
+  // for a symbol switch that came from outside the chart (e.g. the nav search). Skips the
+  // initial mount: that render is just echoing the initial* props back, not a real change.
+  useEffect(() => {
+    if (!hasDispatchedInitialSymbolRef.current) {
+      hasDispatchedInitialSymbolRef.current = true;
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent('backtradelab-active-symbol-change', {
+      detail: { symbol, exchange, category: marketCategory, timeframe, origin: 'chart' },
+    }));
+  }, [symbol, exchange, marketCategory, timeframe]);
+
   const lastAutoBacktestAccountKeyRef = useRef(null);
 
   const loadBacktestAccount = useCallback(async (price = null) => {
@@ -2275,13 +2371,19 @@ export default function MarketReplayChart({
   const getChartCoordinates = useCallback((x, y) => {
     const chart = chartRef.current;
     const series = candleSeriesRef.current;
-    if (!chart || !series || !allCandles.length) return null;
+    if (!chart || !series || !allCandles.length) {
+      logDrawDebug('getChartCoordinates: bail (no chart/series/candles)', { hasChart: Boolean(chart), hasSeries: Boolean(series), allCandlesLength: allCandles.length });
+      return null;
+    }
 
     const logical = chart.timeScale().coordinateToLogical(x);
     const rawTime = chart.timeScale().coordinateToTime(x);
     const rawPrice = series.coordinateToPrice(y);
 
-    if (logical == null || rawPrice == null) return null;
+    if (logical == null || rawPrice == null) {
+      logDrawDebug('getChartCoordinates: bail (null logical/price)', { x, y, logical, rawPrice });
+      return null;
+    }
 
     const estimatedTime = estimateTimeFromLogical(allCandles, Number(logical));
     const nearestIndex =
@@ -2289,13 +2391,18 @@ export default function MarketReplayChart({
         ? Math.min(Math.max(Math.round(logical), 0), allCandles.length - 1)
         : findNearestCandleIndex(allCandles, rawTime);
 
-    if (nearestIndex < 0 || !allCandles[nearestIndex]) return null;
+    if (nearestIndex < 0 || !allCandles[nearestIndex]) {
+      logDrawDebug('getChartCoordinates: bail (bad nearestIndex)', { x, y, logical, rawTime, nearestIndex, allCandlesLength: allCandles.length });
+      return null;
+    }
 
-    return {
+    const result = {
       time: Number.isFinite(estimatedTime) ? estimatedTime : allCandles[nearestIndex].time,
       logical: Number(logical),
       price: Number(rawPrice),
     };
+    logDrawDebug('getChartCoordinates: result', { x, y, logical, rawTime, estimatedTime, nearestIndex, allCandlesLength: allCandles.length, lastCandleTime: allCandles[allCandles.length - 1]?.time, result });
+    return result;
   }, [allCandles]);
 
   const toScreen = useCallback((pointOrTime, price) => {
@@ -2325,6 +2432,11 @@ export default function MarketReplayChart({
               : chart.timeScale().timeToCoordinate(point.time)
           );
     const y = series.priceToCoordinate(point.price);
+
+    const lastCandleTime = projectionCandles[projectionCandles.length - 1]?.time;
+    if (lastCandleTime != null && Number(point.time) > Number(lastCandleTime)) {
+      logDrawDebug('toScreen: future point', { pointTime: point.time, lastCandleTime, logicalFromTime, x, y });
+    }
 
     if (x == null || y == null) return null;
     return { x, y };
@@ -3121,6 +3233,18 @@ export default function MarketReplayChart({
       loadBacktestAccount(executionPrice);
     }
   }, [executionPrice, loadBacktestAccount]);
+
+  // Unlike handleUpdateBacktestPositionRisk above (the chart-line-drag path), this is driven
+  // by PositionsPanel's TP/SL modal, which shows its own inline error banner and needs the
+  // raw rejection to do that — so, deliberately, no setBacktestError/loadBacktestAccount
+  // fallback here; the caller awaits this directly and reads err.response itself.
+  const handleUpdatePositionRiskLevels = useCallback(async (positionId, { stopLoss, takeProfit }) => {
+    const response = await axios.put(`/market-backtest/positions/${positionId}/risk`, {
+      stop_loss: stopLoss,
+      take_profit: takeProfit,
+    });
+    setBacktestAccount(response.data?.account ?? null);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -3975,6 +4099,28 @@ export default function MarketReplayChart({
 
     if (!chart || !candleSeries || !volumeSeries) return;
 
+    // Live streaming replaces the full series data on every tick (setAllCandles
+    // gives visibleCandles a new array identity per WebSocket message, not only
+    // when a bar completes) — unlike Replay, where visibleCandles only changes
+    // on an explicit step/play. lightweight-charts' own shiftVisibleRangeOnNewBar
+    // (on by default) silently re-anchors the visible logical range whenever
+    // setData grows the bar count while the previous last bar was still on
+    // screen — exactly the geometry of having scrolled a little into the empty
+    // future whitespace to place a drawing. That reflow moves the viewport out
+    // from under the cursor between mousedown and the next tick, so a click
+    // there can land on the wrong point or appear to do nothing. Every other
+    // viewport-mutating call site in this file guards itself with
+    // isProgrammaticRangeChangeRef; this tick path is the one that never was,
+    // and docs/developer/live-market-streaming.md already states the general
+    // rule ("preserve the user's viewport") this brings the tick path in line
+    // with. Restoring the pre-update range only when the user wasn't already
+    // pinned to the live edge keeps genuine "follow the live price" behavior
+    // intact for anyone actually watching the edge.
+    const timeScale = chart.timeScale();
+    const priorVisibleRange = !replayMode ? timeScale.getVisibleLogicalRange() : null;
+    const previousLastIndex = previousVisibleCandleCountRef.current - 1;
+    const wasPinnedToLiveEdge = !priorVisibleRange || priorVisibleRange.to >= previousLastIndex;
+
     candleSeries.setData(
       visibleCandles.map((c) => ({
         time: c.time,
@@ -3986,6 +4132,12 @@ export default function MarketReplayChart({
     );
 
     volumeSeries.setData(visibleVolume);
+
+    if (!replayMode && priorVisibleRange && !wasPinnedToLiveEdge) {
+      timeScale.setVisibleLogicalRange(priorVisibleRange);
+    }
+
+    previousVisibleCandleCountRef.current = visibleCandles.length;
 
     // Returning to Live expands visibleCandles from the Replay slice to the
     // complete series. Wait until that complete data has reached the chart
@@ -4713,6 +4865,9 @@ export default function MarketReplayChart({
       const { x, y } = getRelativePoint(event);
       const bounds = el.getBoundingClientRect();
       const isInsideChart = x >= 0 && x <= bounds.width && y >= 0 && y <= bounds.height && isInMainPricePane(y);
+      if (TWO_POINT_TOOL_TYPES.includes(toolRef.current)) {
+        logDrawDebug('mousemove: bounds check', { x, y, boundsWidth: bounds.width, boundsHeight: bounds.height, isInsideChart, isSpacePressed: isSpacePressedRef.current, hasTemp: Boolean(tempDrawingRef.current) });
+      }
       const hoveredDrawingId = isInsideChart ? hitTestDrawing(x, y) : null;
       const hoveredDrawing = hoveredDrawingId
         ? drawingsRef.current.find((drawing) => drawing.id === hoveredDrawingId)
@@ -4745,6 +4900,7 @@ export default function MarketReplayChart({
             return { ...prev, anchor: coords };
           }
 
+          logDrawDebug('mousemove: temp end updated', { type: prev.type, start: prev.start, endPoint });
           return { ...prev, end: endPoint };
         });
         return;
@@ -6156,6 +6312,7 @@ export default function MarketReplayChart({
   const handleOpenBacktestPosition = async ({
     side,
     orderType = 'market',
+    marginMode = 'isolated',
     notional,
     leverage,
     entryPrice,
@@ -6198,6 +6355,7 @@ export default function MarketReplayChart({
         timeframe,
         side,
         order_type: orderType,
+        margin_mode: marginMode,
         notional,
         leverage,
         price: fillPrice,
@@ -6224,8 +6382,33 @@ export default function MarketReplayChart({
         ...(nextAccount?.pendingPositions ?? []),
       ].find((position) => !previousPositionIds.has(position.id));
 
+      if (createdPosition) {
+        const { type, message } = buildFillToastMessage(createdPosition);
+        handleToast(message, type);
+      }
+
       if (createdPosition && snapshot) {
         uploadBacktestSnapshot(createdPosition.id, 'entry', snapshot).catch(() => {});
+      }
+
+      // Best-effort safety net, not authoritative: the server's Cross monitor (a separate
+      // long-running process, disabled by default — see docs/developer/deployment-and-production.md)
+      // is what's actually supposed to catch a maintenance breach. Requesting an evaluation right
+      // after taking on new Cross risk means a breach doesn't have to wait for that monitor's next
+      // poll cycle (or for the monitor to even be running) before this account's own next action.
+      if (createdPosition?.marginMode === 'cross' && createdPosition.status === 'open') {
+        axios.post('/market-backtest/cross/evaluate', {
+          mode: replayMode ? 'replay' : 'live',
+          session_id: nextAccount?.activeSession?.id,
+        }).then((evaluateResponse) => {
+          const liquidation = evaluateResponse.data?.liquidation;
+          if (!liquidation) return;
+          setBacktestAccount(evaluateResponse.data?.account ?? null);
+          handleToast(
+            `Cross portfolio liquidated · ${liquidation.closedTrades?.length ?? 0} position(s) closed`,
+            'error'
+          );
+        }).catch(() => {});
       }
     } catch (err) {
       setBacktestError(err.response?.data?.message ?? err.message ?? 'Failed to open position');
@@ -6337,7 +6520,15 @@ export default function MarketReplayChart({
         executed_at_time: entryTime,
       });
 
-      setBacktestAccount(response.data?.account ?? null);
+      const nextAccount = response.data?.account ?? null;
+      setBacktestAccount(nextAccount);
+
+      const filledPosition = (nextAccount?.openPositions ?? []).find((item) => item.id === positionId);
+      if (filledPosition) {
+        const { type, message } = buildFillToastMessage(filledPosition);
+        handleToast(message, type);
+      }
+
       if (snapshot) {
         uploadBacktestSnapshot(positionId, 'entry', snapshot).catch(() => {});
       }
@@ -6357,12 +6548,18 @@ export default function MarketReplayChart({
   const handleCancelBacktestPosition = async (positionId) => {
     if (!positionId) return;
 
+    const targetPosition = backtestAccount?.pendingPositions?.find((item) => item.id === positionId) ?? null;
+
     setIsBacktestLoading(true);
     setBacktestError('');
 
     try {
       const response = await axios.post(`/market-backtest/positions/${positionId}/cancel`);
       setBacktestAccount(response.data?.account ?? null);
+      if (targetPosition) {
+        const { type, message } = buildCancelToastMessage(targetPosition);
+        handleToast(message, type);
+      }
     } catch (err) {
       setBacktestError(err.response?.data?.message ?? err.message ?? 'Failed to cancel pending entry');
     } finally {
@@ -6385,6 +6582,8 @@ export default function MarketReplayChart({
       return;
     }
 
+    const targetPosition = backtestAccount?.openPositions?.find((item) => item.id === positionId) ?? null;
+
     if (!silent) {
       setIsBacktestLoading(true);
       setBacktestError('');
@@ -6399,6 +6598,13 @@ export default function MarketReplayChart({
       });
 
       setBacktestAccount(response.data?.account ?? null);
+
+      const closedTrade = response.data?.closedTrade ?? null;
+      if (closedTrade) {
+        const { type, message } = buildCloseToastMessage(closedTrade, targetPosition);
+        handleToast(message, type);
+      }
+
       if (snapshot) {
         uploadBacktestSnapshot(positionId, 'exit', snapshot).catch(() => {});
       }
@@ -6624,6 +6830,13 @@ export default function MarketReplayChart({
                 // re-check of an already-closed position just 404s (see below) and never
                 // corrects the state.
                 setBacktestAccount(nextAccount);
+
+                const closedTrade = response.data?.closedTrade ?? null;
+                if (closedTrade) {
+                  const { type, message } = buildCloseToastMessage(closedTrade, position);
+                  handleToast(message, type);
+                }
+
                 const remainsOpen = (nextAccount?.openPositions ?? []).some((item) => item.id === position.id);
                 if (!remainsOpen) {
                   if (snapshot) uploadBacktestSnapshot(position.id, 'exit', snapshot).catch(() => {});
@@ -7300,6 +7513,7 @@ export default function MarketReplayChart({
           chartTheme={chartTheme}
           onClosePosition={handleCloseBacktestPosition}
           onCancelOrder={handleCancelBacktestPosition}
+          onUpdatePositionRisk={handleUpdatePositionRiskLevels}
         />
       )}
     </div>

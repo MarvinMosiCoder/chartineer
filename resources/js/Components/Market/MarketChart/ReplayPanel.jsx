@@ -1843,7 +1843,7 @@ function ManagedExitsModal({
   );
 }
 
-function estimatePriceFromPnlPercent(side, entryPrice, leverage, pnlPercent, isLoss) {
+export function estimatePriceFromPnlPercent(side, entryPrice, leverage, pnlPercent, isLoss) {
   const entry = Number(entryPrice);
   const lev = Math.max(Number(leverage) || 1, 1);
   const pct = Math.abs(Number(pnlPercent));
@@ -1857,7 +1857,7 @@ function estimatePriceFromPnlPercent(side, entryPrice, leverage, pnlPercent, isL
   return price > 0 ? price : null;
 }
 
-function estimatePnlPercentFromPrice(side, entryPrice, leverage, price) {
+export function estimatePnlPercentFromPrice(side, entryPrice, leverage, price) {
   const entry = Number(entryPrice);
   const lev = Math.max(Number(leverage) || 1, 1);
   const target = Number(price);
@@ -1869,7 +1869,7 @@ function estimatePnlPercentFromPrice(side, entryPrice, leverage, price) {
   return fraction * lev * 100;
 }
 
-function TpSlAdvancedField({
+export function TpSlAdvancedField({
   label,
   accentClass,
   mode,
@@ -2106,6 +2106,7 @@ export default function ReplayPanel({
   const [showLeverageModal, setShowLeverageModal] = useState(false);
   const [orderNotional, setOrderNotional] = useState('');
   const [orderLeverage, setOrderLeverage] = useState('1');
+  const [marginMode, setMarginMode] = useState('isolated');
   const [orderEntryPrice, setOrderEntryPrice] = useState('');
   const [orderStopLoss, setOrderStopLoss] = useState('');
   const [orderStopLossMode, setOrderStopLossMode] = useState('price');
@@ -2165,6 +2166,7 @@ export default function ReplayPanel({
     if (isSpot) {
       setOrderSide('long');
       setOrderLeverage('1');
+      setMarginMode('isolated');
     }
   }, [isSpot]);
 
@@ -2378,8 +2380,15 @@ export default function ReplayPanel({
     }
   };
   const backtestMetrics = getBacktestMetrics(backtestAccount, symbol, executionPrice);
+  // Cross pools collateral across every open Cross position on the account, so its true
+  // affordability ceiling is the shared cross.availableMargin the server already computes —
+  // not this order's own isolated cash_balance, which a Cross entry can legitimately exceed
+  // when it's backed by unrealized profit sitting in another open Cross position.
+  const isCrossMode = !isSpot && marginMode === 'cross';
+  const crossMetrics = backtestAccount?.cross ?? null;
+  const affordabilityCeiling = isCrossMode ? Number(crossMetrics?.availableMargin ?? 0) : backtestMetrics.cashBalance;
   const handleMarginPercentClick = (pct) => {
-    const displayAmount = quoteToDisplayAmount(backtestMetrics.cashBalance * pct, displayCurrency, normalizedPhpRate);
+    const displayAmount = quoteToDisplayAmount(affordabilityCeiling * pct, displayCurrency, normalizedPhpRate);
     if (displayAmount != null) {
       setOrderNotional(String(Number(Math.max(displayAmount, 0).toFixed(2))));
     }
@@ -2429,9 +2438,10 @@ export default function ReplayPanel({
     takeProfit: plannedTakeProfit,
     notional: quoteNotional,
     leverage: leverageValue,
-    cashBalance: backtestMetrics.cashBalance,
+    cashBalance: affordabilityCeiling,
     feeRate,
   });
+  const crossMarksIncomplete = isCrossMode && crossMetrics != null && !crossMetrics.complete;
   const canSubmitOrder =
     canTrade &&
     Number.isFinite(Number(quoteNotional)) &&
@@ -2441,7 +2451,8 @@ export default function ReplayPanel({
     orderPlan?.margin != null &&
     orderPlan.margin >= 1 &&
     orderPlan?.requiredCash != null &&
-    orderPlan.requiredCash <= backtestMetrics.cashBalance + 0.00000001 &&
+    orderPlan.requiredCash <= affordabilityCeiling + 0.00000001 &&
+    !crossMarksIncomplete &&
     (!isPendingOrder || hasCustomEntryPrice) &&
     (orderPlan?.isStopValid ?? true) &&
     (orderPlan?.isTargetValid ?? true) &&
@@ -2456,6 +2467,7 @@ export default function ReplayPanel({
     onOpenBacktestPosition({
       side: orderSide,
       orderType,
+      marginMode: isSpot ? 'isolated' : marginMode,
       notional,
       leverage: leverageValue,
       entryPrice: effectiveEntryPrice,
@@ -3026,6 +3038,43 @@ export default function ReplayPanel({
               </div>
             </div>
 
+            {crossMetrics && (Number(crossMetrics.initialMargin) > 0 || Number(crossMetrics.pendingReserve) > 0) && (
+              <div className={`rounded-md border p-2.5 ${cardSurfaceClass}`}>
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className={`text-[10px] font-semibold uppercase tracking-wide ${labelTextClass}`}>Cross Portfolio</span>
+                  {(() => {
+                    const ratio = crossMetrics.marginRatio;
+                    if (!crossMetrics.complete) {
+                      return <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-300">Marks stale</span>;
+                    }
+                    if (ratio == null) return null;
+                    const danger = ratio < 1.5;
+                    const warning = !danger && ratio < 3;
+                    return (
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                        danger ? 'bg-red-500/20 text-red-300' : warning ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
+                      }`}>
+                        {danger ? 'At risk' : warning ? 'Watch' : 'Healthy'}
+                      </span>
+                    );
+                  })()}
+                </div>
+                <div className={`grid grid-cols-2 gap-1 text-[11px] ${labelTextClass}`}>
+                  <span>Equity {formatAccountMoney(crossMetrics.equity)}</span>
+                  <span>Unrealized {formatAccountMoney(crossMetrics.unrealizedPnl)}</span>
+                  <span>Initial margin {formatAccountMoney(crossMetrics.initialMargin)}</span>
+                  <span>Pending reserve {formatAccountMoney(crossMetrics.pendingReserve)}</span>
+                  <span>Maintenance {formatAccountMoney(crossMetrics.maintenanceRequirement)}</span>
+                  <span>Available {formatAccountMoney(crossMetrics.availableMargin)}</span>
+                </div>
+                {!crossMetrics.complete && crossMetrics.missingMarkets?.length > 0 && (
+                  <div className="mt-1.5 text-[10px] text-amber-300">
+                    Missing a current price for: {crossMetrics.missingMarkets.join(', ')}. Liquidation cannot be evaluated until these refresh.
+                  </div>
+                )}
+              </div>
+            )}
+
             {backtestError && (
               <div className="rounded-md border border-red-900 bg-red-950/60 px-2 py-1.5 text-[11px] text-red-200">
                 {backtestError}
@@ -3111,17 +3160,23 @@ export default function ReplayPanel({
               {!isSpot && (
                 <div className="grid grid-cols-2 gap-2">
                   <IconTooltipButton
-                    label="This engine simulates isolated margin only — there is no cross-margin mode."
+                    label={
+                      marginMode === 'cross'
+                        ? 'Cross Margin: shares available margin and unrealized PnL across every open Cross position on this account. Liquidation is a whole-portfolio event, not a fixed per-position price. Click to switch to Isolated.'
+                        : "Isolated Margin: this position's margin and liquidation price are independent of every other position. Click to switch to Cross."
+                    }
                     isDark={isDarkTheme}
-                    disabled
-                    className={`h-8 w-full cursor-default rounded border px-2 text-xs font-semibold opacity-90 outline-none ${fieldClass}`}
+                    onClick={() => setMarginMode((mode) => (mode === 'cross' ? 'isolated' : 'cross'))}
+                    wrapperClassName="w-full min-w-0"
+                    className={`h-8 w-full rounded border px-2 text-xs font-semibold outline-none ${fieldClass}`}
                   >
-                    Isolated
+                    {marginMode === 'cross' ? 'Cross' : 'Isolated'}
                   </IconTooltipButton>
                   <IconTooltipButton
                     label="Leverage, 1x to 125x"
                     isDark={isDarkTheme}
                     onClick={() => setShowLeverageModal(true)}
+                    wrapperClassName="w-full min-w-0"
                     className={`h-8 w-full min-w-0 rounded border px-2 text-left text-xs font-semibold outline-none ${
                       isLeverageValid ? fieldClass : invalidFieldClass
                     }`}
@@ -3239,18 +3294,33 @@ export default function ReplayPanel({
                   </div>
                 )}
               </div>
+              {isCrossMode && (
+                <div className={`grid grid-cols-2 gap-2 text-[11px] ${labelTextClass}`}>
+                  <span>Cross available {crossMetrics ? formatAccountMoney(crossMetrics.availableMargin) : '---'}</span>
+                  <span>Margin ratio {crossMetrics?.marginRatio != null ? `${Number(crossMetrics.marginRatio).toFixed(2)}x` : '---'}</span>
+                </div>
+              )}
               <div className={`grid grid-cols-2 gap-2 text-[11px] ${labelTextClass}`}>
                 <span>Entry fee {orderPlan?.entryFee ? formatAccountMoney(orderPlan.entryFee) : '---'}</span>
                 <span>Need {orderPlan?.requiredCash ? formatAccountMoney(orderPlan.requiredCash) : '---'}</span>
               </div>
               {orderPlan?.adjustedForFee && (
                 <div className="rounded-md border border-amber-900 bg-amber-950/50 px-2 py-1 text-[11px] text-amber-200">
-                  Margin adjusted to include entry fee in available cash.
+                  Margin adjusted to include entry fee in {isCrossMode ? 'shared Cross available margin' : 'available cash'}.
                 </div>
               )}
-              {orderPlan && orderPlan.requiredCash > backtestMetrics.cashBalance && (
+              {crossMarksIncomplete && (
                 <div className="rounded-md border border-red-900 bg-red-950/60 px-2 py-1 text-[11px] text-red-200">
-                  Reduce margin to {formatAccountMoney(getMaxMarginForCash(backtestMetrics.cashBalance, leverageValue, feeRate))} or less.
+                  Cross Margin is unavailable until every open Cross market has a current price
+                  {crossMetrics?.missingMarkets?.length ? ` (missing: ${crossMetrics.missingMarkets.join(', ')})` : ''}.
+                </div>
+              )}
+              {!crossMarksIncomplete && orderPlan && orderPlan.requiredCash > affordabilityCeiling && (
+                <div className="rounded-md border border-red-900 bg-red-950/60 px-2 py-1 text-[11px] text-red-200">
+                  {isCrossMode
+                    ? 'This exceeds your shared Cross available margin.'
+                    : 'Reduce margin to '}
+                  {!isCrossMode && `${formatAccountMoney(getMaxMarginForCash(affordabilityCeiling, leverageValue, feeRate))} or less.`}
                 </div>
               )}
               <div className="grid grid-cols-1 gap-2">
@@ -3308,6 +3378,11 @@ export default function ReplayPanel({
                       <div className="mb-1 flex items-center justify-between gap-2">
                         <span className={`text-xs font-semibold ${valueTextClass}`}>
                           {position.symbol} {position.side.toUpperCase()}
+                          {position.marginMode === 'cross' && (
+                            <span className="ml-1 rounded bg-[#5b8cff]/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#5b8cff]">
+                              Cross
+                            </span>
+                          )}
                         </span>
                         <span className="text-xs text-amber-300">Waiting</span>
                       </div>
@@ -3352,6 +3427,11 @@ export default function ReplayPanel({
                         <div className="mb-1 flex items-center justify-between gap-2">
                           <span className={`text-xs font-semibold ${valueTextClass}`}>
                             {position.symbol} {position.side.toUpperCase()}
+                            {position.marginMode === 'cross' && (
+                              <span className="ml-1 rounded bg-[#5b8cff]/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#5b8cff]">
+                                Cross
+                              </span>
+                            )}
                           </span>
                           <span className={livePnl >= 0 ? 'text-xs text-emerald-400' : 'text-xs text-red-400'}>
                             {formatAccountMoney(livePnl)}
@@ -3364,7 +3444,7 @@ export default function ReplayPanel({
                           <span>Lev {formatLeverage(position.leverage)}</span>
                           <span>SL {position.stopLoss ? formatMoney(position.stopLoss) : '---'}</span>
                           <span>TP {position.takeProfit ? formatMoney(position.takeProfit) : '---'}</span>
-                          <span>Liq {position.liquidationPrice ? formatMoney(position.liquidationPrice) : '---'}</span>
+                          <span>Liq {position.liquidationPrice ? formatMoney(position.liquidationPrice) : (position.marginMode === 'cross' ? 'Portfolio' : '---')}</span>
                           <span>{[
                             position.trailingStopPercent ? `Trail ${position.trailingStopPercent}%` : null,
                             position.breakEvenTriggerPercent ? `BE ${position.breakEvenTriggerPercent}%` : null,

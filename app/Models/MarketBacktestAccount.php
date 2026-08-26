@@ -39,4 +39,9 @@ class MarketBacktestAccount extends Model
     {
         return $this->hasMany(MarketBacktestTrade::class);
     }
+
+    public function marks()
+    {
+        return $this->hasMany(MarketBacktestMark::class);
+    }
 }

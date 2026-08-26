@@ -50,6 +50,7 @@ class MarketBacktestReportService
             'quantity' => (float) ($position->original_quantity ?? $position->quantity),
             'margin' => $margin,
             'leverage' => $leverage,
+            'marginMode' => $position->margin_mode ?? 'isolated',
             'notional' => round($margin * $leverage, 8),
             'entryPrice' => (float) $position->entry_price,
             'exitPrice' => $position->exit_price !== null ? (float) $position->exit_price : null,

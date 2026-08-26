@@ -212,6 +212,25 @@ class ProfilePageController extends Controller
         ]);
     }
 
+    public function updateLastMarketSymbol(Request $request)
+    {
+        $validated = $request->validate([
+            'symbol' => ['required', 'string', 'max:32', 'regex:/^[A-Za-z0-9]+$/'],
+            'exchange' => ['required', 'string', 'max:32'],
+            'category' => ['required', Rule::in(['spot', 'linear', 'inverse'])],
+            'timeframe' => ['required', 'string', 'max:8', 'regex:/^[0-9]+[mhdw]$/'],
+        ]);
+
+        $request->user()->update([
+            'last_market_symbol' => strtoupper($validated['symbol']),
+            'last_market_exchange' => strtolower($validated['exchange']),
+            'last_market_category' => $validated['category'],
+            'last_market_timeframe' => $validated['timeframe'],
+        ]);
+
+        return response()->json(['status' => 'success']);
+    }
+
     public function deactivate(Request $request, AccountDeactivationService $deactivationService)
     {
         $user = $request->user();
