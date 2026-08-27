@@ -132,10 +132,10 @@ const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, subscriptionSta
             ) : (
                 <div className={`space-y-5 ${isDark ? 'text-[#d1d4dc]' : 'text-slate-900'}`}>
                     <div className={`overflow-hidden rounded-2xl border p-6 ${isDark ? 'border-[#2a2e39] bg-[#131722]' : 'border-slate-200 bg-white'}`}>
-                        <div className="flex flex-wrap items-center justify-between gap-4"><div><div className="text-xs font-bold uppercase tracking-[.2em] text-[#2962ff]">Administration</div><h1 className="mt-2 text-3xl font-bold">System overview</h1><p className="mt-1 text-sm text-[#787b86]">Monitor user access and platform activity from one workspace.</p></div><div className="flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-400"><Activity size={15}/><span className="h-2 w-2 rounded-full bg-emerald-400"/>System online</div></div>
+                        <div className="flex flex-wrap items-center justify-between gap-4"><div><div className="text-xs font-bold uppercase tracking-[.2em] text-[#2dd4bf]">Administration</div><h1 className="mt-2 text-3xl font-bold">System overview</h1><p className="mt-1 text-sm text-[#787b86]">Monitor user access and platform activity from one workspace.</p></div><div className="flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-400"><Activity size={15}/><span className="h-2 w-2 rounded-full bg-emerald-400"/>System online</div></div>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[
-                        ['All users', userMetrics.total ?? 0, Users, '#2962ff'],
+                        ['All users', userMetrics.total ?? 0, Users, '#2dd4bf'],
                         ['Active users', userMetrics.active ?? 0, UserCheck, '#10b981'],
                         ['Inactive users', userMetrics.inactive ?? 0, UserMinus, '#ef4444'],
                         ['New this month', userMetrics.newThisMonth ?? 0, Activity, '#8b5cf6'],
@@ -145,7 +145,7 @@ const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, subscriptionSta
                     <AdminSection title="Subscriptions" subtitle="Verified revenue and provider transaction health." links={[['Payments','/admin/subscriptions'],['Pricing','/admin/subscription-plans']]} isDark={isDark}>
                         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                             <MetricCard label="Lifetime PHP revenue" value={formatMoney(subscriptionMetrics.revenueLifetimePhp)} detail={`${formatCount(subscriptionMetrics.paidLifetime)} paid transactions`} icon={CircleDollarSign} color="#10b981" isDark={isDark}/>
-                            <MetricCard label="Last 30 days" value={formatMoney(subscriptionMetrics.revenueLast30DaysPhp)} detail={`${formatCount(subscriptionMetrics.paidLast30Days)} verified payments`} icon={CreditCard} color="#2962ff" isDark={isDark}/>
+                            <MetricCard label="Last 30 days" value={formatMoney(subscriptionMetrics.revenueLast30DaysPhp)} detail={`${formatCount(subscriptionMetrics.paidLast30Days)} verified payments`} icon={CreditCard} color="#2dd4bf" isDark={isDark}/>
                             <MetricCard label="Pending review" value={formatCount(subscriptionMetrics.pending)} detail="Creating or pending" icon={Clock3} color="#f59e0b" isDark={isDark}/>
                             <MetricCard label="Failed / expired" value={formatCount(subscriptionMetrics.failedOrExpired)} detail="Provider sessions needing attention" icon={AlertCircle} color="#ef4444" isDark={isDark}/>
                         </div>
@@ -161,7 +161,7 @@ const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, subscriptionSta
 
                     <AdminSection title="Customer feedback & support" subtitle="Current workload across customer and product requests." links={[['Open support inbox','/admin/feedback']]} isDark={isDark}>
                         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                            <MetricCard label="All requests" value={formatCount(feedbackMetrics.total)} detail="Lifetime" icon={MessageSquareText} color="#2962ff" isDark={isDark}/>
+                            <MetricCard label="All requests" value={formatCount(feedbackMetrics.total)} detail="Lifetime" icon={MessageSquareText} color="#2dd4bf" isDark={isDark}/>
                             <MetricCard label="New in 30 days" value={formatCount(feedbackMetrics.newLast30Days)} detail="Rolling period" icon={Inbox} color="#8b5cf6" isDark={isDark}/>
                             <MetricCard label="Open queue" value={formatCount(feedbackMetrics.open)} detail="Not completed or declined" icon={Clock3} color="#f59e0b" isDark={isDark}/>
                             <MetricCard label="High priority" value={formatCount(feedbackMetrics.highPriority)} detail="Open urgent or high" icon={AlertCircle} color="#ef4444" isDark={isDark}/>
@@ -197,11 +197,11 @@ function MetricCard({ label, value, detail, icon: Icon, color, isDark }) {
 
 function RecentPanel({ title, empty, href, isDark, children }) {
     const rows = React.Children.toArray(children);
-    return <section className={`overflow-hidden rounded-xl border ${isDark?'border-[#2a2e39] bg-[#131722]':'border-slate-200 bg-white'}`}><div className={`flex items-center justify-between border-b px-5 py-4 ${isDark?'border-[#2a2e39]':'border-slate-200'}`}><h2 className="text-sm font-bold">{title}</h2><Link href={href} className="text-[10px] font-bold text-[#5b8cff] hover:text-[#2962ff]">View all</Link></div>{rows.length ? <div>{rows}</div> : <p className="p-8 text-center text-xs text-[#787b86]">{empty}</p>}</section>;
+    return <section className={`overflow-hidden rounded-xl border ${isDark?'border-[#2a2e39] bg-[#131722]':'border-slate-200 bg-white'}`}><div className={`flex items-center justify-between border-b px-5 py-4 ${isDark?'border-[#2a2e39]':'border-slate-200'}`}><h2 className="text-sm font-bold">{title}</h2><Link href={href} className="text-[10px] font-bold text-[#5eead4] hover:text-[#2dd4bf]">View all</Link></div>{rows.length ? <div>{rows}</div> : <p className="p-8 text-center text-xs text-[#787b86]">{empty}</p>}</section>;
 }
 
 function RecentRow({ title, meta, badge, date, isDark }) {
-    return <div className={`flex items-center justify-between gap-3 border-b px-5 py-3 last:border-b-0 ${isDark?'border-[#2a2e39]':'border-slate-200'}`}><div className="min-w-0"><div className="truncate text-xs font-bold">{title}</div><div className="mt-1 truncate text-[10px] capitalize text-[#787b86]">{meta}</div></div><div className="shrink-0 text-right"><div className="text-[9px] font-bold uppercase text-[#5b8cff]">{String(badge || 'unknown').replaceAll('_',' ')}</div><div className="mt-1 text-[9px] text-[#787b86]">{formatDate(date)}</div></div></div>;
+    return <div className={`flex items-center justify-between gap-3 border-b px-5 py-3 last:border-b-0 ${isDark?'border-[#2a2e39]':'border-slate-200'}`}><div className="min-w-0"><div className="truncate text-xs font-bold">{title}</div><div className="mt-1 truncate text-[10px] capitalize text-[#787b86]">{meta}</div></div><div className="shrink-0 text-right"><div className="text-[9px] font-bold uppercase text-[#5eead4]">{String(badge || 'unknown').replaceAll('_',' ')}</div><div className="mt-1 text-[9px] text-[#787b86]">{formatDate(date)}</div></div></div>;
 }
 
 export default Dashboard;

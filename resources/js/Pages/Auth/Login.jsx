@@ -4,6 +4,8 @@ import { ArrowLeft, BarChart3, BookOpen, Eye, EyeOff, Lock, Mail, ShieldCheck } 
 import axios from 'axios';
 import { useAuth } from '../../Context/AuthContext';
 import getAppLogo from '../../Components/SystemSettings/ApplicationLogo';
+import getAppName from '../../Components/SystemSettings/ApplicationName';
+import AppNameWordmark from '../../Components/SystemSettings/AppNameWordmark';
 
 const LoginLoaderOverlay = ({ isDark, applogo }) => {
     return (
@@ -13,15 +15,15 @@ const LoginLoaderOverlay = ({ isDark, applogo }) => {
             aria-live="polite"
             aria-label="Signing in. Securely preparing your workspace."
         >
-            <div className={`relative w-full max-w-sm overflow-hidden rounded-2xl border p-7 text-center shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722] text-white shadow-blue-950/40' : 'border-slate-200 bg-white text-slate-950 shadow-slate-300/50'}`}>
-                <div className="pointer-events-none absolute -left-16 -top-16 h-36 w-36 rounded-full bg-[#2962ff]/20 blur-3xl" />
+            <div className={`relative w-full max-w-sm overflow-hidden rounded-2xl border p-7 text-center shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722] text-white shadow-teal-950/40' : 'border-slate-200 bg-white text-slate-950 shadow-slate-300/50'}`}>
+                <div className="pointer-events-none absolute -left-16 -top-16 h-36 w-36 rounded-full bg-[#2dd4bf]/20 blur-3xl" />
                 <div className="pointer-events-none absolute -bottom-16 -right-16 h-36 w-36 rounded-full bg-emerald-400/10 blur-3xl" />
 
-                <div className="relative mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-[#5b8cff]/30 bg-[#2962ff]/10 shadow-[0_0_30px_rgba(41,98,255,.18)]">
+                <div className="relative mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-[#5eead4]/30 bg-[#2dd4bf]/10 shadow-[0_0_30px_rgba(45,212,191,.18)]">
                     {applogo ? (
                         <img src={applogo} className="h-full w-full object-contain p-2" alt="" />
                     ) : (
-                        <span className="font-poppins text-sm font-bold text-[#5b8cff]">BT</span>
+                        <span className="font-poppins text-sm font-bold text-[#5eead4]">BT</span>
                     )}
                 </div>
 
@@ -31,7 +33,7 @@ const LoginLoaderOverlay = ({ isDark, applogo }) => {
                         {[0, 150, 300].map((delay) => (
                             <span
                                 key={delay}
-                                className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#5b8cff] motion-reduce:animate-none"
+                                className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#5eead4] motion-reduce:animate-none"
                                 style={{ animationDelay: `${delay}ms`, animationDuration: '900ms' }}
                             />
                         ))}
@@ -39,7 +41,7 @@ const LoginLoaderOverlay = ({ isDark, applogo }) => {
                 </div>
                 <p className={`relative mt-2 text-sm ${isDark ? 'text-[#9598a1]' : 'text-slate-500'}`}>Securely preparing your workspace</p>
                 <div className={`relative mt-6 h-1 overflow-hidden rounded-full ${isDark ? 'bg-[#2a2e39]' : 'bg-slate-100'}`} aria-hidden="true">
-                    <span className="block h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-[#2962ff] to-[#5b8cff] motion-reduce:animate-none" />
+                    <span className="block h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-[#2dd4bf] to-[#5eead4] motion-reduce:animate-none" />
                 </div>
             </div>
         </div>
@@ -56,12 +58,14 @@ const LoginPage = () => {
     const [loading, setLoading] = useState(false);
     const [checkingEmail, setCheckingEmail] = useState(false);
     const [applogo, setApplogo] = useState('');
+    const [appName, setAppName] = useState('BacktradeLab');
     const [theme, setTheme] = useState('dark');
     const isDark = theme === 'dark';
     const { updateAuth } = useAuth();
 
     useEffect(() => {
         getAppLogo().then((appLogo) => setApplogo(appLogo));
+        getAppName().then(setAppName).catch(() => {});
 
         try {
             const storedTheme = localStorage.getItem('backtradelab-theme');
@@ -91,7 +95,7 @@ const LoginPage = () => {
             try {
                 const { data } = await axios.post('/login/check-email', { email: normalizedEmail });
                 if (!data?.exists) {
-                    setErrors({ email: 'No BacktradeLab account was found for this email address.' });
+                    setErrors({ email: `No ${appName} account was found for this email address.` });
                     return;
                 }
                 setEmail(normalizedEmail);
@@ -129,7 +133,7 @@ const LoginPage = () => {
             {loading && <LoginLoaderOverlay isDark={isDark} applogo={applogo} />}
             <div className={`relative min-h-screen overflow-hidden px-4 py-6 ${isDark ? 'bg-black-screen-color text-white' : 'bg-slate-50 text-slate-950'}`}>
                 <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-                    <div className="absolute -left-24 top-0 h-72 w-72 animate-floatY rounded-full bg-[#2962ff]/10 blur-3xl [animation-duration:10s]" />
+                    <div className="absolute -left-24 top-0 h-72 w-72 animate-floatY rounded-full bg-[#2dd4bf]/10 blur-3xl [animation-duration:10s]" />
                     <div className="absolute -right-24 bottom-0 h-72 w-72 animate-floatY rounded-full bg-emerald-400/10 blur-3xl [animation-duration:12s]" />
                 </div>
 
@@ -141,30 +145,30 @@ const LoginPage = () => {
                     <div className="flex items-center gap-3">
                         <div className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-md border ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-gray-300 bg-white'}`}>
                             {applogo ? (
-                                <img src={applogo} className="h-full w-full object-contain p-1" alt="BacktradeLab logo" />
+                                <img src={applogo} className="h-full w-full object-contain p-1" alt={`${appName} logo`} />
                             ) : (
                                 <span className={`text-xs font-bold ${isDark ? 'text-gray-200' : 'text-slate-800'}`}>BT</span>
                             )}
                         </div>
-                        <span className="font-poppins text-sm font-bold">BacktradeLab</span>
+                        <span className="font-poppins text-sm font-bold"><AppNameWordmark name={appName} /></span>
                     </div>
                 </div>
 
                 <main className="mx-auto grid min-h-[calc(100vh-84px)] max-w-5xl items-center gap-10 py-8 lg:grid-cols-[1fr_440px]">
                     <aside className="hidden animate-fadeInUp lg:block" style={{ animationDelay: '80ms' }}>
-                        <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#2962ff]">Your practice desk</div>
+                        <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#2dd4bf]">Your practice desk</div>
                         <h1 className="mt-4 max-w-lg text-4xl font-bold leading-tight">Return to the chart with a process.</h1>
                         <p className={`mt-4 max-w-md text-sm leading-7 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Replay markets, execute planned risk, and keep every decision connected to your journal.</p>
                         <div className="mt-8 grid max-w-lg gap-3">
                             {[[BarChart3, 'Chart-first workspace', 'Market context stays visible while you practice.'], [ShieldCheck, 'Paper execution', 'Plan margin, leverage, stop, and target before entry.'], [BookOpen, 'Review loop', 'Snapshots and journal notes turn sessions into feedback.']].map(([Icon, title, copy]) => (
-                                <div key={title} className={`group flex items-center gap-4 rounded-lg border p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-[#2962ff]/40 hover:shadow-lg ${isDark ? 'border-[#2a2e39] bg-[#131722] hover:shadow-blue-950/20' : 'border-slate-200 bg-white hover:shadow-blue-100'}`}>
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#2962ff]/15 text-[#5b8cff] transition-transform duration-300 group-hover:scale-110"><Icon size={18} /></div>
+                                <div key={title} className={`group flex items-center gap-4 rounded-lg border p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-[#2dd4bf]/40 hover:shadow-lg ${isDark ? 'border-[#2a2e39] bg-[#131722] hover:shadow-teal-950/20' : 'border-slate-200 bg-white hover:shadow-teal-100'}`}>
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#2dd4bf]/15 text-[#5eead4] transition-transform duration-300 group-hover:scale-110"><Icon size={18} /></div>
                                     <div><div className="text-sm font-bold">{title}</div><div className="mt-1 text-xs text-slate-500">{copy}</div></div>
                                 </div>
                             ))}
                         </div>
                     </aside>
-                    <section className={`w-full animate-fadeInUp rounded-xl border p-6 shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722] shadow-blue-950/10' : 'border-slate-200 bg-white shadow-slate-200/60'}`} style={{ animationDelay: '140ms' }}>
+                    <section className={`w-full animate-fadeInUp rounded-xl border p-6 shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722] shadow-teal-950/10' : 'border-slate-200 bg-white shadow-slate-200/60'}`} style={{ animationDelay: '140ms' }}>
                         <div className="mb-6">
                             <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Workspace online</div>
                             <h1 className={`font-poppins text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-950'}`}>Welcome back</h1>
@@ -174,13 +178,13 @@ const LoginPage = () => {
                         </div>
 
                         <div className="mb-5 flex items-center gap-2" aria-hidden="true">
-                            <div className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${step === 'email' ? 'text-[#5b8cff]' : isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                <span className={`flex h-5 w-5 items-center justify-center rounded-full border text-[10px] transition-colors ${step === 'email' ? 'border-[#2962ff] bg-[#2962ff]/10' : isDark ? 'border-gray-700' : 'border-slate-300'}`}>1</span>
+                            <div className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${step === 'email' ? 'text-[#5eead4]' : isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                <span className={`flex h-5 w-5 items-center justify-center rounded-full border text-[10px] transition-colors ${step === 'email' ? 'border-[#2dd4bf] bg-[#2dd4bf]/10' : isDark ? 'border-gray-700' : 'border-slate-300'}`}>1</span>
                                 Email
                             </div>
-                            <div className={`h-px w-8 transition-colors ${step === 'password' ? 'bg-[#2962ff]' : isDark ? 'bg-gray-700' : 'bg-slate-300'}`} />
-                            <div className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${step === 'password' ? 'text-[#5b8cff]' : isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                <span className={`flex h-5 w-5 items-center justify-center rounded-full border text-[10px] transition-colors ${step === 'password' ? 'border-[#2962ff] bg-[#2962ff]/10' : isDark ? 'border-gray-700' : 'border-slate-300'}`}>2</span>
+                            <div className={`h-px w-8 transition-colors ${step === 'password' ? 'bg-[#2dd4bf]' : isDark ? 'bg-gray-700' : 'bg-slate-300'}`} />
+                            <div className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${step === 'password' ? 'text-[#5eead4]' : isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                <span className={`flex h-5 w-5 items-center justify-center rounded-full border text-[10px] transition-colors ${step === 'password' ? 'border-[#2dd4bf] bg-[#2dd4bf]/10' : isDark ? 'border-gray-700' : 'border-slate-300'}`}>2</span>
                                 Password
                             </div>
                         </div>
@@ -189,8 +193,8 @@ const LoginPage = () => {
                             <div key={step} className="animate-fadeInUp">
                             {step === 'email' && <div className="mb-4 block">
                                 <span className={`mb-1 block text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Email</span>
-                                <div className={`group flex h-11 items-center rounded-md border transition-colors focus-within:border-[#2962ff] focus-within:ring-1 focus-within:ring-[#2962ff]/30 ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-slate-200 bg-slate-50'}`}>
-                                    <div className={`flex h-full w-11 items-center justify-center border-r transition-colors group-focus-within:border-[#2962ff]/40 group-focus-within:text-[#2962ff] ${isDark ? 'border-gray-700 text-gray-400' : 'border-slate-200 text-slate-500'}`}>
+                                <div className={`group flex h-11 items-center rounded-md border transition-colors focus-within:border-[#2dd4bf] focus-within:ring-1 focus-within:ring-[#2dd4bf]/30 ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-slate-200 bg-slate-50'}`}>
+                                    <div className={`flex h-full w-11 items-center justify-center border-r transition-colors group-focus-within:border-[#2dd4bf]/40 group-focus-within:text-[#2dd4bf] ${isDark ? 'border-gray-700 text-gray-400' : 'border-slate-200 text-slate-500'}`}>
                                         <Mail size={17} />
                                     </div>
                                     <input
@@ -213,13 +217,13 @@ const LoginPage = () => {
                                     <button
                                         type="button"
                                         onClick={() => { setStep('email'); setPassword(''); setErrors({}); }}
-                                        className="text-xs font-semibold text-[#5b8cff] transition-colors hover:text-[#2962ff] hover:underline"
+                                        className="text-xs font-semibold text-[#5eead4] transition-colors hover:text-[#2dd4bf] hover:underline"
                                     >
                                         Change email
                                     </button>
                                 </div>
-                                <div className={`group flex h-11 items-center rounded-md border transition-colors focus-within:border-[#2962ff] focus-within:ring-1 focus-within:ring-[#2962ff]/30 ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-slate-200 bg-slate-50'}`}>
-                                    <div className={`flex h-full w-11 items-center justify-center border-r transition-colors group-focus-within:border-[#2962ff]/40 group-focus-within:text-[#2962ff] ${isDark ? 'border-gray-700 text-gray-400' : 'border-slate-200 text-slate-500'}`}>
+                                <div className={`group flex h-11 items-center rounded-md border transition-colors focus-within:border-[#2dd4bf] focus-within:ring-1 focus-within:ring-[#2dd4bf]/30 ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-slate-200 bg-slate-50'}`}>
+                                    <div className={`flex h-full w-11 items-center justify-center border-r transition-colors group-focus-within:border-[#2dd4bf]/40 group-focus-within:text-[#2dd4bf] ${isDark ? 'border-gray-700 text-gray-400' : 'border-slate-200 text-slate-500'}`}>
                                         <Lock size={17} />
                                     </div>
                                     <input
@@ -252,7 +256,7 @@ const LoginPage = () => {
                             <button
                                 type="submit"
                                 disabled={loading || checkingEmail}
-                                className={`mt-5 h-11 w-full rounded-md px-4 font-poppins text-sm font-bold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-950/30 disabled:pointer-events-none disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none ${isDark ? 'bg-white text-skin-black hover:bg-gray-200' : 'bg-skin-black text-white hover:bg-skin-black-light'}`}
+                                className={`mt-5 h-11 w-full rounded-md px-4 font-poppins text-sm font-bold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-teal-950/30 disabled:pointer-events-none disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none ${isDark ? 'bg-white text-skin-black hover:bg-gray-200' : 'bg-skin-black text-white hover:bg-skin-black-light'}`}
                             >
                                 {checkingEmail ? 'Checking email...' : step === 'email' ? 'Continue' : 'Sign in'}
                             </button>
@@ -289,7 +293,7 @@ const LoginPage = () => {
                         </div></>}
 
                         <p className={`mt-4 text-center text-xs leading-5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-                            By signing in, you agree to our <Link href="/terms-of-service" className="font-semibold text-[#5b8cff] hover:underline">Terms of Service</Link> and acknowledge our <Link href="/privacy-policy" className="font-semibold text-[#5b8cff] hover:underline">Privacy Policy</Link>.
+                            By signing in, you agree to our <Link href="/terms-of-service" className="font-semibold text-[#5eead4] hover:underline">Terms of Service</Link> and acknowledge our <Link href="/privacy-policy" className="font-semibold text-[#5eead4] hover:underline">Privacy Policy</Link>.
                         </p>
 
                         {step === 'password' && <div className={`mt-6 flex justify-center gap-1 text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>

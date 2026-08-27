@@ -17,8 +17,8 @@ export default function ToggleSwitch({ checked, onChange, label, isDark, disable
         />
         <span
           className={`pointer-events-none absolute inset-0 rounded-full transition-colors duration-200 ease-in-out ${
-            checked ? 'bg-[#2962ff]' : isDark ? 'bg-gray-700' : 'bg-slate-300'
-          } peer-focus-visible:ring-2 peer-focus-visible:ring-[#2962ff] peer-focus-visible:ring-offset-2 ${
+            checked ? 'bg-[#2dd4bf]' : isDark ? 'bg-gray-700' : 'bg-slate-300'
+          } peer-focus-visible:ring-2 peer-focus-visible:ring-[#2dd4bf] peer-focus-visible:ring-offset-2 ${
             isDark ? 'peer-focus-visible:ring-offset-skin-black' : 'peer-focus-visible:ring-offset-white'
           }`}
         />

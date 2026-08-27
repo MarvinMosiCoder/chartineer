@@ -536,7 +536,7 @@ export default function TradeReport({ refreshKey = 0 }) {
       )}
 
       {exportNotice && (
-        <div className="mx-4 mt-4 rounded-md border border-blue-900 bg-blue-950/60 px-3 py-2 text-xs text-blue-200">
+        <div className="mx-4 mt-4 rounded-md border border-teal-900 bg-teal-950/60 px-3 py-2 text-xs text-teal-200">
           {exportNotice}
         </div>
       )}
@@ -731,7 +731,7 @@ export default function TradeReport({ refreshKey = 0 }) {
                           <td className={`whitespace-nowrap px-3 py-2 font-semibold ${valueTextClass}`}>{trade.symbol}</td>
                           <td className="whitespace-nowrap px-3 py-2">
                             {trade.marginMode === 'cross' ? (
-                              <span className="rounded bg-[#5b8cff]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5b8cff]">Cross</span>
+                              <span className="rounded bg-[#5eead4]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5eead4]">Cross</span>
                             ) : (
                               <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
                             )}
@@ -857,7 +857,7 @@ export default function TradeReport({ refreshKey = 0 }) {
                   aria-current={page === safeCurrentPage ? 'page' : undefined}
                   className={`h-8 min-w-8 rounded-md px-2 text-xs font-semibold ${
                     page === safeCurrentPage
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-teal-600 text-white'
                       : buttonClass
                   }`}
                 >
@@ -973,7 +973,7 @@ export default function TradeReport({ refreshKey = 0 }) {
                   type="button"
                   onClick={() => saveJournal(editingTrade.id)}
                   disabled={journalSaving}
-                  className="inline-flex h-9 items-center gap-2 rounded-md bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+                  className="inline-flex h-9 items-center gap-2 rounded-md bg-teal-600 px-4 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
                 >
                   <Save size={14} />
                   {journalSaving ? 'Saving…' : 'Save'}

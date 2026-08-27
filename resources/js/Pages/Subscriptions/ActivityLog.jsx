@@ -7,7 +7,7 @@ import { useTheme } from '../../Context/ThemeContext';
 const ACTIONS = ['checkout_created', 'checkout_failed', 'checkout_expired', 'payment_activated', 'access_revoked', 'access_restored', 'trial_activated'];
 
 const actionTones = {
-    checkout_created: 'border-[#2962ff]/30 bg-[#2962ff]/10 text-[#5b8cff]',
+    checkout_created: 'border-[#2dd4bf]/30 bg-[#2dd4bf]/10 text-[#5eead4]',
     payment_activated: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500',
     access_restored: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500',
     trial_activated: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500',
@@ -50,7 +50,7 @@ export default function PaymentActivityLog() {
     return <><Head title="Payment Activity"/>
         <div className={`space-y-4 ${isDark ? 'text-[#d1d4dc]' : 'text-slate-900'}`}>
             <div>
-                <div className="text-xs font-bold uppercase tracking-[.18em] text-[#2962ff]">Payment operations</div>
+                <div className="text-xs font-bold uppercase tracking-[.18em] text-[#2dd4bf]">Payment operations</div>
                 <h1 className={`mt-1 text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Payment activity history</h1>
                 <p className={`mt-1 text-sm ${muted}`}>Every checkout, activation, refund, and restoration event, for validating a customer's payment story.</p>
             </div>

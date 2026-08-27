@@ -519,8 +519,8 @@ function DrawingSettingsDialog({
   const tabs = ['style', 'text', 'coordinates', 'visibility'];
   const surfaceClass = isDark ? 'border-[#363a45] bg-[#1e222d] text-[#d1d4dc]' : 'border-slate-200 bg-white text-slate-800';
   const fieldClass = isDark
-    ? 'border-[#434651] bg-[#1e222d] text-[#d1d4dc] focus:border-[#2962ff]'
-    : 'border-slate-300 bg-white text-slate-800 focus:border-blue-600';
+    ? 'border-[#434651] bg-[#1e222d] text-[#d1d4dc] focus:border-[#2dd4bf]'
+    : 'border-slate-300 bg-white text-slate-800 focus:border-teal-600';
   const mutedClass = isDark ? 'text-[#b2b5be]' : 'text-slate-600';
   const dividerClass = isDark ? 'border-[#363a45]' : 'border-slate-200';
   const startPoint = draft.start ?? draft.point ?? null;
@@ -710,8 +710,8 @@ function DrawingSettingsDialog({
                 {canEditColor && (
                   <input type="color" value={normalizeHexColor(draft.color) ?? '#ffffff'} onChange={(event) => updateStyleDraft({ color: event.target.value })} className={`h-11 w-11 cursor-pointer rounded-lg border p-1 ${fieldClass}`} aria-label="Text color" />
                 )}
-                <button type="button" onClick={() => updateStyleDraft({ textBold: !draft.textBold })} className={`h-11 w-11 rounded-lg border text-lg font-bold ${fieldClass} ${draft.textBold ? 'ring-1 ring-[#2962ff]' : ''}`}>B</button>
-                <button type="button" onClick={() => updateStyleDraft({ textItalic: !draft.textItalic })} className={`h-11 w-11 rounded-lg border text-lg italic ${fieldClass} ${draft.textItalic ? 'ring-1 ring-[#2962ff]' : ''}`}>I</button>
+                <button type="button" onClick={() => updateStyleDraft({ textBold: !draft.textBold })} className={`h-11 w-11 rounded-lg border text-lg font-bold ${fieldClass} ${draft.textBold ? 'ring-1 ring-[#2dd4bf]' : ''}`}>B</button>
+                <button type="button" onClick={() => updateStyleDraft({ textItalic: !draft.textItalic })} className={`h-11 w-11 rounded-lg border text-lg italic ${fieldClass} ${draft.textItalic ? 'ring-1 ring-[#2dd4bf]' : ''}`}>I</button>
                 <select value={Number(draft.textSize) || 12} onChange={(event) => updateStyleDraft({ textSize: Number(event.target.value) })} className={`h-11 flex-1 rounded-lg border px-2 text-sm outline-none ${fieldClass}`} aria-label="Text size">
                   {TEXT_SIZES.map((size) => <option key={size} value={size}>{size}px</option>)}
                 </select>
@@ -749,11 +749,11 @@ function DrawingSettingsDialog({
             <div className="space-y-4">
               <label className={`flex cursor-pointer items-center justify-between rounded-lg border p-4 ${dividerClass}`}>
                 <div><div className="text-sm font-semibold">All timeframes</div><div className={`mt-1 text-xs ${mutedClass}`}>Show this drawing when changing timeframe.</div></div>
-                <input type="checkbox" checked={!draft.visibleTimeframe} onChange={(event) => setDraft((current) => ({ ...current, visibleTimeframe: event.target.checked ? null : timeframe }))} className="h-5 w-5 accent-[#2962ff]" />
+                <input type="checkbox" checked={!draft.visibleTimeframe} onChange={(event) => setDraft((current) => ({ ...current, visibleTimeframe: event.target.checked ? null : timeframe }))} className="h-5 w-5 accent-[#2dd4bf]" />
               </label>
               <label className={`flex cursor-pointer items-center justify-between rounded-lg border p-4 ${dividerClass}`}>
                 <div><div className="text-sm font-semibold">Lock drawing</div><div className={`mt-1 text-xs ${mutedClass}`}>Prevent accidental moving and resizing.</div></div>
-                <input type="checkbox" checked={Boolean(draft.locked)} onChange={(event) => setDraft((current) => ({ ...current, locked: event.target.checked }))} className="h-5 w-5 accent-[#2962ff]" />
+                <input type="checkbox" checked={Boolean(draft.locked)} onChange={(event) => setDraft((current) => ({ ...current, locked: event.target.checked }))} className="h-5 w-5 accent-[#2dd4bf]" />
               </label>
             </div>
           )}
@@ -1434,9 +1434,9 @@ function playbookSelectStyles(isDark) {
       height: 32,
       fontSize: 12,
       backgroundColor: isDark ? '#151617' : '#ffffff',
-      borderColor: state.isFocused ? '#2962ff' : (isDark ? '#374151' : '#cbd5e1'),
+      borderColor: state.isFocused ? '#2dd4bf' : (isDark ? '#374151' : '#cbd5e1'),
       boxShadow: 'none',
-      '&:hover': { borderColor: '#2962ff' },
+      '&:hover': { borderColor: '#2dd4bf' },
     }),
     valueContainer: (base) => ({ ...base, height: 32, padding: '0 8px' }),
     input: (base) => ({ ...base, margin: 0, padding: 0, color: isDark ? '#fff' : '#0f172a' }),
@@ -1720,7 +1720,7 @@ function LeverageModal({
         <button
           type="button"
           onClick={() => onConfirm(draft)}
-          className="h-11 w-full rounded-md bg-[#2962ff] text-sm font-bold text-white transition hover:bg-[#1f52e0]"
+          className="h-11 w-full rounded-md bg-[#2dd4bf] text-sm font-bold text-white transition hover:bg-[#14b8a6]"
         >
           Confirm
         </button>
@@ -1834,7 +1834,7 @@ function ManagedExitsModal({
         <button
           type="button"
           onClick={onClose}
-          className="mt-5 h-11 w-full rounded-md bg-[#2962ff] text-sm font-bold text-white transition hover:bg-[#1f52e0]"
+          className="mt-5 h-11 w-full rounded-md bg-[#2dd4bf] text-sm font-bold text-white transition hover:bg-[#14b8a6]"
         >
           Done
         </button>
@@ -2017,7 +2017,7 @@ function AdvancedTpSlModal({
         <button
           type="button"
           onClick={onClose}
-          className="mt-5 h-11 w-full rounded-md bg-[#2962ff] text-sm font-bold text-white transition hover:bg-[#1f52e0]"
+          className="mt-5 h-11 w-full rounded-md bg-[#2dd4bf] text-sm font-bold text-white transition hover:bg-[#14b8a6]"
         >
           Done
         </button>
@@ -2903,7 +2903,7 @@ export default function ReplayPanel({
                 {[['drawings', 'Drawings'], ['indicators', 'Indicators'], ['positions', 'Positions and orders']].map(([key, label]) => (
                   <label key={key} className="flex cursor-pointer items-center justify-between gap-3 py-1 text-xs">
                     {label}
-                    <input type="checkbox" checked={Boolean(hiddenLayers?.[key])} onChange={() => onToggleVisibility?.(key)} className="h-4 w-4 accent-[#2962ff]" />
+                    <input type="checkbox" checked={Boolean(hiddenLayers?.[key])} onChange={() => onToggleVisibility?.(key)} className="h-4 w-4 accent-[#2dd4bf]" />
                   </label>
                 ))}
               </div>
@@ -2979,7 +2979,7 @@ export default function ReplayPanel({
 
             <div className={`flex items-center justify-between gap-3 rounded-md border p-2.5 ${cardSurfaceClass}`}>
               <div className="flex min-w-0 items-center gap-2">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#2962ff]/15 text-[#5b8cff]">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#2dd4bf]/15 text-[#5eead4]">
                   <Wallet size={16} />
                 </span>
                 <div className="min-w-0">
@@ -3091,7 +3091,7 @@ export default function ReplayPanel({
                     onClick={() => setOrderType(value)}
                     className={`relative -mb-px h-8 border-b-2 text-xs font-semibold transition-colors ${
                       orderType === value
-                        ? `border-[#2962ff] ${valueTextClass}`
+                        ? `border-[#2dd4bf] ${valueTextClass}`
                         : isDarkTheme
                           ? `border-transparent ${mutedTextClass} hover:text-gray-300`
                           : `border-transparent ${mutedTextClass} hover:text-slate-700`
@@ -3228,7 +3228,7 @@ export default function ReplayPanel({
                     <button
                       type="button"
                       onClick={() => setShowManagedExitsModal(true)}
-                      className="flex items-center gap-0.5 text-[11px] font-semibold text-[#5b8cff] hover:underline"
+                      className="flex items-center gap-0.5 text-[11px] font-semibold text-[#5eead4] hover:underline"
                     >
                       Managed Exits{managedExitCount ? ` (${managedExitCount})` : ''}
                       <ChevronRight size={12} />
@@ -3236,7 +3236,7 @@ export default function ReplayPanel({
                     <button
                       type="button"
                       onClick={() => setShowAdvancedTpSlModal(true)}
-                      className="flex items-center gap-0.5 text-[11px] font-semibold text-[#5b8cff] hover:underline"
+                      className="flex items-center gap-0.5 text-[11px] font-semibold text-[#5eead4] hover:underline"
                     >
                       Advanced
                       <ChevronRight size={12} />
@@ -3379,7 +3379,7 @@ export default function ReplayPanel({
                         <span className={`text-xs font-semibold ${valueTextClass}`}>
                           {position.symbol} {position.side.toUpperCase()}
                           {position.marginMode === 'cross' && (
-                            <span className="ml-1 rounded bg-[#5b8cff]/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#5b8cff]">
+                            <span className="ml-1 rounded bg-[#5eead4]/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#5eead4]">
                               Cross
                             </span>
                           )}
@@ -3428,7 +3428,7 @@ export default function ReplayPanel({
                           <span className={`text-xs font-semibold ${valueTextClass}`}>
                             {position.symbol} {position.side.toUpperCase()}
                             {position.marginMode === 'cross' && (
-                              <span className="ml-1 rounded bg-[#5b8cff]/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#5b8cff]">
+                              <span className="ml-1 rounded bg-[#5eead4]/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#5eead4]">
                                 Cross
                               </span>
                             )}
@@ -3582,7 +3582,7 @@ export default function ReplayPanel({
             ].map(([key, label]) => (
               <label key={key} className="flex cursor-pointer items-center justify-between gap-3 text-sm">
                 {label}
-                <input type="checkbox" checked={Boolean(hiddenLayers?.[key])} onChange={() => onToggleVisibility?.(key)} className="h-4 w-4 accent-[#2962ff]" />
+                <input type="checkbox" checked={Boolean(hiddenLayers?.[key])} onChange={() => onToggleVisibility?.(key)} className="h-4 w-4 accent-[#2dd4bf]" />
               </label>
             ))}
             <div className={`border-t pt-3 ${sectionBorderClass}`}>

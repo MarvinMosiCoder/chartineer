@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, router, usePage } from '@inertiajs/react';
-import { AlertTriangle, BarChart3, Bell, LogOut, Menu, Moon, RefreshCw, Sun, Wallet, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bell, KeyRound, LogOut, Menu, Moon, RefreshCw, Sun, UserRound, Wallet, X } from 'lucide-react';
 import axios from 'axios';
 import getAppLogo from '../../Components/SystemSettings/ApplicationLogo';
 import getAppName from '../../Components/SystemSettings/ApplicationName';
+import AppNameWordmark from '../../Components/SystemSettings/AppNameWordmark';
 import { useSidebar } from '../../Context/SidebarContext';
 import { useProfile, useTheme } from '../../Context/ThemeContext';
 import { useConfirm } from '../../Hooks/useConfirm';
@@ -35,6 +36,7 @@ export default function TraderNavbar() {
     const [startingBalance, setStartingBalance] = useState('10000');
     const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [showNotifications, setShowNotifications] = useState(false);
+    const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [alertToast, setAlertToast] = useState(null);
     const alertSoundEnabledRef = useRef(true);
@@ -210,11 +212,11 @@ export default function TraderNavbar() {
             </button>
 
             <Link href="/workspace" className="flex shrink-0 items-center gap-2 pr-3 sm:pr-5">
-                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md bg-[#2962ff]">
+                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md bg-[#2dd4bf]">
                     {logo ? <img src={logo} alt={appName} className="h-full w-full object-contain p-1" /> : <BarChart3 size={17} className="text-white" />}
                 </div>
                 <div className="hidden sm:block">
-                    <div className="text-sm font-bold leading-none">{appName}</div>
+                    <div className="text-sm font-bold leading-none"><AppNameWordmark name={appName} /></div>
                     <div className="mt-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-[#787b86]">Trading terminal</div>
                 </div>
             </Link>
@@ -226,7 +228,7 @@ export default function TraderNavbar() {
                     <button
                         type="button"
                         onClick={() => setShowNotifications((current) => !current)}
-                        className={`relative rounded-md p-2 transition ${showNotifications ? 'bg-[#2962ff]/15 text-[#5b8cff]' : 'hover:bg-white/10'}`}
+                        className={`relative rounded-md p-2 transition ${showNotifications ? 'bg-[#2dd4bf]/15 text-[#5eead4]' : 'hover:bg-white/10'}`}
                         title="Notifications"
                         aria-label="Notifications"
                         aria-expanded={showNotifications}
@@ -247,7 +249,7 @@ export default function TraderNavbar() {
 
                             <div className="max-h-[min(72vh,480px)] overflow-y-auto">
                                 {notifications.length ? notifications.map((item) => {
-                                    const rowWrapClass = `group flex w-full items-start gap-1 border-b pl-4 pr-2 transition last:border-0 ${isDark ? 'border-[#2a2e39] hover:bg-white/5' : 'border-slate-200 hover:bg-slate-50'} ${item.is_read ? 'opacity-70' : 'bg-[#2962ff]/5'}`;
+                                    const rowWrapClass = `group flex w-full items-start gap-1 border-b pl-4 pr-2 transition last:border-0 ${isDark ? 'border-[#2a2e39] hover:bg-white/5' : 'border-slate-200 hover:bg-slate-50'} ${item.is_read ? 'opacity-70' : 'bg-[#2dd4bf]/5'}`;
                                     const rowContent = <>
                                         <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-400"><Bell size={14} /></span>
                                         <span className="min-w-0 flex-1">
@@ -276,7 +278,7 @@ export default function TraderNavbar() {
                                 }) : <div className="p-8 text-center text-xs text-[#787b86]">No notifications yet.</div>}
                             </div>
 
-                            <Link href="/notifications/view-all-notifications" onClick={() => setShowNotifications(false)} className={`block border-t px-4 py-3 text-center text-xs font-semibold text-[#5b8cff] hover:bg-white/5 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
+                            <Link href="/notifications/view-all-notifications" onClick={() => setShowNotifications(false)} className={`block border-t px-4 py-3 text-center text-xs font-semibold text-[#5eead4] hover:bg-white/5 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
                                 View all notifications
                             </Link>
                         </div>
@@ -286,7 +288,7 @@ export default function TraderNavbar() {
                     <button
                         type="button"
                         onClick={toggleAssets}
-                        className={`flex h-9 items-center gap-2 rounded-md px-2 text-xs font-semibold transition ${showAssets ? 'bg-[#2962ff]/15 text-[#5b8cff]' : 'hover:bg-white/10'}`}
+                        className={`flex h-9 items-center gap-2 rounded-md px-2 text-xs font-semibold transition ${showAssets ? 'bg-[#2dd4bf]/15 text-[#5eead4]' : 'hover:bg-white/10'}`}
                         aria-label="Open demo assets"
                         aria-expanded={showAssets}
                     >
@@ -298,7 +300,7 @@ export default function TraderNavbar() {
                         <div className={`absolute right-0 top-11 z-[230] w-[min(92vw,380px)] overflow-hidden rounded-xl border shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722]' : 'border-slate-200 bg-white'}`}>
                             <div className={`flex items-center justify-between border-b px-4 py-3 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
                                 <div className="flex items-center gap-3">
-                                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#2962ff]/15 text-[#5b8cff]"><Wallet size={18} /></span>
+                                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#2dd4bf]/15 text-[#5eead4]"><Wallet size={18} /></span>
                                     <div><div className="text-sm font-bold">Assets</div><div className="text-[10px] uppercase tracking-wider text-[#787b86]">Paper trading only</div></div>
                                 </div>
                                 <div className="flex items-center gap-1">
@@ -404,11 +406,19 @@ export default function TraderNavbar() {
                 <button type="button" onClick={toggleTheme} className="rounded-md p-2 hover:bg-white/10" title="Toggle theme">
                     {isDark ? <Sun size={16} /> : <Moon size={16} />}
                 </button>
-                <Link href="/profile" title="View profile" className={`h-9 w-9 shrink-0 overflow-hidden rounded-full border shadow-md transition hover:opacity-80 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
-                    {navAvatar ? <AvatarBadge avatar={navAvatar} sizeClassName="text-base"/> : (
-                        <div className={`flex h-full w-full items-center justify-center ${navBackground} text-xs font-bold text-slate-800`}>{navInitials}</div>
+                <div className="relative">
+                    <button type="button" onClick={() => setShowProfileMenu((current) => !current)} title="Account menu" aria-label="Account menu" aria-expanded={showProfileMenu} className={`h-9 w-9 shrink-0 overflow-hidden rounded-full border shadow-md transition hover:opacity-80 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
+                        {navAvatar ? <AvatarBadge avatar={navAvatar} sizeClassName="text-base"/> : (
+                            <div className={`flex h-full w-full items-center justify-center ${navBackground} text-xs font-bold text-slate-800`}>{navInitials}</div>
+                        )}
+                    </button>
+                    {showProfileMenu && (
+                        <div className={`absolute right-0 top-11 z-[230] w-48 overflow-hidden rounded-xl border shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722]' : 'border-slate-200 bg-white'}`}>
+                            <Link href="/profile" onClick={() => setShowProfileMenu(false)} className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-colors duration-200 ${isDark ? 'text-[#d1d4dc] hover:bg-white/5' : 'text-slate-700 hover:bg-slate-50'}`}><UserRound size={14}/>View profile</Link>
+                            <Link href="/change_password" onClick={() => setShowProfileMenu(false)} className={`flex items-center gap-2 border-t px-4 py-2.5 text-xs font-semibold transition-colors duration-200 ${isDark ? 'border-[#2a2e39] text-[#d1d4dc] hover:bg-white/5' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}><KeyRound size={14}/>Change password</Link>
+                        </div>
                     )}
-                </Link>
+                </div>
                 <button type="button" onClick={() => setShowLogoutModal(true)} className="rounded-md p-2 text-[#787b86] hover:bg-red-500/10 hover:text-red-400" title="Sign out">
                     <LogOut size={16} />
                 </button>

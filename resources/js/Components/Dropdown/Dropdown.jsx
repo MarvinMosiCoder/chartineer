@@ -61,7 +61,7 @@ const DropdownSelect = ({ options, onChange, value, name, defaultSelect, display
                     name={name}
                     value={value}
                     onChange={onChange}
-                    className={`appearance-none px-4 pr-7 py-2 text-sm text-left outline-none border border-gray-300 rounded-lg ${theme === 'bg-skin-black' ? theme+' text-gray-300' : 'bg-white'} w-full cursor-pointer hover:border-gray-400 focus:ring-2 focus:ring-blue-500 transition duration-200 truncate ${extendClass}`}
+                    className={`appearance-none px-4 pr-7 py-2 text-sm text-left outline-none border border-gray-300 rounded-lg ${theme === 'bg-skin-black' ? theme+' text-gray-300' : 'bg-white'} w-full cursor-pointer hover:border-gray-400 focus:ring-2 focus:ring-teal-500 transition duration-200 truncate ${extendClass}`}
                 >
                     <option value="" className="truncate">{defaultSelect}</option>
                     {options.map((option, index) => (

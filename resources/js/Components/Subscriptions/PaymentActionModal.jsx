@@ -51,17 +51,17 @@ export default function PaymentActionModal({
         <p className="text-sm leading-6 text-[#9598a1]">{description}</p>
         {reasonCodes && <label className="block text-xs font-semibold">
           Reason
-          <select value={reasonCode} onChange={event => setReasonCode(event.target.value)} className={`mt-1.5 h-10 w-full rounded-lg border px-3 text-sm outline-none focus:border-[#2962ff] ${field}`}>
+          <select value={reasonCode} onChange={event => setReasonCode(event.target.value)} className={`mt-1.5 h-10 w-full rounded-lg border px-3 text-sm outline-none focus:border-[#2dd4bf] ${field}`}>
             {reasonCodes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>}
         {daysDefault !== undefined && <label className="block text-xs font-semibold">
           Days to restore
-          <input type="number" min="1" max="3650" value={days} onChange={event => setDays(event.target.value)} className={`mt-1.5 h-10 w-full rounded-lg border px-3 text-sm outline-none focus:border-[#2962ff] ${field}`}/>
+          <input type="number" min="1" max="3650" value={days} onChange={event => setDays(event.target.value)} className={`mt-1.5 h-10 w-full rounded-lg border px-3 text-sm outline-none focus:border-[#2dd4bf] ${field}`}/>
         </label>}
         <label className="block text-xs font-semibold">
           Internal note
-          <textarea value={reason} onChange={event => setReason(event.target.value)} rows="3" placeholder={reasonPlaceholder} className={`mt-1.5 w-full resize-y rounded-lg border p-3 text-sm outline-none focus:border-[#2962ff] ${field}`}/>
+          <textarea value={reason} onChange={event => setReason(event.target.value)} rows="3" placeholder={reasonPlaceholder} className={`mt-1.5 w-full resize-y rounded-lg border p-3 text-sm outline-none focus:border-[#2dd4bf] ${field}`}/>
         </label>
         {error && <p className="text-xs font-semibold text-red-500">{error}</p>}
       </div>

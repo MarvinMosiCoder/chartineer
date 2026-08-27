@@ -53,7 +53,7 @@ export default function TradeInsightsWidget() {
       </div>
       <Link
         href="/trade-report"
-        className={`shrink-0 text-[10px] font-semibold hover:underline ${isDark ? 'text-[#5b8cff]' : 'text-[#2962ff]'}`}
+        className={`shrink-0 text-[10px] font-semibold hover:underline ${isDark ? 'text-[#5eead4]' : 'text-[#2dd4bf]'}`}
       >
         View report
       </Link>

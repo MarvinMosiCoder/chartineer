@@ -53,7 +53,7 @@ export default function SystemErrorLogAdminIndex() {
     return <><Head title="System Error Logs"/>
         <div className={`space-y-4 ${isDark ? 'text-[#d1d4dc]' : 'text-slate-900'}`}>
             <div>
-                <div className="text-xs font-bold uppercase tracking-[.18em] text-[#2962ff]">System health</div>
+                <div className="text-xs font-bold uppercase tracking-[.18em] text-[#2dd4bf]">System health</div>
                 <h1 className={`mt-1 text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>System error logs</h1>
                 <p className={`mt-1 text-sm ${muted}`}>Every reported exception app-wide, tagged by area, for checking payment, backtest, and other failures.</p>
             </div>
@@ -71,7 +71,7 @@ export default function SystemErrorLogAdminIndex() {
                 <section className={`overflow-hidden rounded-xl border ${panel}`}>
                     <div className="flex items-center justify-between border-b border-[#2a2e39] p-4"><div className="flex items-center gap-2 text-sm font-bold"><AlertTriangle size={16}/>Errors</div><div className="flex items-center gap-1 text-[10px] text-[#787b86]"><button disabled={meta.current_page <= 1} onClick={() => setPage(p => p - 1)} className="rounded p-1 disabled:opacity-30"><ChevronLeft size={14}/></button>Page {meta.current_page}/{meta.last_page || 1}<button disabled={meta.current_page >= meta.last_page} onClick={() => setPage(p => p + 1)} className="rounded p-1 disabled:opacity-30"><ChevronRight size={14}/></button></div></div>
                     <div className="max-h-[650px] overflow-y-auto">
-                        {loading ? <p className="p-5 text-xs text-[#787b86]">Loading…</p> : !items.length ? <p className="p-12 text-center text-xs text-[#787b86]">No errors match these filters.</p> : items.map(item => <button key={item.id} onClick={() => setSelected(item)} className={`block w-full border-b p-4 text-left ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'} ${selected?.id === item.id ? 'bg-[#2962ff]/10' : 'hover:bg-[#2962ff]/5'}`}>
+                        {loading ? <p className="p-5 text-xs text-[#787b86]">Loading…</p> : !items.length ? <p className="p-12 text-center text-xs text-[#787b86]">No errors match these filters.</p> : items.map(item => <button key={item.id} onClick={() => setSelected(item)} className={`block w-full border-b p-4 text-left ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'} ${selected?.id === item.id ? 'bg-[#2dd4bf]/10' : 'hover:bg-[#2dd4bf]/5'}`}>
                             <div className="flex items-start gap-2">
                                 <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase ${areaTones[item.area] || areaTones.general}`}>{item.area}</span>
                                 {item.resolvedAt && <span className="flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase text-emerald-500"><CircleCheck size={10}/>Resolved</span>}
@@ -100,7 +100,7 @@ export default function SystemErrorLogAdminIndex() {
                             <div><span className={muted}>Method / URL:</span> <span className="break-all">{selected.method} {selected.url || '—'}</span></div>
                             <div><span className={muted}>IP:</span> {selected.ip || '—'}</div>
                         </div>
-                        {selected.trace && <details className="mt-4"><summary className="cursor-pointer text-xs font-semibold text-[#5b8cff]">Stack trace</summary><pre className={`mt-2 max-h-80 overflow-auto rounded-lg border p-3 text-[10px] leading-5 ${field}`}>{selected.trace}</pre></details>}
+                        {selected.trace && <details className="mt-4"><summary className="cursor-pointer text-xs font-semibold text-[#5eead4]">Stack trace</summary><pre className={`mt-2 max-h-80 overflow-auto rounded-lg border p-3 text-[10px] leading-5 ${field}`}>{selected.trace}</pre></details>}
                     </div>}
                 </section>
             </div>

@@ -281,7 +281,7 @@ export default function ShareLinkManager() {
         </div>
 
         <div className="md:col-span-2">
-          <button type="submit" disabled={saving} className="rounded bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+          <button type="submit" disabled={saving} className="rounded bg-teal-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
             {saving ? 'Creating…' : 'Create share link'}
           </button>
         </div>

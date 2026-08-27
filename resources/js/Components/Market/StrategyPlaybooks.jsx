@@ -196,7 +196,7 @@ export default function StrategyPlaybooks() {
             type="button"
             onClick={openCreateModal}
             data-tour="journal-playbooks"
-            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
+            className="inline-flex items-center gap-2 rounded-md bg-teal-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-teal-700"
           >
             <Plus size={14} />
             New playbook
@@ -325,7 +325,7 @@ export default function StrategyPlaybooks() {
                   <X size={14} />
                   Cancel
                 </button>
-                <button disabled={saving} className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                <button disabled={saving} className="inline-flex items-center gap-2 rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                   <Save size={14} />
                   {saving ? 'Saving…' : editingId ? 'Update playbook' : 'Create playbook'}
                 </button>

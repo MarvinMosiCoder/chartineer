@@ -48,7 +48,7 @@ const ContentLoader = () => {
                 {BAR_HEIGHTS.map((height, i) => (
                     <span
                         key={i}
-                        className="w-1.5 animate-candlePulse motion-reduce:animate-none rounded-sm bg-[#2962ff] shadow-[0_0_8px_rgba(41,98,255,0.7)]"
+                        className="w-1.5 animate-candlePulse motion-reduce:animate-none rounded-sm bg-[#2dd4bf] shadow-[0_0_8px_rgba(45,212,191,0.7)]"
                         style={{ height, animationDelay: `${BAR_DELAYS[i]}s` }}
                     />
                 ))}

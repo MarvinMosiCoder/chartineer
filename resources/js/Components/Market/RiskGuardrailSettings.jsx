@@ -116,7 +116,7 @@ export default function RiskGuardrailSettings() {
               onClick={() => setForm({ ...form, mode: option.value })}
               className={`flex-1 rounded-md px-3 py-2 text-left transition-colors ${
                 form.mode === option.value
-                  ? 'bg-[#2962ff] text-white'
+                  ? 'bg-[#2dd4bf] text-white'
                   : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-slate-600 hover:bg-white'
               }`}
             >
@@ -158,7 +158,7 @@ export default function RiskGuardrailSettings() {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button disabled={saving} className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+        <button disabled={saving} className="inline-flex items-center gap-2 rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
           <Save size={14} />
           {saving ? 'Saving…' : 'Save guardrails'}
         </button>

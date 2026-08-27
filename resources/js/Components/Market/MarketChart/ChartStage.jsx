@@ -1675,7 +1675,7 @@ export default function ChartStage({
             style={{ left: replayPickPreviewX + 2 }}
           />
           <div
-            className="absolute top-3 -translate-x-1/2 whitespace-nowrap rounded bg-[#2962ff] px-2 py-1 text-[11px] font-semibold text-white shadow-lg"
+            className="absolute top-3 -translate-x-1/2 whitespace-nowrap rounded bg-[#2dd4bf] px-2 py-1 text-[11px] font-semibold text-white shadow-lg"
             style={{ left: replayPickPreviewX }}
           >
             Select replay start
@@ -1716,7 +1716,7 @@ export default function ChartStage({
           </g>
         ))}
         {(swingPointMarkers ?? []).map((marker) => (
-          <circle key={marker.id} cx={marker.x} cy={marker.y} r="4" fill="none" stroke="#2962ff" strokeWidth="1.5" />
+          <circle key={marker.id} cx={marker.x} cy={marker.y} r="4" fill="none" stroke="#2dd4bf" strokeWidth="1.5" />
         ))}
       </svg>
 

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Head } from '@inertiajs/react';
 import {
   Activity,
@@ -10,6 +10,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import StatCard from '../../Components/Market/StatCard';
+import getAppName from '../../Components/SystemSettings/ApplicationName';
 
 // PUBLIC page — no login, no ThemeProvider (see resources/js/app.jsx: any page whose
 // component name starts with "Public/" is rendered with no layout/theme wrapper at all).
@@ -86,6 +87,8 @@ export default function MentorReview({ shareLink = {}, trades = [], analytics = 
   const advanced = analytics?.advanced ?? null;
   const monteCarlo = analytics?.monteCarlo ?? null;
   const title = shareLink?.label || 'Shared Trade Review';
+  const [appName, setAppName] = useState('BacktradeLab');
+  useEffect(() => { getAppName().then(setAppName).catch(() => {}); }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -97,7 +100,7 @@ export default function MentorReview({ shareLink = {}, trades = [], analytics = 
             <div>
               <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
                 <ShieldCheck size={13} />
-                Read-only — shared by a BacktradeLab trader
+                Read-only — shared by a {appName} trader
               </div>
               <h1 className="mt-3 text-2xl font-bold text-slate-950">{title}</h1>
             </div>
@@ -184,7 +187,7 @@ export default function MentorReview({ shareLink = {}, trades = [], analytics = 
                       <td className="whitespace-nowrap px-3 py-2 font-semibold text-slate-900">{trade.symbol}</td>
                       <td className="whitespace-nowrap px-3 py-2">
                         {trade.marginMode === 'cross' ? (
-                          <span className="rounded bg-[#5b8cff]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5b8cff]">Cross</span>
+                          <span className="rounded bg-[#5eead4]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5eead4]">Cross</span>
                         ) : (
                           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">Isolated</span>
                         )}

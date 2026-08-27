@@ -30,8 +30,8 @@
 .boot-splash-candles span {
     width: 6px;
     border-radius: 2px;
-    background: #2962ff;
-    box-shadow: 0 0 8px rgba(41, 98, 255, 0.7);
+    background: #2dd4bf;
+    box-shadow: 0 0 8px rgba(45, 212, 191, 0.7);
     animation: boot-splash-pulse 1.4s ease-in-out infinite;
 }
 

@@ -22,9 +22,9 @@ const watchlistSelectStyles = (isDark) => ({
         height: 28,
         fontSize: 11,
         backgroundColor: isDark ? '#131722' : '#ffffff',
-        borderColor: state.isFocused ? '#2962ff' : (isDark ? '#2a2e39' : '#e2e8f0'),
+        borderColor: state.isFocused ? '#2dd4bf' : (isDark ? '#2a2e39' : '#e2e8f0'),
         boxShadow: 'none',
-        '&:hover': { borderColor: '#2962ff' },
+        '&:hover': { borderColor: '#2dd4bf' },
     }),
     valueContainer: (base) => ({ ...base, height: 28, padding: '0 8px' }),
     input: (base) => ({ ...base, margin: 0, padding: 0, color: isDark ? '#fff' : '#0f172a' }),
@@ -102,7 +102,7 @@ export default function WatchlistPanel({ isFullscreen = false, compact = false, 
                     <ChevronDown size={13} className={`shrink-0 transition-transform ${isPanelCollapsed ? '-rotate-90' : ''} ${isDark ? 'text-[#787b86]' : 'text-slate-500'}`} />
                     <h2 className={`truncate text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Watchlists</h2>
                 </button>
-                <button type="button" onClick={openCreateWatchlistModal} className="flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-[#2962ff] px-2.5 text-[10px] font-bold text-white hover:bg-blue-600"><FolderPlus size={12} />Add watchlist</button>
+                <button type="button" onClick={openCreateWatchlistModal} className="flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-[#2dd4bf] px-2.5 text-[10px] font-bold text-white hover:bg-teal-600"><FolderPlus size={12} />Add watchlist</button>
             </div>
             {!isPanelCollapsed && (
                 <div className={`space-y-1 ${isFullscreen ? 'max-h-[70vh] overflow-y-auto p-2' : 'mt-1'}`}>
@@ -114,7 +114,7 @@ export default function WatchlistPanel({ isFullscreen = false, compact = false, 
                                     <span className="flex min-w-0 items-center gap-2"><Star size={12} className="shrink-0 text-amber-400" fill="currentColor" /><span className={`truncate text-[11px] font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{name}</span><span className={`rounded-full px-1.5 text-[8px] font-bold ${isDark ? 'bg-white/10 text-[#b2b5be]' : 'bg-slate-200 text-slate-600'}`}>{items.length}</span></span>
                                     <ChevronDown size={13} className={`shrink-0 text-[#787b86] transition-transform ${expanded ? 'rotate-180' : ''}`} />
                                 </button>
-                                <IconTooltipButton label={`Edit ${name}`} isDark={isDark} zIndexClass={WATCHLIST_TOOLTIP_Z} onClick={() => openEditWatchlistModal(name)} className="rounded p-1.5 text-[#787b86] hover:text-[#2962ff]"><Pencil size={11} /></IconTooltipButton>
+                                <IconTooltipButton label={`Edit ${name}`} isDark={isDark} zIndexClass={WATCHLIST_TOOLTIP_Z} onClick={() => openEditWatchlistModal(name)} className="rounded p-1.5 text-[#787b86] hover:text-[#2dd4bf]"><Pencil size={11} /></IconTooltipButton>
                                 <IconTooltipButton label={`Delete ${name}`} isDark={isDark} zIndexClass={WATCHLIST_TOOLTIP_Z} onClick={() => setDeleteWatchlistName(name)} className="rounded p-1.5 text-[#787b86] hover:text-red-500"><Trash2 size={11} /></IconTooltipButton>
                             </div>
                             {expanded && <div className={`border-t p-1.5 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
@@ -138,7 +138,7 @@ export default function WatchlistPanel({ isFullscreen = false, compact = false, 
                                     })}
                                     formatOptionLabel={(option) => <span className="flex items-center gap-2">
                                         <span className={`flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
-                                            {option.logoUrl ? <img src={option.logoUrl} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={11} className="text-[#5b8cff]" />}
+                                            {option.logoUrl ? <img src={option.logoUrl} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={11} className="text-[#5eead4]" />}
                                         </span>
                                         <span className="min-w-0 flex-1"><span className="block truncate font-bold">{option.symbol}</span><span className="block truncate text-[9px] text-[#787b86]">{option.exchangeLabel}</span></span>
                                         {Number.isFinite(option.lastPrice) && <span className="shrink-0 tabular-nums text-[9px] text-[#787b86]">{option.lastPrice.toLocaleString(undefined, { maximumFractionDigits: 8 })}</span>}
@@ -198,12 +198,12 @@ export default function WatchlistPanel({ isFullscreen = false, compact = false, 
                                     const change = Number(meta?.stats?.change_24h_percent);
                                     const hasChange = Number.isFinite(change);
                                     const lastPrice = Number(meta?.stats?.last_price);
-                                    return <div key={key} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 ${isActive ? 'border-[#2962ff] bg-[#2962ff]/10' : (isDark ? 'border-[#2a2e39] bg-[#131722]' : 'border-slate-200 bg-white')}`}>
+                                    return <div key={key} className={`flex items-center gap-2 rounded-md border px-2 py-1.5 ${isActive ? 'border-[#2dd4bf] bg-[#2dd4bf]/10' : (isDark ? 'border-[#2a2e39] bg-[#131722]' : 'border-slate-200 bg-white')}`}>
                                         <span className={`flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
-                                            {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className="text-[#5b8cff]" />}
+                                            {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className="text-[#5eead4]" />}
                                         </span>
                                         <button type="button" onClick={() => onSelectSymbol?.({ symbol: market.symbol, exchange: market.exchange, category: market.category })} className="min-w-0 flex-1 text-left">
-                                            <span className={`block truncate text-xs font-bold ${isActive ? 'text-[#5b8cff]' : 'text-emerald-500'}`}>{market.symbol}</span>
+                                            <span className={`block truncate text-xs font-bold ${isActive ? 'text-[#5eead4]' : 'text-emerald-500'}`}>{market.symbol}</span>
                                             <span className={`block truncate text-[9px] ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{String(market.exchange ?? 'bybit').toUpperCase()} {marketCategoryLabel(market.category)}</span>
                                         </button>
                                         {meta && <span className="shrink-0 text-right text-[10px] tabular-nums text-[#787b86]">

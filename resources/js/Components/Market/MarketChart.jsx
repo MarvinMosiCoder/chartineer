@@ -177,7 +177,7 @@ function resolveChartTheme(adminTheme) {
 function ChartDotsLoader({ isDark }) {
   return (
     <div className="w-full max-w-3xl px-8" aria-label="Loading chart workspace" role="status">
-      <div className={`h-1.5 overflow-hidden rounded-full ${isDark ? 'bg-[#2a2e39]' : 'bg-slate-200'}`}><div className="h-full w-1/3 animate-pulse rounded-full bg-[#2962ff]"/></div>
+      <div className={`h-1.5 overflow-hidden rounded-full ${isDark ? 'bg-[#2a2e39]' : 'bg-slate-200'}`}><div className="h-full w-1/3 animate-pulse rounded-full bg-[#2dd4bf]"/></div>
       <div className="mt-8 flex h-44 items-end justify-center gap-2 opacity-50">{[34,58,42,76,51,88,64,95,70,82,55,73,48,67,40].map((height,index)=><span key={index} className={index%3===0?'w-3 bg-red-500':'w-3 bg-emerald-500'} style={{height:`${height}%`}}/>)}</div>
       <div className="mt-4 text-center text-xs font-semibold text-[#787b86]">Loading chart workspace…</div>
     </div>
@@ -221,7 +221,7 @@ function ChartSkeletonLoader({ isDark }) {
       <footer className="absolute inset-x-0 bottom-0 flex h-7 items-center justify-around border-t px-6" style={{ borderColor: grid }}>
         {[0, 1, 2, 3, 4, 5].map((item) => <span key={item} className={`h-1.5 w-10 animate-pulse rounded ${muted}`} />)}
       </footer>
-      <div className="absolute bottom-10 left-1/2 z-20 -translate-x-1/2 rounded-full border border-[#2962ff]/25 bg-[#2962ff]/10 px-3 py-1.5 text-[10px] font-semibold text-[#5b8cff]">Loading chart data…</div>
+      <div className="absolute bottom-10 left-1/2 z-20 -translate-x-1/2 rounded-full border border-[#2dd4bf]/25 bg-[#2dd4bf]/10 px-3 py-1.5 text-[10px] font-semibold text-[#5eead4]">Loading chart data…</div>
     </div>
   );
 }
@@ -257,7 +257,7 @@ function ChartMarketLegend({ symbol, exchange, timeframe, candle, isTimeframeLoa
       style={{ color: chartTheme.text, maxWidth: 'calc(100% - 4.5rem)' }}
     >
       <div
-        className={`pointer-events-auto -mx-1.5 -my-0.5 flex min-w-0 shrink-0 items-center gap-x-1 whitespace-nowrap rounded border px-1.5 py-0.5 transition-colors ${isActive ? (chartTheme.mode === 'dark' ? 'border-[#2962ff]/50 bg-black/30' : 'border-[#2962ff]/50 bg-white/70') : 'border-transparent'}`}
+        className={`pointer-events-auto -mx-1.5 -my-0.5 flex min-w-0 shrink-0 items-center gap-x-1 whitespace-nowrap rounded border px-1.5 py-0.5 transition-colors ${isActive ? (chartTheme.mode === 'dark' ? 'border-[#2dd4bf]/50 bg-black/30' : 'border-[#2dd4bf]/50 bg-white/70') : 'border-transparent'}`}
       >
         {showSymbol && <span className="font-bold">{symbol}</span>}
         {showSymbol && <span className="text-[#787b86]">·</span>}
@@ -1121,8 +1121,8 @@ export default function MarketReplayChart({
       : DEFAULT_CANDLE_SIZE;
   });
   const [indicators, setIndicators] = useState(() => {
-    try { return { volume: true, volumeVisible: true, volumeSize: 20, sma: false, smaVisible: true, smaPeriod: 20, smaColor: '#2962ff', smaLineWidth: 2, ema: false, emaVisible: true, emaPeriod: 20, emaColor: '#f59e0b', emaLineWidth: 2, rsi: false, rsiVisible: true, rsiPeriod: 14, rsiSize: 25, rsiColor: '#a855f7', rsiLineWidth: 2, macd: false, macdVisible: true, macdFastPeriod: 12, macdSlowPeriod: 26, macdSignalPeriod: 9, macdSize: 25, macdColor: '#2962ff', macdSignalColor: '#f59e0b', macdUpColor: '#26a69a', macdDownColor: '#ef5350', macdLineWidth: 2, ...JSON.parse(localStorage.getItem(indicatorStorageKey) || '{}') }; }
-    catch { return { volume: true, volumeVisible: true, volumeSize: 20, sma: false, smaVisible: true, smaPeriod: 20, smaColor: '#2962ff', smaLineWidth: 2, ema: false, emaVisible: true, emaPeriod: 20, emaColor: '#f59e0b', emaLineWidth: 2, rsi: false, rsiVisible: true, rsiPeriod: 14, rsiSize: 25, rsiColor: '#a855f7', rsiLineWidth: 2, macd: false, macdVisible: true, macdFastPeriod: 12, macdSlowPeriod: 26, macdSignalPeriod: 9, macdSize: 25, macdColor: '#2962ff', macdSignalColor: '#f59e0b', macdUpColor: '#26a69a', macdDownColor: '#ef5350', macdLineWidth: 2 }; }
+    try { return { volume: true, volumeVisible: true, volumeSize: 20, sma: false, smaVisible: true, smaPeriod: 20, smaColor: '#2dd4bf', smaLineWidth: 2, ema: false, emaVisible: true, emaPeriod: 20, emaColor: '#f59e0b', emaLineWidth: 2, rsi: false, rsiVisible: true, rsiPeriod: 14, rsiSize: 25, rsiColor: '#a855f7', rsiLineWidth: 2, macd: false, macdVisible: true, macdFastPeriod: 12, macdSlowPeriod: 26, macdSignalPeriod: 9, macdSize: 25, macdColor: '#2dd4bf', macdSignalColor: '#f59e0b', macdUpColor: '#26a69a', macdDownColor: '#ef5350', macdLineWidth: 2, ...JSON.parse(localStorage.getItem(indicatorStorageKey) || '{}') }; }
+    catch { return { volume: true, volumeVisible: true, volumeSize: 20, sma: false, smaVisible: true, smaPeriod: 20, smaColor: '#2dd4bf', smaLineWidth: 2, ema: false, emaVisible: true, emaPeriod: 20, emaColor: '#f59e0b', emaLineWidth: 2, rsi: false, rsiVisible: true, rsiPeriod: 14, rsiSize: 25, rsiColor: '#a855f7', rsiLineWidth: 2, macd: false, macdVisible: true, macdFastPeriod: 12, macdSlowPeriod: 26, macdSignalPeriod: 9, macdSize: 25, macdColor: '#2dd4bf', macdSignalColor: '#f59e0b', macdUpColor: '#26a69a', macdDownColor: '#ef5350', macdLineWidth: 2 }; }
   });
   const [selectedIndicator, setSelectedIndicator] = useState(null);
   const [expandedIndicator, setExpandedIndicator] = useState(null);
@@ -3269,7 +3269,7 @@ export default function MarketReplayChart({
         panes: {
           enableResize: true,
           separatorColor: chartTheme.mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(15, 23, 42, 0.12)',
-          separatorHoverColor: '#2962ff',
+          separatorHoverColor: '#2dd4bf',
         },
       },
       grid: {
@@ -3323,10 +3323,10 @@ export default function MarketReplayChart({
       lastValueVisible: false,
       priceLineVisible: false,
     }, 1);
-    const smaSeries = chart.addSeries(LineSeries, { color: '#2962ff', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: false });
+    const smaSeries = chart.addSeries(LineSeries, { color: '#2dd4bf', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: false });
     const emaSeries = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: false });
     const rsiSeries = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, visible: false }, 2);
-    const macdSeries = chart.addSeries(LineSeries, { color: '#2962ff', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, visible: false }, 3);
+    const macdSeries = chart.addSeries(LineSeries, { color: '#2dd4bf', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, visible: false }, 3);
     const macdSignalSeries = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: false }, 3);
     const macdHistogramSeries = chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false, base: 0, visible: false }, 3);
 
@@ -3837,12 +3837,12 @@ export default function MarketReplayChart({
     const indicatorsGloballyHidden = Boolean(hiddenLayers.indicators);
     const isVolumeVisible = indicators.volume && indicators.volumeVisible !== false && !indicatorsGloballyHidden;
     volume?.applyOptions({ visible: isVolumeVisible });
-    sma?.applyOptions({ visible: indicators.sma && indicators.smaVisible !== false && !indicatorsGloballyHidden, color: indicators.smaColor ?? '#2962ff', lineWidth: Number(indicators.smaLineWidth) || 2 });
+    sma?.applyOptions({ visible: indicators.sma && indicators.smaVisible !== false && !indicatorsGloballyHidden, color: indicators.smaColor ?? '#2dd4bf', lineWidth: Number(indicators.smaLineWidth) || 2 });
     ema?.applyOptions({ visible: indicators.ema && indicators.emaVisible !== false && !indicatorsGloballyHidden, color: indicators.emaColor ?? '#f59e0b', lineWidth: Number(indicators.emaLineWidth) || 2 });
     const isRsiVisible = indicators.rsi && indicators.rsiVisible !== false && !indicatorsGloballyHidden;
     const isMacdVisible = indicators.macd && indicators.macdVisible !== false && !indicatorsGloballyHidden;
     rsi?.applyOptions({ visible: isRsiVisible, color: indicators.rsiColor ?? '#a855f7', lineWidth: Number(indicators.rsiLineWidth) || 2 });
-    macd?.applyOptions({ visible: isMacdVisible, color: indicators.macdColor ?? '#2962ff', lineWidth: Number(indicators.macdLineWidth) || 2 });
+    macd?.applyOptions({ visible: isMacdVisible, color: indicators.macdColor ?? '#2dd4bf', lineWidth: Number(indicators.macdLineWidth) || 2 });
     macdSignal?.applyOptions({ visible: isMacdVisible, color: indicators.macdSignalColor ?? '#f59e0b', lineWidth: Number(indicators.macdLineWidth) || 2 });
     macdHistogram?.applyOptions({ visible: isMacdVisible });
 
@@ -6991,7 +6991,7 @@ export default function MarketReplayChart({
       onMouseLeave={restartTourTooltip.hide}
       onFocus={restartTourTooltip.show}
       onBlur={restartTourTooltip.hide}
-      className="fixed bottom-4 right-4 z-[10000] flex h-9 w-9 items-center justify-center rounded-full border border-[#2962ff]/40 bg-[#131722] text-[#5b8cff] shadow-xl"
+      className="fixed bottom-4 right-4 z-[10000] flex h-9 w-9 items-center justify-center rounded-full border border-[#2dd4bf]/40 bg-[#131722] text-[#5eead4] shadow-xl"
     ><HelpCircle size={17}/></button>
     <AnchoredTooltipPortal pos={restartTourTooltip.pos} label="Restart workspace tour" isDark={chartTheme.mode === 'dark'} zIndexClass="z-[10001]" />
     {showSubscriptionModal && <SubscriptionModal onClose={() => setShowSubscriptionModal(false)} onTrialActivated={() => {
@@ -6999,9 +6999,9 @@ export default function MarketReplayChart({
       replayAccessAllowedRef.current = true;
       setShowSubscriptionModal(false);
     }} />}
-    {replayAccessError && <div className="fixed right-4 top-4 z-[10004] max-w-sm rounded-lg border border-red-500/40 bg-[#131722] p-4 text-sm text-white shadow-2xl"><div>{replayAccessError}</div><div className="mt-2 flex gap-3"><button onClick={() => requireReplayAccess({ showProgress: true })} className="font-semibold text-[#5b8cff]">Try again</button><button onClick={() => setReplayAccessError('')} className="text-[#9598a1]">Dismiss</button></div></div>}
+    {replayAccessError && <div className="fixed right-4 top-4 z-[10004] max-w-sm rounded-lg border border-red-500/40 bg-[#131722] p-4 text-sm text-white shadow-2xl"><div>{replayAccessError}</div><div className="mt-2 flex gap-3"><button onClick={() => requireReplayAccess({ showProgress: true })} className="font-semibold text-[#5eead4]">Try again</button><button onClick={() => setReplayAccessError('')} className="text-[#9598a1]">Dismiss</button></div></div>}
     {alertNotice && <div className="fixed right-4 top-4 z-[10003] flex max-w-sm items-start gap-3 rounded-lg border border-amber-400/40 bg-[#131722] p-4 text-sm text-white shadow-2xl"><Bell size={18} className="mt-0.5 shrink-0 text-amber-400"/><span>{alertNotice}</span><button onClick={()=>setAlertNotice('')} aria-label="Dismiss alert"><X size={16}/></button></div>}
-    {alertModalOpen && <div className="fixed inset-0 z-[10002] flex items-end justify-center bg-black/60 p-4 sm:items-center" onMouseDown={(e)=>e.target===e.currentTarget&&setAlertModalOpen(false)}><div className={`w-full max-w-sm rounded-xl border p-5 shadow-2xl ${chartTheme.mode==='dark'?'border-[#2a2e39] bg-[#131722] text-white':'border-slate-200 bg-white text-slate-900'}`} role="dialog" aria-modal="true"><div className="flex items-center justify-between"><h2 className="flex items-center gap-2 font-bold"><Bell size={17}/>Set {symbol} alert</h2><button onClick={()=>setAlertModalOpen(false)} aria-label="Close"><X size={18}/></button></div><label className="mt-4 block text-xs font-semibold">Price<input autoFocus type="number" min="0" step="any" value={alertDraft.price} onChange={(e)=>setAlertDraft((d)=>({...d,price:e.target.value}))} className="mt-1 h-10 w-full rounded-md border border-gray-600 bg-transparent px-3 outline-none focus:border-[#2962ff]"/></label><div className="mt-3 grid grid-cols-2 gap-2">{[['rise','Rise to price'],['drop','Drop to price']].map(([value,label])=><button key={value} onClick={()=>setAlertDraft((d)=>({...d,type:value}))} className={`h-10 rounded-md border text-xs font-semibold ${alertDraft.type===value?'border-[#2962ff] bg-[#2962ff] text-white':'border-gray-600'}`}>{label}</button>)}</div>{alertError&&<p className="mt-2 text-xs text-red-400">{alertError}</p>}<button onClick={savePriceAlert} className="mt-4 h-10 w-full rounded-md bg-[#2962ff] text-sm font-bold text-white">Create alert</button></div></div>}
+    {alertModalOpen && <div className="fixed inset-0 z-[10002] flex items-end justify-center bg-black/60 p-4 sm:items-center" onMouseDown={(e)=>e.target===e.currentTarget&&setAlertModalOpen(false)}><div className={`w-full max-w-sm rounded-xl border p-5 shadow-2xl ${chartTheme.mode==='dark'?'border-[#2a2e39] bg-[#131722] text-white':'border-slate-200 bg-white text-slate-900'}`} role="dialog" aria-modal="true"><div className="flex items-center justify-between"><h2 className="flex items-center gap-2 font-bold"><Bell size={17}/>Set {symbol} alert</h2><button onClick={()=>setAlertModalOpen(false)} aria-label="Close"><X size={18}/></button></div><label className="mt-4 block text-xs font-semibold">Price<input autoFocus type="number" min="0" step="any" value={alertDraft.price} onChange={(e)=>setAlertDraft((d)=>({...d,price:e.target.value}))} className="mt-1 h-10 w-full rounded-md border border-gray-600 bg-transparent px-3 outline-none focus:border-[#2dd4bf]"/></label><div className="mt-3 grid grid-cols-2 gap-2">{[['rise','Rise to price'],['drop','Drop to price']].map(([value,label])=><button key={value} onClick={()=>setAlertDraft((d)=>({...d,type:value}))} className={`h-10 rounded-md border text-xs font-semibold ${alertDraft.type===value?'border-[#2dd4bf] bg-[#2dd4bf] text-white':'border-gray-600'}`}>{label}</button>)}</div>{alertError&&<p className="mt-2 text-xs text-red-400">{alertError}</p>}<button onClick={savePriceAlert} className="mt-4 h-10 w-full rounded-md bg-[#2dd4bf] text-sm font-bold text-white">Create alert</button></div></div>}
     {showClearDrawingsConfirm && (
       <div
         className="fixed inset-0 z-[10002] flex items-center justify-center bg-black/60 p-4"
@@ -7094,7 +7094,7 @@ export default function MarketReplayChart({
           }}
           className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-xs font-semibold outline-none ${chartTheme.mode === 'dark' ? 'hover:bg-white/10 focus:bg-white/10' : 'hover:bg-slate-100 focus:bg-slate-100'}`}
         >
-          <Wallet size={15} className="text-[#5b8cff]" />
+          <Wallet size={15} className="text-[#5eead4]" />
           Trigger Position
         </button>
         <div className={`my-1 border-t ${chartTheme.mode === 'dark' ? 'border-[#363a45]' : 'border-slate-200'}`} />
@@ -7344,7 +7344,7 @@ export default function MarketReplayChart({
           <div className="hidden" aria-hidden="true">
             <button
               type="button"
-              className={`flex items-center gap-1.5 rounded border px-2 py-1 text-[10px] font-semibold shadow outline-none transition focus:ring-2 focus:ring-[#2962ff]/60 ${chartTheme.mode === 'dark' ? 'border-[#2a2e39] bg-[#131722]/95 text-[#d1d4dc]' : 'border-slate-200 bg-white/95 text-slate-700'}`}
+              className={`flex items-center gap-1.5 rounded border px-2 py-1 text-[10px] font-semibold shadow outline-none transition focus:ring-2 focus:ring-[#2dd4bf]/60 ${chartTheme.mode === 'dark' ? 'border-[#2a2e39] bg-[#131722]/95 text-[#d1d4dc]' : 'border-slate-200 bg-white/95 text-slate-700'}`}
               aria-label={`${visibleLiveStatus.label}. Show market feed details.`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${

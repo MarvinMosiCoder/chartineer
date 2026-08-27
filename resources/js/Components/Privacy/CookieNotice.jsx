@@ -36,14 +36,14 @@ export default function CookieNotice() {
             aria-label="Cookie notice"
         >
             <div className="flex min-w-0 flex-1 gap-3">
-                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2962ff]/15 text-[#5b8cff]" aria-hidden="true">
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2dd4bf]/15 text-[#5eead4]" aria-hidden="true">
                     <Cookie size={18} />
                 </span>
                 <div>
                     <h2 className="text-sm font-bold">Essential cookies and local storage</h2>
                     <p className="mt-1 text-xs leading-5 text-[#b2b5be] sm:text-sm">
                         BacktradeLab uses essential cookies for secure sessions and functional local storage to remember your preferences. We do not use advertising or analytics cookies.{' '}
-                        <Link href="/privacy-policy" className="font-semibold text-[#5b8cff] underline-offset-2 hover:underline">
+                        <Link href="/privacy-policy" className="font-semibold text-[#5eead4] underline-offset-2 hover:underline">
                             Read our Privacy Policy
                         </Link>
                         .
@@ -53,7 +53,7 @@ export default function CookieNotice() {
             <button
                 type="button"
                 onClick={dismiss}
-                className="mt-4 h-10 w-full shrink-0 rounded-lg bg-[#2962ff] px-5 text-sm font-bold text-white transition hover:bg-[#1e53e5] sm:mt-0 sm:w-auto"
+                className="mt-4 h-10 w-full shrink-0 rounded-lg bg-[#2dd4bf] px-5 text-sm font-bold text-white transition hover:bg-[#14b8a6] sm:mt-0 sm:w-auto"
             >
                 Got it
             </button>

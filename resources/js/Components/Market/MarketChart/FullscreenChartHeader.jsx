@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ListChecks, Maximize2, Minimize2, Wallet } from 'lucide-react';
 import getAppLogo from '../../SystemSettings/ApplicationLogo';
 import getAppName from '../../SystemSettings/ApplicationName';
+import AppNameWordmark from '../../SystemSettings/AppNameWordmark';
 import ChartHeader from './ChartHeader';
 import WatchlistPanel from '../WatchlistPanel';
 import { watchlistMarketKey } from '../../../Context/WatchlistContext';
@@ -76,7 +77,7 @@ export default function FullscreenChartHeader({
         {appLogo && <img src={appLogo} alt="" className="h-7 w-7 shrink-0 object-contain" draggable="false" />}
         {showAppName && (
           <span className={`hidden max-w-32 truncate text-xs font-bold sm:block ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            {appName}
+            <AppNameWordmark name={appName} />
           </span>
         )}
       </div>
@@ -102,7 +103,7 @@ export default function FullscreenChartHeader({
           aria-expanded={isWatchlistPanelOpen}
           className={`flex h-9 items-center gap-2 rounded-md border px-2 transition ${
             isWatchlistPanelOpen
-              ? 'border-[#2962ff] bg-[#2962ff] text-white'
+              ? 'border-[#2dd4bf] bg-[#2dd4bf] text-white'
               : isDark
                 ? 'border-gray-700 bg-black-table-color text-white hover:bg-skin-black-light'
                 : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
@@ -137,7 +138,7 @@ export default function FullscreenChartHeader({
         aria-expanded={isEntryPanelOpen}
         className={`mx-1 flex h-9 shrink-0 items-center gap-2 rounded-md border px-2 transition ${
           isEntryPanelOpen
-            ? 'border-[#2962ff] bg-[#2962ff] text-white'
+            ? 'border-[#2dd4bf] bg-[#2dd4bf] text-white'
             : isDark
               ? 'border-gray-700 bg-black-table-color text-white hover:bg-skin-black-light'
               : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'

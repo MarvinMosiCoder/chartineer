@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React from "react";
 import FormatLabelName from "../../Utilities/FormatLabelName";
+import { useTheme } from "../../Context/ThemeContext";
 
 const InputFile = ({
     type = "file",
@@ -7,47 +8,29 @@ const InputFile = ({
     value,
     onChange,
     displayName,
-    extendedClass
 }) => {
-
-    const fileBg = {
-        "bg-skin-blue": "bg-skin-blue",
-        "bg-skin-blue-light": "bg-skin-blue-light",
-        "bg-skin-yellow": "bg-skin-yellow",
-        "bg-skin-yellow-light": "bg-skin-yellow-light",
-        "bg-skin-green": "bg-skin-green",
-        "bg-skin-green-light": "bg-skin-green-light",
-        "bg-skin-purple": "bg-skin-purple",
-        "bg-skin-purple-light": "bg-skin-purple-light",
-        "bg-skin-red": "bg-skin-red",
-        "bg-skin-red-light": "bg-skin-red-light",
-        "bg-skin-black": "bg-skin-black",
-        "bg-skin-black-light": "bg-skin-black-light"
-    }[extendedClass];
+    const { theme } = useTheme();
+    const isDark = theme === 'bg-skin-black';
+    const label = displayName || FormatLabelName(name);
 
     return (
-        <div className="">
-            <label
-                htmlFor={name}
-                className="block text-sm font-bold text-gray-700 font-poppins"
-            >
-                {displayName || FormatLabelName(name)}
-            </label>
+        <label
+            htmlFor={name}
+            className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors duration-200 ${isDark ? 'border-[#2a2e39] bg-white/[0.02] hover:border-[#434955] hover:bg-white/[0.04]' : 'border-slate-200 bg-slate-50 hover:border-[#2dd4bf]/40 hover:bg-[#2dd4bf]/[0.03]'}`}
+        >
+            <i className={`fa fa-upload text-sm ${isDark ? 'text-[#5eead4]' : 'text-[#2dd4bf]'}`}></i>
+            <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>Upload {label}</span>
+            <span className={`text-xs ${isDark ? 'text-[#787b86]' : 'text-slate-500'}`}>Choose an image file</span>
             <input
                 id={name}
                 type={type}
                 value={value}
                 name={name}
                 onChange={onChange}
-                className={`block w-full text-sm text-slate-500
-                file:mr-4 file:py-2 file:px-4
-                file:rounded-full file:border-0
-                file:text-sm file:font-semibold
-                file:${fileBg} file:text-gray-200
-                border-2 rounded-full ${fileBg}/10 file:cursor-pointer cursor-pointer`}
-
+                accept="image/*"
+                className="hidden"
             />
-        </div>
+        </label>
     );
 };
 

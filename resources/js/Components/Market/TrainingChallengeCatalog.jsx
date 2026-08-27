@@ -141,7 +141,7 @@ export default function TrainingChallengeCatalog() {
                       </div>
                       <div className={`h-2 w-full overflow-hidden rounded-full ${trackClass}`}>
                         <div
-                          className="h-full rounded-full bg-blue-500"
+                          className="h-full rounded-full bg-teal-500"
                           style={{ width: `${Math.min(100, Number(score.progressPercent) || 0)}%` }}
                         />
                       </div>
@@ -180,7 +180,7 @@ export default function TrainingChallengeCatalog() {
                       type="button"
                       disabled={busyId === `start-${challenge.id}`}
                       onClick={() => startAttempt(challenge)}
-                      className="rounded bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                      className="rounded bg-teal-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
                     >
                       {busyId === `start-${challenge.id}` ? 'Starting…' : 'Start challenge'}
                     </button>

@@ -115,7 +115,7 @@ const AnnouncementForm = ({ announcement, page_title, action }) => {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="h-11 w-full rounded-lg bg-[#2962ff] text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#254eda] hover:shadow-lg hover:shadow-blue-950/30 disabled:pointer-events-none disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+                        className="h-11 w-full rounded-lg bg-[#2dd4bf] text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#14b8a6] hover:shadow-lg hover:shadow-teal-950/30 disabled:pointer-events-none disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
                     >
                        {
                         action == 'Add'

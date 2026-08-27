@@ -67,7 +67,7 @@ const ExportDataModal = ({ isOpen, onClose, columns, moduleName, settings, forma
               </label>
               <select
                 name="fileformat"
-                className={`p-2 text-sm text-left outline-none border border-gray-300 rounded-lg ${theme === 'bg-skin-black' ? theme+' text-gray-400' : 'bg-white'} w-full cursor-pointer hover:border-gray-400 focus:ring-2 focus:ring-blue-500 transition duration-200 truncate`}
+                className={`p-2 text-sm text-left outline-none border border-gray-300 rounded-lg ${theme === 'bg-skin-black' ? theme+' text-gray-400' : 'bg-white'} w-full cursor-pointer hover:border-gray-400 focus:ring-2 focus:ring-teal-500 transition duration-200 truncate`}
               >
                 <option value="xls">Microsoft Excel (xls)</option>
                 <option value="csv">CSV</option>
@@ -99,7 +99,7 @@ const ExportDataModal = ({ isOpen, onClose, columns, moduleName, settings, forma
                     <select
                       name="page_size"
                       defaultValue={settings.default_paper_size}
-                      className={`px-4 pr-7 py-2 text-sm text-left outline-none border border-gray-300 rounded-lg ${theme === 'bg-skin-black' ? theme+' text-gray-400' : 'bg-white'} w-full cursor-pointer hover:border-gray-400 focus:ring-2 focus:ring-blue-500 transition duration-200 truncate`}
+                      className={`px-4 pr-7 py-2 text-sm text-left outline-none border border-gray-300 rounded-lg ${theme === 'bg-skin-black' ? theme+' text-gray-400' : 'bg-white'} w-full cursor-pointer hover:border-gray-400 focus:ring-2 focus:ring-teal-500 transition duration-200 truncate`}
                     >
                       {["Letter", "Legal", "Ledger"].map((size) => (
                         <option key={size} value={size}>
@@ -135,7 +135,7 @@ const ExportDataModal = ({ isOpen, onClose, columns, moduleName, settings, forma
                     </label>
                     <select
                       name="page_orientation"
-                      className={`px-4 pr-7 py-2 text-sm text-left outline-none border border-gray-300 rounded-lg ${theme === 'bg-skin-black' ? theme+' text-gray-400' : 'bg-white'} w-full cursor-pointer hover:border-gray-400 focus:ring-2 focus:ring-blue-500 transition duration-200 truncate`}
+                      className={`px-4 pr-7 py-2 text-sm text-left outline-none border border-gray-300 rounded-lg ${theme === 'bg-skin-black' ? theme+' text-gray-400' : 'bg-white'} w-full cursor-pointer hover:border-gray-400 focus:ring-2 focus:ring-teal-500 transition duration-200 truncate`}
                     >
                       <option value="portrait">Portrait</option>
                       <option value="landscape">Landscape</option>

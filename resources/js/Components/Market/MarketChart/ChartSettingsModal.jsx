@@ -14,7 +14,7 @@ const TABS = [
 function CheckRow({ isDark, checked, onToggle, label, children }) {
   return (
     <label className="flex items-center gap-2 py-1.5 text-sm">
-      <input type="checkbox" checked={checked} onChange={onToggle} className="h-4 w-4 shrink-0 accent-[#2962ff]" />
+      <input type="checkbox" checked={checked} onChange={onToggle} className="h-4 w-4 shrink-0 accent-[#2dd4bf]" />
       <span className="min-w-0 flex-1">{label}</span>
       {children}
     </label>
@@ -92,7 +92,7 @@ function SymbolTab({ isDark, fieldClass, draftColors, setDraftColors, draftSize,
         </CheckRow>
         <label className="mt-3 flex items-center gap-2 text-sm">
           <span className="w-12 shrink-0">Size</span>
-          <input type="range" min="3" max="24" step="1" value={draftSize} onChange={(event) => setDraftSize(Number(event.target.value))} className="min-w-0 flex-1 accent-[#2962ff]" />
+          <input type="range" min="3" max="24" step="1" value={draftSize} onChange={(event) => setDraftSize(Number(event.target.value))} className="min-w-0 flex-1 accent-[#2dd4bf]" />
           <span className="w-6 shrink-0 text-right text-xs tabular-nums">{draftSize}</span>
         </label>
       </div>
@@ -316,7 +316,7 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
                 key={key}
                 type="button"
                 onClick={() => setActiveTab(key)}
-                className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold whitespace-nowrap ${activeTab === key ? 'bg-[#2962ff] text-white' : isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold whitespace-nowrap ${activeTab === key ? 'bg-[#2dd4bf] text-white' : isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-600 hover:bg-gray-100'}`}
               >
                 <Icon size={15} />
                 {label}
@@ -398,7 +398,7 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
           ) : <span />}
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className={`h-9 rounded-md border px-4 text-xs font-semibold ${isDark ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-50'}`}>Cancel</button>
-            <button type="button" onClick={handleOk} className="h-9 rounded-md bg-[#2962ff] px-5 text-xs font-bold text-white hover:bg-blue-600">Ok</button>
+            <button type="button" onClick={handleOk} className="h-9 rounded-md bg-[#2dd4bf] px-5 text-xs font-bold text-white hover:bg-teal-600">Ok</button>
           </div>
         </div>
       </div>
@@ -424,7 +424,7 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
             </div>
             <footer className={`flex items-center justify-end gap-3 border-t px-6 py-4 ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
               <button type="button" onClick={() => setShowSaveAsDialog(false)} className={`h-10 rounded-lg border px-4 text-sm font-semibold ${fieldClass}`}>Cancel</button>
-              <button type="button" onClick={attemptSavePreset} disabled={!templateNameDraft.trim()} className="h-10 rounded-lg bg-[#2962ff] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Save</button>
+              <button type="button" onClick={attemptSavePreset} disabled={!templateNameDraft.trim()} className="h-10 rounded-lg bg-[#2dd4bf] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">Save</button>
             </footer>
           </section>
         </div>

@@ -11,10 +11,10 @@ const CATEGORY_LABELS = {
 };
 const PRIORITY_TONES = { urgent: 'text-red-400', high: 'text-amber-400', normal: '', low: '' };
 const STATUS_TONES = {
-    submitted: 'text-[#787b86]', reviewing: 'text-[#5b8cff]', planned: 'text-[#5b8cff]', in_progress: 'text-amber-400',
+    submitted: 'text-[#787b86]', reviewing: 'text-[#5eead4]', planned: 'text-[#5eead4]', in_progress: 'text-amber-400',
     completed: 'text-emerald-500', declined: 'text-[#787b86]',
 };
-const ACCENT = '#2962ff';
+const ACCENT = '#2dd4bf';
 
 function weekLabel(period) {
     const date = new Date(`${period}T00:00:00`);
@@ -110,11 +110,11 @@ export default function FeedbackAnalytics() {
         <div className={`space-y-4 ${isDark ? 'text-[#d1d4dc]' : 'text-slate-900'}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <div className="text-xs font-bold uppercase tracking-[.18em] text-[#2962ff]">Reports</div>
+                    <div className="text-xs font-bold uppercase tracking-[.18em] text-[#2dd4bf]">Reports</div>
                     <h1 className={`mt-1 text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Feedback analytics</h1>
                     <p className={`mt-1 text-sm ${muted}`}>What users complain about most, and how fast the team responds.</p>
                 </div>
-                <a href={exportHref} className="flex h-10 items-center gap-2 rounded-lg bg-[#2962ff] px-4 text-xs font-bold text-white">
+                <a href={exportHref} className="flex h-10 items-center gap-2 rounded-lg bg-[#2dd4bf] px-4 text-xs font-bold text-white">
                     <Download size={14} />Export CSV
                 </a>
             </div>

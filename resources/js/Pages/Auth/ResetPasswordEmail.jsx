@@ -3,6 +3,8 @@ import { Head, Link, router } from '@inertiajs/react';
 import axios from 'axios';
 import { ArrowLeft, Check, Eye, EyeOff, Lock, ShieldCheck, X } from 'lucide-react';
 import getAppLogo from '../../Components/SystemSettings/ApplicationLogo';
+import getAppName from '../../Components/SystemSettings/ApplicationName';
+import AppNameWordmark from '../../Components/SystemSettings/AppNameWordmark';
 
 const ResetPasswordEmail = ({ email }) => {
     const [loading, setLoading] = useState(false);
@@ -17,6 +19,7 @@ const ResetPasswordEmail = ({ email }) => {
         confirm_password: '',
     });
     const [logo, setLogo] = useState('');
+    const [appName, setAppName] = useState('BacktradeLab');
     const [theme, setTheme] = useState('dark');
     const isDark = theme === 'dark';
 
@@ -29,6 +32,7 @@ const ResetPasswordEmail = ({ email }) => {
 
     useEffect(() => {
         getAppLogo().then(setLogo).catch(() => {});
+        getAppName().then(setAppName).catch(() => {});
         try {
             const storedTheme = localStorage.getItem('backtradelab-theme');
             if (storedTheme === 'dark' || storedTheme === 'white') {
@@ -164,7 +168,7 @@ const ResetPasswordEmail = ({ email }) => {
             <Head title="Reset password" />
 
             <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-                <div className="absolute -left-24 top-0 h-72 w-72 animate-floatY rounded-full bg-[#2962ff]/10 blur-3xl [animation-duration:10s]" />
+                <div className="absolute -left-24 top-0 h-72 w-72 animate-floatY rounded-full bg-[#2dd4bf]/10 blur-3xl [animation-duration:10s]" />
                 <div className="absolute -right-24 bottom-0 h-72 w-72 animate-floatY rounded-full bg-emerald-400/10 blur-3xl [animation-duration:12s]" />
             </div>
 
@@ -176,20 +180,20 @@ const ResetPasswordEmail = ({ email }) => {
                 <div className="flex items-center gap-3">
                     <div className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-md border ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-gray-300 bg-white'}`}>
                         {logo ? (
-                            <img src={logo} className="h-full w-full object-contain p-1" alt="BacktradeLab logo" />
+                            <img src={logo} className="h-full w-full object-contain p-1" alt={`${appName} logo`} />
                         ) : (
                             <span className={`text-xs font-bold ${isDark ? 'text-gray-200' : 'text-slate-800'}`}>BT</span>
                         )}
                     </div>
-                    <span className="font-poppins text-sm font-bold">BacktradeLab</span>
+                    <span className="font-poppins text-sm font-bold"><AppNameWordmark name={appName} /></span>
                 </div>
             </div>
 
             <main className="mx-auto flex min-h-[calc(100vh-84px)] max-w-md items-center justify-center py-8">
-                <section className={`w-full animate-fadeInUp rounded-xl border p-6 shadow-2xl sm:p-8 ${isDark ? 'border-[#2a2e39] bg-[#131722] shadow-blue-950/10' : 'border-slate-200 bg-white shadow-slate-200/60'}`} style={{ animationDelay: '80ms' }}>
+                <section className={`w-full animate-fadeInUp rounded-xl border p-6 shadow-2xl sm:p-8 ${isDark ? 'border-[#2a2e39] bg-[#131722] shadow-teal-950/10' : 'border-slate-200 bg-white shadow-slate-200/60'}`} style={{ animationDelay: '80ms' }}>
                     <div className="mb-6 text-center">
-                        <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-[#5b8cff]/30 bg-[#2962ff]/10 shadow-[0_0_30px_rgba(41,98,255,.18)]">
-                            <ShieldCheck className="h-7 w-7 text-[#5b8cff]" />
+                        <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-[#5eead4]/30 bg-[#2dd4bf]/10 shadow-[0_0_30px_rgba(45,212,191,.18)]">
+                            <ShieldCheck className="h-7 w-7 text-[#5eead4]" />
                         </div>
                         <h1 className={`mt-4 font-poppins text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-950'}`}>Reset your password</h1>
                         <p className={`mt-2 truncate text-sm leading-6 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{forms.email}</p>
@@ -198,8 +202,8 @@ const ResetPasswordEmail = ({ email }) => {
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="block">
                             <span className={`mb-1 block text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>New password</span>
-                            <div className={`group flex h-11 items-center rounded-md border transition-colors focus-within:border-[#2962ff] focus-within:ring-1 focus-within:ring-[#2962ff]/30 ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-slate-200 bg-slate-50'}`}>
-                                <div className={`flex h-full w-11 items-center justify-center border-r transition-colors group-focus-within:border-[#2962ff]/40 group-focus-within:text-[#2962ff] ${isDark ? 'border-gray-700 text-gray-400' : 'border-slate-200 text-slate-500'}`}>
+                            <div className={`group flex h-11 items-center rounded-md border transition-colors focus-within:border-[#2dd4bf] focus-within:ring-1 focus-within:ring-[#2dd4bf]/30 ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-slate-200 bg-slate-50'}`}>
+                                <div className={`flex h-full w-11 items-center justify-center border-r transition-colors group-focus-within:border-[#2dd4bf]/40 group-focus-within:text-[#2dd4bf] ${isDark ? 'border-gray-700 text-gray-400' : 'border-slate-200 text-slate-500'}`}>
                                     <Lock size={17} />
                                 </div>
                                 <input
@@ -249,8 +253,8 @@ const ResetPasswordEmail = ({ email }) => {
 
                         <div className="block">
                             <span className={`mb-1 block text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Confirm new password</span>
-                            <div className={`group flex h-11 items-center rounded-md border transition-colors focus-within:border-[#2962ff] focus-within:ring-1 focus-within:ring-[#2962ff]/30 ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-slate-200 bg-slate-50'}`}>
-                                <div className={`flex h-full w-11 items-center justify-center border-r transition-colors group-focus-within:border-[#2962ff]/40 group-focus-within:text-[#2962ff] ${isDark ? 'border-gray-700 text-gray-400' : 'border-slate-200 text-slate-500'}`}>
+                            <div className={`group flex h-11 items-center rounded-md border transition-colors focus-within:border-[#2dd4bf] focus-within:ring-1 focus-within:ring-[#2dd4bf]/30 ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-slate-200 bg-slate-50'}`}>
+                                <div className={`flex h-full w-11 items-center justify-center border-r transition-colors group-focus-within:border-[#2dd4bf]/40 group-focus-within:text-[#2dd4bf] ${isDark ? 'border-gray-700 text-gray-400' : 'border-slate-200 text-slate-500'}`}>
                                     <Lock size={17} />
                                 </div>
                                 <input
@@ -279,14 +283,14 @@ const ResetPasswordEmail = ({ email }) => {
                         <button
                             type="submit"
                             disabled={isDisabled || loading}
-                            className={`mt-1 h-11 w-full rounded-md px-4 font-poppins text-sm font-bold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-950/30 disabled:pointer-events-none disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none ${isDark ? 'bg-white text-skin-black hover:bg-gray-200' : 'bg-skin-black text-white hover:bg-skin-black-light'}`}
+                            className={`mt-1 h-11 w-full rounded-md px-4 font-poppins text-sm font-bold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-teal-950/30 disabled:pointer-events-none disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none ${isDark ? 'bg-white text-skin-black hover:bg-gray-200' : 'bg-skin-black text-white hover:bg-skin-black-light'}`}
                         >
                             {loading ? 'Changing password…' : 'Change password'}
                         </button>
                     </form>
 
                     <p className={`mt-5 text-center text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        <Link href="/login" className="font-semibold text-[#5b8cff] hover:underline">Back to sign in</Link>
+                        <Link href="/login" className="font-semibold text-[#5eead4] hover:underline">Back to sign in</Link>
                     </p>
                 </section>
             </main>

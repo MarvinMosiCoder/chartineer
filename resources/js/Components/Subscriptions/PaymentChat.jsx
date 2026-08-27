@@ -28,7 +28,7 @@ export default function PaymentChat({ request, onClose }) {
         {loading && <p className="text-sm text-[#787b86]">Loading conversation…</p>}
         {error && <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-500">{error}</p>}
         {!loading && !messages.length && <p className="py-10 text-center text-sm text-[#787b86]">No archived messages.</p>}
-        {messages.map(message => <article key={message.id} className={`max-w-[85%] rounded-xl border p-3 ${message.mine ? 'ml-auto border-[#2962ff]/40 bg-[#2962ff]/10' : surface}`}><div className="text-[10px] font-bold uppercase tracking-wider text-[#787b86]">{message.user?.name ?? 'User'} · {new Date(message.created_at).toLocaleString()}</div>{message.message && <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{message.message}</p>}{message.attachment_url && <a href={message.attachment_url} className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#5b8cff]"><Download size={14}/>{message.attachment_name ?? 'Download attachment'}</a>}</article>)}
+        {messages.map(message => <article key={message.id} className={`max-w-[85%] rounded-xl border p-3 ${message.mine ? 'ml-auto border-[#2dd4bf]/40 bg-[#2dd4bf]/10' : surface}`}><div className="text-[10px] font-bold uppercase tracking-wider text-[#787b86]">{message.user?.name ?? 'User'} · {new Date(message.created_at).toLocaleString()}</div>{message.message && <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{message.message}</p>}{message.attachment_url && <a href={message.attachment_url} className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#5eead4]"><Download size={14}/>{message.attachment_name ?? 'Download attachment'}</a>}</article>)}
       </div>
     </section>
   </div>;

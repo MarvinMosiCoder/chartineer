@@ -47,7 +47,7 @@ const Pagination = ({ paginate, onClick, extendClass }) => {
                             const isLast = index === paginate.links.length - 1;
                             const label = isFirst ? <ChevronLeft size={14}/> : isLast ? <ChevronRight size={14}/> : link.label;
                             const baseClass = `flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-xs font-semibold transition ${border}`;
-                            const activeClass = link.active ? 'bg-[#2962ff] text-white border-[#2962ff]' : isDark ? 'text-[#d1d4dc] hover:bg-white/5' : 'text-slate-700 hover:bg-slate-100';
+                            const activeClass = link.active ? 'bg-[#2dd4bf] text-white border-[#2dd4bf]' : isDark ? 'text-[#d1d4dc] hover:bg-white/5' : 'text-slate-700 hover:bg-slate-100';
 
                             return (
                                 <Fragment key={"page" + link.label + 'index' + index}>

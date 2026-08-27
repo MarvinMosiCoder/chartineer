@@ -46,7 +46,7 @@ function TimeframeGridCell({ tf, isActive, isFav, isDark, onSelect, onToggleFavo
       onBlur={hide}
       className={`relative flex h-10 cursor-pointer items-center justify-center rounded text-xs font-semibold outline-none ${
         isActive
-          ? 'bg-[#2962ff] text-white'
+          ? 'bg-[#2dd4bf] text-white'
           : isDark ? 'bg-white/5 text-gray-200 hover:bg-white/10' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
       }`}
     >

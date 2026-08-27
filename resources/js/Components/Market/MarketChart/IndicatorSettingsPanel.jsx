@@ -249,7 +249,7 @@ export default function IndicatorSettingsPanel({ indicators, selectedIndicator, 
               className={`relative pb-2 text-sm font-semibold ${activeTab === tab.key ? '' : muted}`}
             >
               {tab.label}
-              {activeTab === tab.key && <span className="absolute inset-x-0 -bottom-px h-0.5 bg-[#2962ff]" />}
+              {activeTab === tab.key && <span className="absolute inset-x-0 -bottom-px h-0.5 bg-[#2dd4bf]" />}
             </button>
           ))}
         </div>
@@ -266,7 +266,7 @@ export default function IndicatorSettingsPanel({ indicators, selectedIndicator, 
                   ].map(([label, key, fallback]) => (
                     <label key={key} className={`grid gap-1 text-[10px] font-semibold uppercase tracking-wide ${muted}`}>
                       {label}
-                      <input type="number" min="2" max="200" value={Number(draft[key]) || fallback} onChange={(event) => updateMacdPeriod(key, event.target.value, fallback)} className={`h-9 min-w-0 rounded border px-2 text-xs outline-none focus:border-[#2962ff] ${fieldClass}`} />
+                      <input type="number" min="2" max="200" value={Number(draft[key]) || fallback} onChange={(event) => updateMacdPeriod(key, event.target.value, fallback)} className={`h-9 min-w-0 rounded border px-2 text-xs outline-none focus:border-[#2dd4bf] ${fieldClass}`} />
                     </label>
                   ))}
                 </div>
@@ -279,7 +279,7 @@ export default function IndicatorSettingsPanel({ indicators, selectedIndicator, 
                     max="200"
                     value={draft[meta.periodKey]}
                     onChange={(event) => update({ [meta.periodKey]: Math.min(200, Math.max(2, Number(event.target.value) || 2)) })}
-                    className={`h-9 rounded border px-2 text-xs outline-none focus:border-[#2962ff] ${fieldClass}`}
+                    className={`h-9 rounded border px-2 text-xs outline-none focus:border-[#2dd4bf] ${fieldClass}`}
                   />
                 </label>
               ) : (
@@ -312,7 +312,7 @@ export default function IndicatorSettingsPanel({ indicators, selectedIndicator, 
               {meta.widthKey && (
                 <label className={`grid gap-1 text-[10px] font-semibold uppercase tracking-wide ${muted}`}>
                   Line width
-                  <select value={draft[meta.widthKey]} onChange={(event) => update({ [meta.widthKey]: Number(event.target.value) })} className={`h-9 rounded border px-2 text-xs outline-none focus:border-[#2962ff] ${fieldClass}`}>
+                  <select value={draft[meta.widthKey]} onChange={(event) => update({ [meta.widthKey]: Number(event.target.value) })} className={`h-9 rounded border px-2 text-xs outline-none focus:border-[#2dd4bf] ${fieldClass}`}>
                     {[1, 2, 3, 4].map((width) => <option key={width} value={width}>{width}px</option>)}
                   </select>
                 </label>
@@ -321,7 +321,7 @@ export default function IndicatorSettingsPanel({ indicators, selectedIndicator, 
               {meta.sizeKey && (
                 <label className={`grid gap-1 text-[10px] font-semibold uppercase tracking-wide ${muted}`}>
                   Pane height: {Number(draft[meta.sizeKey]) || (selectedIndicator === 'volume' ? 20 : 25)}%
-                  <input type="range" min="10" max="45" value={Number(draft[meta.sizeKey]) || (selectedIndicator === 'volume' ? 20 : 25)} onChange={(event) => update({ [meta.sizeKey]: Number(event.target.value) })} className="accent-[#2962ff]" />
+                  <input type="range" min="10" max="45" value={Number(draft[meta.sizeKey]) || (selectedIndicator === 'volume' ? 20 : 25)} onChange={(event) => update({ [meta.sizeKey]: Number(event.target.value) })} className="accent-[#2dd4bf]" />
                 </label>
               )}
             </div>
@@ -348,7 +348,7 @@ export default function IndicatorSettingsPanel({ indicators, selectedIndicator, 
             <button type="button" onClick={onClose} className={`h-9 rounded-md border px-4 text-xs font-semibold ${isDark ? 'border-gray-700 text-gray-200 hover:bg-white/5' : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
               Cancel
             </button>
-            <button type="button" onClick={commit} className="h-9 rounded-md bg-[#2962ff] px-5 text-xs font-bold text-white hover:bg-[#1f52e0]">
+            <button type="button" onClick={commit} className="h-9 rounded-md bg-[#2dd4bf] px-5 text-xs font-bold text-white hover:bg-[#14b8a6]">
               Ok
             </button>
           </div>

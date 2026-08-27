@@ -10,7 +10,7 @@ function PasswordField({ label, name, value, onChange, autoComplete, error }) {
     return (
         <label className="block">
             <span className="mb-1.5 block text-xs font-semibold">{label}</span>
-            <div className={`flex h-11 items-center rounded-lg border bg-transparent transition focus-within:border-[#2962ff] ${error ? 'border-red-500' : 'border-[#2a2e39]'}`}>
+            <div className={`flex h-11 items-center rounded-lg border bg-transparent transition focus-within:border-[#2dd4bf] ${error ? 'border-red-500' : 'border-[#2a2e39]'}`}>
                 <LockKeyhole size={16} className="ml-3 shrink-0 text-[#787b86]" />
                 <input
                     type={visible ? 'text' : 'password'}
@@ -109,9 +109,9 @@ export default function ChangePassword() {
         <>
             <Head title="Change Password" />
             <div className="mx-auto max-w-5xl py-2 sm:py-6">
-                <Link href="/workspace" className="mb-4 inline-flex items-center gap-2 text-xs font-semibold text-[#787b86] hover:text-[#2962ff]"><ArrowLeft size={15} /> Back to workspace</Link>
+                <Link href="/workspace" className="mb-4 inline-flex items-center gap-2 text-xs font-semibold text-[#787b86] hover:text-[#2dd4bf]"><ArrowLeft size={15} /> Back to workspace</Link>
                 <div className={`grid overflow-hidden rounded-xl border shadow-2xl lg:grid-cols-[0.85fr_1.15fr] ${isDark ? 'border-[#2a2e39] bg-[#131722] text-[#d1d4dc]' : 'border-slate-200 bg-white text-slate-900'}`}>
-                    <aside className="relative overflow-hidden bg-[#2962ff] p-7 text-white sm:p-10">
+                    <aside className="relative overflow-hidden bg-[#2dd4bf] p-7 text-white sm:p-10">
                         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/10" />
                         <div className="relative">
                             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15"><ShieldCheck size={22} /></span>
@@ -124,7 +124,7 @@ export default function ChangePassword() {
                     </aside>
 
                     <form onSubmit={handleSubmit} className="p-6 sm:p-10">
-                        <div className="mb-7"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#2962ff]"><KeyRound size={15} /> Account security</div><h2 className="mt-2 text-2xl font-bold">Change password</h2><p className="mt-2 text-xs text-[#787b86]">Enter your current password and choose a strong replacement.</p></div>
+                        <div className="mb-7"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#2dd4bf]"><KeyRound size={15} /> Account security</div><h2 className="mt-2 text-2xl font-bold">Change password</h2><p className="mt-2 text-xs text-[#787b86]">Enter your current password and choose a strong replacement.</p></div>
                         <div className="space-y-4">
                             {needsCurrentPassword && <PasswordField label="Current password" name="current_password" value={form.current_password} onChange={handleChange} autoComplete="current-password" />}
                             <PasswordField label="New password" name="new_password" value={form.new_password} onChange={handleChange} autoComplete="new-password" />
@@ -134,7 +134,7 @@ export default function ChangePassword() {
                             <PasswordField label="Confirm new password" name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" error={form.confirm_password && !matches ? 'Passwords do not match.' : ''} />
                         </div>
                         {error && <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
-                        <button type="submit" disabled={!canSubmit} className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#2962ff] text-sm font-bold text-white transition hover:bg-[#1e53e5] disabled:cursor-not-allowed disabled:opacity-40"><KeyRound size={16} /> {loading ? 'Updating password…' : 'Update password'}</button>
+                        <button type="submit" disabled={!canSubmit} className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#2dd4bf] text-sm font-bold text-white transition hover:bg-[#14b8a6] disabled:cursor-not-allowed disabled:opacity-40"><KeyRound size={16} /> {loading ? 'Updating password…' : 'Update password'}</button>
                     </form>
                 </div>
             </div>
@@ -145,8 +145,8 @@ export default function ChangePassword() {
                         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400"><CheckCircle2 size={28} /></span>
                         <h2 id="password-success-title" className="mt-5 text-xl font-bold">Password updated</h2>
                         <p className="mt-2 text-sm text-[#787b86]">For your security, you will be signed out in</p>
-                        <div className="mx-auto mt-4 flex h-16 w-16 items-center justify-center rounded-full border-4 border-[#2962ff]/25 text-2xl font-bold text-[#5b8cff]">{countdown}</div>
-                        <button type="button" onClick={signOut} className="mt-5 text-xs font-semibold text-[#2962ff] hover:underline">Sign out now</button>
+                        <div className="mx-auto mt-4 flex h-16 w-16 items-center justify-center rounded-full border-4 border-[#2dd4bf]/25 text-2xl font-bold text-[#5eead4]">{countdown}</div>
+                        <button type="button" onClick={signOut} className="mt-5 text-xs font-semibold text-[#2dd4bf] hover:underline">Sign out now</button>
                     </div>
                 </div>
             )}

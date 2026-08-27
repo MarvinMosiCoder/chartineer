@@ -99,13 +99,13 @@ export default function HelpIndex() {
                             A step-by-step walkthrough from opening a chart to reviewing your results — no trading experience assumed.
                         </p>
                     </div>
-                    <Link href="/workspace?tour=1" className="rounded-lg bg-[#2962ff] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#254eda]">
+                    <Link href="/workspace?tour=1" className="rounded-lg bg-[#2dd4bf] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#14b8a6]">
                         Restart workspace tour
                     </Link>
                 </div>
 
                 <div className={`flex items-start gap-3 rounded-lg border p-4 ${isDark ? 'border-[#2a2e39] bg-[#0b0e14]' : 'border-blue-100 bg-blue-50'}`}>
-                    <LineChart className="mt-0.5 h-5 w-5 shrink-0 text-[#5b8cff]" />
+                    <LineChart className="mt-0.5 h-5 w-5 shrink-0 text-[#5eead4]" />
                     <p className={`text-sm leading-6 ${isDark ? 'text-[#b2b5be]' : 'text-slate-600'}`}>
                         Everything here uses <strong>Replay</strong>: historical price data played back candle by candle, and <strong>paper trades</strong> placed with virtual balance. Nothing you do on BacktradeLab risks or moves real money.
                     </p>
@@ -115,10 +115,10 @@ export default function HelpIndex() {
                     {steps.map(({ icon: Icon, title, summary, detail, cta }) => (
                         <section
                             key={title}
-                            className={`flex flex-col rounded-lg border p-4 transition hover:-translate-y-0.5 hover:shadow-lg ${isDark ? 'border-[#2a2e39] bg-[#131722] hover:shadow-blue-950/20' : 'border-slate-200 bg-white hover:shadow-slate-200'}`}
+                            className={`flex flex-col rounded-lg border p-4 transition hover:-translate-y-0.5 hover:shadow-lg ${isDark ? 'border-[#2a2e39] bg-[#131722] hover:shadow-teal-950/20' : 'border-slate-200 bg-white hover:shadow-slate-200'}`}
                         >
                             <div className="flex items-center gap-2.5">
-                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2962ff]/15 text-[#5b8cff]">
+                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2dd4bf]/15 text-[#5eead4]">
                                     <Icon size={16} />
                                 </span>
                                 <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>{title}</h2>
@@ -126,7 +126,7 @@ export default function HelpIndex() {
                             <p className={`mt-3 text-sm font-medium leading-5 ${isDark ? 'text-[#d1d4dc]' : 'text-slate-700'}`}>{summary}</p>
                             <p className={`mt-2 flex-1 text-sm leading-6 ${isDark ? 'text-[#b2b5be]' : 'text-slate-500'}`}>{detail}</p>
                             {cta && (
-                                <Link href={cta.href} className="mt-3 inline-flex w-fit text-xs font-semibold text-[#5b8cff] hover:underline">
+                                <Link href={cta.href} className="mt-3 inline-flex w-fit text-xs font-semibold text-[#5eead4] hover:underline">
                                     {cta.label} →
                                 </Link>
                             )}
@@ -136,7 +136,7 @@ export default function HelpIndex() {
 
                 <section className={`rounded-lg border p-4 ${isDark ? 'border-[#2a2e39] bg-[#131722]' : 'border-slate-200 bg-white'}`}>
                     <div className="flex items-center gap-2.5">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2962ff]/15 text-[#5b8cff]">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2dd4bf]/15 text-[#5eead4]">
                             <HelpCircle size={16} />
                         </span>
                         <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>Key terms</h2>

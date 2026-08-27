@@ -53,7 +53,7 @@ export default function AnnouncementsIndex({ announcements }) {
                                             onClick={() => toggle(item)}
                                             className={`flex w-full items-start gap-3 rounded-lg px-2 py-3 text-left transition-colors ${isDark ? 'hover:bg-white/[.06]' : 'hover:bg-slate-100'}`}
                                         >
-                                            <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.is_read ? 'bg-slate-500' : 'bg-[#2962ff]'}`} />
+                                            <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.is_read ? 'bg-slate-500' : 'bg-[#2dd4bf]'}`} />
                                             <span className="min-w-0 flex-1">
                                                 <span className="flex items-center justify-between gap-3">
                                                     <span className="text-sm font-semibold">{item.title}</span>

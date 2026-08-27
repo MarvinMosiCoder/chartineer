@@ -67,14 +67,14 @@ function MarketCategoryTabs({ marketCategory, onCategoryChange, showFavoritesOnl
             }}
             className={`relative pb-2 text-[11px] font-semibold transition-colors ${
               active
-                ? 'text-[#2962ff]'
+                ? 'text-[#2dd4bf]'
                 : isDark
                   ? 'text-gray-400 hover:text-white'
                   : 'text-slate-500 hover:text-slate-900'
             }`}
           >
             {label}
-            {active && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[#2962ff]" />}
+            {active && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[#2dd4bf]" />}
           </button>
         );
       })}
@@ -114,7 +114,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
     backgroundColor: chartTheme?.panel ?? (isDark ? '#242627' : '#ffffff'),
     borderColor: chartTheme?.border ?? (isDark ? '#31363F' : '#e5e7eb'),
   };
-  const fieldClass = `h-9 rounded-lg border px-3 text-xs font-medium outline-none transition-colors focus:border-[#2962ff] ${isDark ? 'border-gray-700 bg-black-table-color text-white' : 'border-gray-200 bg-gray-50 text-gray-800'}`;
+  const fieldClass = `h-9 rounded-lg border px-3 text-xs font-medium outline-none transition-colors focus:border-[#2dd4bf] ${isDark ? 'border-gray-700 bg-black-table-color text-white' : 'border-gray-200 bg-gray-50 text-gray-800'}`;
   const labelClass = isDark ? 'text-gray-300' : 'text-gray-600';
   const neutralActionClass = isDark ? 'bg-white text-skin-black hover:bg-gray-200' : 'bg-skin-black text-white hover:bg-skin-black-light';
   const buildSymbolKey = (item) => `${item.exchange ?? 'bybit'}:${item.category ?? 'spot'}:${item.symbol}`;
@@ -322,7 +322,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
             </button>
             {isAddOpen && symbolPickerTooltip.panelPos && typeof document !== 'undefined' && createPortal(
               <div data-chart-ui="symbol-search" className={`fixed z-[10021] w-96 max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border shadow-2xl ${isDark ? 'border-gray-700 bg-black-table-color text-white' : 'border-gray-200 bg-white text-slate-900'}`} style={{ top: symbolPickerTooltip.panelPos.top, left: symbolPickerTooltip.panelPos.left }}>
-                <div className={`flex items-center gap-2 rounded-full border mx-3 mt-3 px-3.5 py-2 transition-colors focus-within:border-[#2962ff] ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+                <div className={`flex items-center gap-2 rounded-full border mx-3 mt-3 px-3.5 py-2 transition-colors focus-within:border-[#2dd4bf] ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                   <Search size={14} className="text-gray-400" />
                   <input autoFocus value={symbolSearch} onChange={(e) => setSymbolSearch(e.target.value)} placeholder="Search all symbols" style={{ outline: 'none' }} className="min-w-0 flex-1 bg-transparent text-xs uppercase placeholder:text-gray-500" />
                   <button type="button" onClick={() => setIsAddOpen(false)} className={`rounded p-1 ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}>
@@ -359,7 +359,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                       return (
                       <div key={buildSymbolKey(item)} className={`flex items-center gap-2 border-b px-3 py-2.5 last:border-b-0 ${isDark ? 'border-gray-700/50' : 'border-gray-100'}`}>
                         <span className={`flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
-                          {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className="text-[#5b8cff]" />}
+                          {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className="text-[#5eead4]" />}
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-xs font-semibold text-emerald-500">{item.symbol}</div>
@@ -386,7 +386,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                               isDark={isDark}
                               zIndexClass="z-[10022]"
                               onClick={() => setWatchlistMenuOpenKey((current) => (current === watchlistItemKey ? null : watchlistItemKey))}
-                              className={`flex h-6 w-6 items-center justify-center rounded-md border ${inActiveWatchlist || justAddedToWatchlist ? 'border-[#2962ff]/40 text-[#2962ff]' : isDark ? 'border-gray-700 text-gray-400 hover:border-[#2962ff] hover:text-[#2962ff]' : 'border-gray-200 text-slate-500 hover:border-[#2962ff] hover:text-[#2962ff]'}`}
+                              className={`flex h-6 w-6 items-center justify-center rounded-md border ${inActiveWatchlist || justAddedToWatchlist ? 'border-[#2dd4bf]/40 text-[#2dd4bf]' : isDark ? 'border-gray-700 text-gray-400 hover:border-[#2dd4bf] hover:text-[#2dd4bf]' : 'border-gray-200 text-slate-500 hover:border-[#2dd4bf] hover:text-[#2dd4bf]'}`}
                             >
                               <Bookmark size={12} fill={inActiveWatchlist || justAddedToWatchlist ? 'currentColor' : 'none'} />
                             </IconTooltipButton>
@@ -452,7 +452,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
             {replayAccessStatus === 'checking-access' ? <LoaderCircle size={14} className="animate-spin" /> : replayMode ? <X size={14} /> : <Play size={14} />}
           </button>
           {replayAccessStatus !== 'checking-access' && <AnchoredTooltipPortal pos={replayTooltip.pos} label={replayTooltipLabel} isDark={isDark} />}
-          <button ref={alertTooltip.anchorRef} type="button" onClick={onCreatePriceAlert} onMouseEnter={alertTooltip.show} onMouseLeave={alertTooltip.hide} onFocus={alertTooltip.show} onBlur={alertTooltip.hide} aria-label="Create alert" className="flex h-8 items-center gap-1.5 rounded-md bg-[#2962ff] px-2.5 text-xs font-semibold text-white">
+          <button ref={alertTooltip.anchorRef} type="button" onClick={onCreatePriceAlert} onMouseEnter={alertTooltip.show} onMouseLeave={alertTooltip.hide} onFocus={alertTooltip.show} onBlur={alertTooltip.hide} aria-label="Create alert" className="flex h-8 items-center gap-1.5 rounded-md bg-[#2dd4bf] px-2.5 text-xs font-semibold text-white">
             <Bell size={13} />
           </button>
           <AnchoredTooltipPortal pos={alertTooltip.pos} label="Create alert" isDark={isDark} />
@@ -483,7 +483,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                     setIsIndicatorsOpen(false);
                   }} className={`flex w-full items-center justify-between gap-3 rounded-md border p-2 text-xs font-semibold ${isDark ? 'border-gray-700 bg-black-table-color hover:bg-[#25282e]' : 'border-gray-200 bg-slate-50 hover:bg-slate-100'}`}>
                     <span>{label}</span>
-                    <span className={indicators[key] ? 'text-emerald-400' : 'text-[#5b8cff]'}>{indicators[key] ? 'Settings' : '+ Add'}</span>
+                    <span className={indicators[key] ? 'text-emerald-400' : 'text-[#5eead4]'}>{indicators[key] ? 'Settings' : '+ Add'}</span>
                   </button>
                 ))}
               </div>,
@@ -510,7 +510,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
         <div className="relative col-span-2 min-w-0 sm:col-span-12 lg:col-span-3">
           <label className="sr-only">Symbol</label>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <button data-chart-ui="symbol-search" ref={symbolPickerTooltip.anchorRef} type="button" onClick={toggleAddOpen} className={`${fieldClass} flex min-w-0 flex-1 items-center justify-between gap-2 text-left font-semibold hover:border-[#2962ff]/60`} aria-expanded={isAddOpen}>
+            <button data-chart-ui="symbol-search" ref={symbolPickerTooltip.anchorRef} type="button" onClick={toggleAddOpen} className={`${fieldClass} flex min-w-0 flex-1 items-center justify-between gap-2 text-left font-semibold hover:border-[#2dd4bf]/60`} aria-expanded={isAddOpen}>
               <span className="truncate text-emerald-500">
                 {symbol}{' '}
                 <span className={`text-[9px] font-medium ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
@@ -522,7 +522,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
           </div>
           {isAddOpen && symbolPickerTooltip.panelPos && typeof document !== 'undefined' && createPortal(
             <div data-chart-ui="symbol-search" className={`fixed z-[10021] w-[28rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border shadow-xl ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-gray-200 bg-white'}`} style={{ top: symbolPickerTooltip.panelPos.top, left: symbolPickerTooltip.panelPos.left }}>
-              <div className={`flex items-center gap-2 rounded-full border mx-3 mt-3 px-3.5 py-2 transition-colors focus-within:border-[#2962ff] ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+              <div className={`flex items-center gap-2 rounded-full border mx-3 mt-3 px-3.5 py-2 transition-colors focus-within:border-[#2dd4bf] ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
                 <Search size={14} className="text-gray-400" />
                 <input autoFocus value={symbolSearch} onChange={(event) => setSymbolSearch(event.target.value)} placeholder="Search all symbols" style={{ outline: 'none' }} className={`min-w-0 flex-1 bg-transparent text-xs uppercase placeholder:text-gray-500 ${isDark ? 'text-white' : 'text-gray-800'}`} />
                 <IconTooltipButton
@@ -569,7 +569,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                     return (
                     <div key={buildSymbolKey(item)} className={`flex items-center gap-2 border-b px-3 py-2.5 last:border-b-0 ${isDark ? 'border-gray-800' : 'border-gray-100'}`}>
                       <span className={`flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
-                        {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className="text-[#5b8cff]" />}
+                        {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className="text-[#5eead4]" />}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className={`truncate text-xs font-semibold ${isDark ? 'text-white' : 'text-gray-800'}`}>{item.symbol}</div>
@@ -596,7 +596,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                             isDark={isDark}
                             zIndexClass="z-[10022]"
                             onClick={() => setWatchlistMenuOpenKey((current) => (current === watchlistItemKey ? null : watchlistItemKey))}
-                            className={`flex h-6 w-6 items-center justify-center rounded-md border ${inActiveWatchlist || justAddedToWatchlist ? 'border-[#2962ff]/40 text-[#2962ff]' : isDark ? 'border-gray-700 text-gray-400 hover:border-[#2962ff] hover:text-[#2962ff]' : 'border-gray-200 text-slate-500 hover:border-[#2962ff] hover:text-[#2962ff]'}`}
+                            className={`flex h-6 w-6 items-center justify-center rounded-md border ${inActiveWatchlist || justAddedToWatchlist ? 'border-[#2dd4bf]/40 text-[#2dd4bf]' : isDark ? 'border-gray-700 text-gray-400 hover:border-[#2dd4bf] hover:text-[#2dd4bf]' : 'border-gray-200 text-slate-500 hover:border-[#2dd4bf] hover:text-[#2dd4bf]'}`}
                           >
                             <Bookmark size={12} fill={inActiveWatchlist || justAddedToWatchlist ? 'currentColor' : 'none'} />
                           </IconTooltipButton>
@@ -676,9 +676,9 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
         </div>
 
         <div data-chart-ui="indicator-picker" className="relative col-span-1 sm:col-span-3 lg:col-span-2">
-          <button ref={indicatorsTooltip.anchorRef} type="button" onClick={toggleIndicators} onMouseEnter={indicatorsTooltip.show} onMouseLeave={indicatorsTooltip.hide} onFocus={indicatorsTooltip.show} onBlur={indicatorsTooltip.hide} aria-label="Indicators" className={`${fieldClass} flex w-full items-center justify-center gap-2 font-semibold hover:border-[#2962ff]/60`}>
+          <button ref={indicatorsTooltip.anchorRef} type="button" onClick={toggleIndicators} onMouseEnter={indicatorsTooltip.show} onMouseLeave={indicatorsTooltip.hide} onFocus={indicatorsTooltip.show} onBlur={indicatorsTooltip.hide} aria-label="Indicators" className={`${fieldClass} flex w-full items-center justify-center gap-2 font-semibold hover:border-[#2dd4bf]/60`}>
             <SlidersHorizontal size={14} />
-            {activeIndicatorCount > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2962ff] px-1 text-[9px] text-white">{activeIndicatorCount}</span>}
+            {activeIndicatorCount > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2dd4bf] px-1 text-[9px] text-white">{activeIndicatorCount}</span>}
           </button>
           <AnchoredTooltipPortal pos={indicatorsTooltip.pos} label="Indicators" isDark={isDark} />
           {isIndicatorsOpen && (
@@ -697,20 +697,20 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                   setIsIndicatorsOpen(false);
                 }} className={`flex w-full items-center justify-between gap-3 rounded-lg border p-2.5 text-xs font-semibold ${isDark ? 'border-gray-700 bg-black-table-color hover:bg-[#25282e]' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'}`}>
                   <span>{label}</span>
-                  <span className={indicators[key] ? 'text-emerald-500' : 'text-[#2962ff]'}>{indicators[key] ? 'Settings' : '+ Add'}</span>
+                  <span className={indicators[key] ? 'text-emerald-500' : 'text-[#2dd4bf]'}>{indicators[key] ? 'Settings' : '+ Add'}</span>
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        <button ref={alertTooltip.anchorRef} type="button" onClick={onCreatePriceAlert} onMouseEnter={alertTooltip.show} onMouseLeave={alertTooltip.hide} onFocus={alertTooltip.show} onBlur={alertTooltip.hide} aria-label="Create alert" className="col-span-1 flex h-9 items-center justify-center gap-2 rounded-lg bg-[#2962ff] px-3 text-xs font-semibold text-white transition-colors hover:bg-blue-600 sm:col-span-3 lg:col-span-1">
+        <button ref={alertTooltip.anchorRef} type="button" onClick={onCreatePriceAlert} onMouseEnter={alertTooltip.show} onMouseLeave={alertTooltip.hide} onFocus={alertTooltip.show} onBlur={alertTooltip.hide} aria-label="Create alert" className="col-span-1 flex h-9 items-center justify-center gap-2 rounded-lg bg-[#2dd4bf] px-3 text-xs font-semibold text-white transition-colors hover:bg-teal-600 sm:col-span-3 lg:col-span-1">
           <Bell size={14} />
         </button>
         <AnchoredTooltipPortal pos={alertTooltip.pos} label="Create alert" isDark={isDark} />
 
         <div data-chart-ui="market-info" className="relative col-span-1 sm:col-span-3 lg:col-span-1">
-          <button ref={infoTooltip.anchorRef} type="button" onClick={toggleMarketInfo} onMouseEnter={infoTooltip.show} onMouseLeave={infoTooltip.hide} onFocus={infoTooltip.show} onBlur={infoTooltip.hide} className={`${fieldClass} flex w-full items-center justify-center gap-1.5 font-semibold hover:border-[#2962ff]/60`} aria-label="Market information" aria-expanded={isMarketInfoOpen}><Info size={14}/></button>
+          <button ref={infoTooltip.anchorRef} type="button" onClick={toggleMarketInfo} onMouseEnter={infoTooltip.show} onMouseLeave={infoTooltip.hide} onFocus={infoTooltip.show} onBlur={infoTooltip.hide} className={`${fieldClass} flex w-full items-center justify-center gap-1.5 font-semibold hover:border-[#2dd4bf]/60`} aria-label="Market information" aria-expanded={isMarketInfoOpen}><Info size={14}/></button>
           {isMarketInfoOpen && marketInfo}
           <AnchoredTooltipPortal pos={infoTooltip.pos} label="Market information" isDark={isDark} />
         </div>

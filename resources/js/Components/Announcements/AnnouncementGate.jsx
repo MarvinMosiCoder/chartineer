@@ -45,11 +45,11 @@ export default function AnnouncementGate() {
             <div className={`w-full max-w-lg animate-fadeInUp overflow-hidden rounded-xl border shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722] text-[#d1d4dc]' : 'border-slate-200 bg-white text-slate-900'}`}>
                 <div className={`flex items-center justify-between gap-3 border-b px-5 py-4 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
                     <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2962ff]/15 text-[#5b8cff]">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2dd4bf]/15 text-[#5eead4]">
                             <Megaphone size={18} />
                         </span>
                         <div className="min-w-0">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-[#5b8cff]">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-[#5eead4]">
                                 What's new{announcements.length > 1 ? ` · ${index + 1}/${announcements.length}` : ''}
                             </div>
                             <h2 id="announcement-title" className="mt-0.5 truncate text-sm font-bold">{current.title}</h2>
@@ -75,7 +75,7 @@ export default function AnnouncementGate() {
                         {announcements.map((item, i) => (
                             <span
                                 key={item.id}
-                                className={`h-1.5 rounded-full transition-all ${i === index ? 'w-5 bg-[#2962ff]' : `w-1.5 ${isDark ? 'bg-[#2a2e39]' : 'bg-slate-200'}`}`}
+                                className={`h-1.5 rounded-full transition-all ${i === index ? 'w-5 bg-[#2dd4bf]' : `w-1.5 ${isDark ? 'bg-[#2a2e39]' : 'bg-slate-200'}`}`}
                             />
                         ))}
                     </div>
@@ -86,7 +86,7 @@ export default function AnnouncementGate() {
                         type="button"
                         onClick={acknowledge}
                         disabled={loading}
-                        className="rounded-lg bg-[#2962ff] px-5 py-2.5 text-xs font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#254eda] hover:shadow-lg hover:shadow-blue-950/30 disabled:pointer-events-none disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+                        className="rounded-lg bg-[#2dd4bf] px-5 py-2.5 text-xs font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#14b8a6] hover:shadow-lg hover:shadow-teal-950/30 disabled:pointer-events-none disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
                     >
                         {loading ? 'Please wait…' : isLast ? 'Got it' : 'Next'}
                     </button>

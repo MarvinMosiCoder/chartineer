@@ -120,11 +120,11 @@ export default function RevenueReports() {
         <div className={`space-y-4 ${isDark ? 'text-[#d1d4dc]' : 'text-slate-900'}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <div className="text-xs font-bold uppercase tracking-[.18em] text-[#2962ff]">Reports</div>
+                    <div className="text-xs font-bold uppercase tracking-[.18em] text-[#2dd4bf]">Reports</div>
                     <h1 className={`mt-1 text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Revenue reports</h1>
                     <p className={`mt-1 text-sm ${muted}`}>Net revenue from subscription checkouts, by day, week, month, or year.</p>
                 </div>
-                <a href={exportHref} className="flex h-10 items-center gap-2 rounded-lg bg-[#2962ff] px-4 text-xs font-bold text-white">
+                <a href={exportHref} className="flex h-10 items-center gap-2 rounded-lg bg-[#2dd4bf] px-4 text-xs font-bold text-white">
                     <Download size={14} />Export CSV
                 </a>
             </div>
@@ -135,7 +135,7 @@ export default function RevenueReports() {
                         <button
                             key={g.value}
                             onClick={() => setGranularity(g.value)}
-                            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${granularity === g.value ? 'bg-[#2962ff] text-white' : muted}`}
+                            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${granularity === g.value ? 'bg-[#2dd4bf] text-white' : muted}`}
                         >
                             {g.label}
                         </button>
@@ -151,7 +151,7 @@ export default function RevenueReports() {
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <StatTile panel={panel} muted={muted} label="Net revenue" value={money(comparison.currentNetRevenue)} tone={netTone} />
-                <StatTile panel={panel} muted={muted} label="Gross paid" value={money(grossPaidTotal)} tone="#2962ff" />
+                <StatTile panel={panel} muted={muted} label="Gross paid" value={money(grossPaidTotal)} tone="#2dd4bf" />
                 <StatTile panel={panel} muted={muted} label="Refunds" value={money(refundsTotal)} tone={status.critical} />
                 <StatTile panel={panel} muted={muted} label="Vs. previous period">
                     {comparison.percentChange == null

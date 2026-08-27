@@ -1,40 +1,45 @@
 import React from "react";
-import Button from "../Table/Buttons/Button";
 import { Link } from "@inertiajs/react";
-import useThemeStyles from "../../Hooks/useThemeStyles";
 import { useTheme } from "../../Context/ThemeContext";
 
-const Card = ({ themeHead, children, headerName, iconClass, marginBottom, loading, withButton, onClick, href, setTextColor }) => {
-    const {theme} = useTheme();
-    const { sideBarTextColor, primayActiveColor, textColorActive, bgColor} = useThemeStyles(theme);
+const Card = ({ children, headerName, description, iconClass, marginBottom, loading, withButton, onClick, href, themeHead }) => {
+    const { theme } = useTheme();
+    const isDark = theme === 'bg-skin-black';
+    const headerBgClass = themeHead || (isDark ? 'bg-white/5' : 'bg-slate-50');
+    const iconChipClass = themeHead
+        ? (isDark ? 'bg-white/10' : 'bg-black/10')
+        : (isDark ? 'bg-white/5 text-[#b2b5be]' : 'bg-white text-slate-600');
+
     return (
-        <div className={`shadow-menus rounded-md ${bgColor} w-full justify-start flex flex-col mb-${marginBottom}`}>                  
-            <div className={`${themeHead} p-3 rounded-tl-md rounded-tr-md border-b border-gray-300`}>
-                <p className={`${sideBarTextColor} font-extrabold`}>
-                    <i className={iconClass}></i> {headerName}
-                </p>
+        <div className={`flex w-full flex-col overflow-hidden rounded-2xl border shadow-sm mb-${marginBottom} ${isDark ? 'border-[#2a2e39] bg-[#131722]' : 'border-slate-200 bg-white'}`}>
+            <div className={`flex items-center gap-3 border-b px-5 py-4 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'} ${headerBgClass}`}>
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[15px] ${iconChipClass}`}>
+                    <i className={iconClass}></i>
+                </span>
+                <div>
+                    <p className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{headerName}</p>
+                    {description && <p className={`mt-0.5 text-xs ${isDark ? 'text-[#9598a1]' : 'text-slate-500'}`}>{description}</p>}
+                </div>
             </div>
             <div className="p-5">
                 {children}
             </div>
             {withButton && (
-                <div className="p-2 border-t-2 mt-3">
-                    <Link href={href} as="button">
-                        <Button
-                            extendClass="bg-skin-default border-[1px] border-gray-400"
-                        >
-                          <i className="fa fa-times-circle text-gray-700"></i>  Cancel
-                        </Button>
-                    </Link>
-                    <Button
-                        type="button"
-                        extendClass={ (theme === 'bg-skin-white' ? primayActiveColor : theme)+" float-right"}
-                        disabled={loading}
-                        fontColor={textColorActive}
-                        onClick={onClick}
+                <div className={`flex items-center justify-between gap-2 border-t px-5 py-4 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
+                    <Link
+                        href={href}
+                        className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-semibold transition-colors duration-200 ${isDark ? 'border-[#2a2e39] text-[#b2b5be] hover:bg-white/5' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                     >
-                     <i className="fa fa-save"></i>   {loading ? "Saving..." : "Save"}
-                    </Button>
+                        <i className="fa fa-times-circle"></i> Cancel
+                    </Link>
+                    <button
+                        type="button"
+                        disabled={loading}
+                        onClick={onClick}
+                        className="flex items-center gap-2 rounded-lg bg-[#2dd4bf] px-4 py-2 text-xs font-bold text-white transition-colors duration-200 hover:bg-[#14b8a6] disabled:opacity-50"
+                    >
+                        <i className="fa fa-save"></i> {loading ? "Saving..." : "Save"}
+                    </button>
                 </div>
             )}
         </div>

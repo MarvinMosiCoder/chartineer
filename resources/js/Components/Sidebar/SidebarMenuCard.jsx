@@ -57,11 +57,11 @@ const SidebarMenuCard = ({
         onClick={handleClick}
         disabled={true}
         href={'/' + href}
-        className={`flex h-10 w-full cursor-pointer select-none items-center overflow-hidden rounded-md px-3 text-xs font-semibold transition ${isMenuActive ? 'bg-[#2962ff] text-white shadow-[0_6px_20px_rgba(41,98,255,.22)]' : theme === 'bg-skin-black' ? 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+        className={`group flex h-10 w-full cursor-pointer select-none items-center gap-2.5 overflow-hidden rounded-xl px-2.5 text-xs font-semibold transition-colors duration-200 ${isMenuActive ? 'bg-[#2dd4bf] text-white shadow-[0_6px_20px_rgba(45,212,191,.22)]' : theme === 'bg-skin-black' ? 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-white' : 'text-slate-700 hover:bg-slate-100'}`}
       >
-        <div className="w-5 h-5 flex items-center justify-center mr-2 flex-shrink-0">
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[13px] transition-colors duration-200 ${isMenuActive ? 'bg-white/15' : theme === 'bg-skin-black' ? 'bg-white/5 group-hover:bg-white/10' : 'bg-slate-100 group-hover:bg-slate-200'}`}>
           <i className={icon}></i>
-        </div>
+        </span>
         <p className={`flex-shrink-0 text-xs font-semibold ${!isSidebarOpen ? 'hidden' : ''}`}>{menuTitle}</p>
       </Link>
       <AnchoredTooltipPortal pos={pos} label={menuTitle} isDark={isDark} />

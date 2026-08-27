@@ -251,7 +251,7 @@ export default function ImportedTrades() {
               onChange={(e) => setUploadForm((prev) => ({ ...prev, file: e.target.files?.[0] ?? null }))}
               className={`h-9 w-full rounded border px-2 py-1.5 text-xs ${field}`}
             />
-            <button disabled={uploading} className="h-9 rounded bg-blue-600 px-4 text-xs font-semibold text-white disabled:opacity-50">
+            <button disabled={uploading} className="h-9 rounded bg-teal-600 px-4 text-xs font-semibold text-white disabled:opacity-50">
               {uploading ? 'Uploading…' : 'Upload CSV'}
             </button>
           </div>
@@ -336,7 +336,7 @@ export default function ImportedTrades() {
               type="button"
               disabled={committing}
               onClick={handleCommit}
-              className="rounded bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              className="rounded bg-teal-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
             >
               {committing ? 'Starting import…' : 'Commit import'}
             </button>

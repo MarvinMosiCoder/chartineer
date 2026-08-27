@@ -30,12 +30,12 @@
 
 .wysiwyg-dark .ql-toolbar.ql-snow button:hover .ql-stroke,
 .wysiwyg-dark .ql-toolbar.ql-snow button.ql-active .ql-stroke {
-    stroke: #5b8cff;
+    stroke: #5eead4;
 }
 
 .wysiwyg-dark .ql-toolbar.ql-snow button:hover .ql-fill,
 .wysiwyg-dark .ql-toolbar.ql-snow button.ql-active .ql-fill {
-    fill: #5b8cff;
+    fill: #5eead4;
 }
 
 .wysiwyg-dark .ql-snow .ql-picker-options {

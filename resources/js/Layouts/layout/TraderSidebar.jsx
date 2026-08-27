@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, usePage } from '@inertiajs/react';
-import { BarChart3, BookOpen, CandlestickChart, ChevronLeft, CircleHelp, CreditCard, KeyRound, LayoutDashboard, MessageSquarePlus, Share2, Target, UserRound } from 'lucide-react';
+import { BarChart3, BookOpen, CandlestickChart, ChevronLeft, CircleHelp, CreditCard, LayoutDashboard, MessageSquarePlus, Share2, Target } from 'lucide-react';
 import { useSidebar } from '../../Context/SidebarContext';
 import { useTheme } from '../../Context/ThemeContext';
 import { useAnchoredTooltip, AnchoredTooltipPortal, IconTooltipButton } from '../../Components/Tooltip/AnchoredTooltip';
@@ -13,8 +13,6 @@ const items = [
     { label: 'Training challenges', href: '/training-challenges', icon: Target },
     { label: 'Subscription', href: '/subscription', icon: CreditCard },
     { label: 'Feedback & Customer Support', href: '/feedback', icon: MessageSquarePlus },
-    { label: 'Profile', href: '/profile', icon: UserRound },
-    { label: 'Change password', href: '/change_password', icon: KeyRound },
     { label: 'How to use', href: '/help', icon: CircleHelp },
 ];
 
@@ -31,7 +29,7 @@ function SidebarNavLink({ href, label, Icon, active, isDark, isSidebarOpen, onNa
                 onClick={onNavigate}
                 className={`flex h-10 w-full items-center gap-3 rounded-md px-3 text-xs font-semibold transition ${
                     active
-                        ? 'bg-[#2962ff] text-white shadow-[0_6px_20px_rgba(41,98,255,.22)]'
+                        ? 'bg-[#2dd4bf] text-white shadow-[0_6px_20px_rgba(45,212,191,.22)]'
                         : isDark ? 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-white' : 'hover:bg-slate-100'
                 }`}
             >
@@ -84,7 +82,7 @@ export default function TraderSidebar() {
                 </nav>
 
                 <div className={`mt-auto rounded-md border p-3 ${!isSidebarOpen ? 'lg:hidden' : ''} ${isDark ? 'border-[#2a2e39] bg-[#0b0e14]' : 'border-slate-200 bg-slate-50'}`}>
-                    <div className="flex items-center gap-2 text-xs font-semibold"><BarChart3 size={15} className="text-[#2962ff]" /> Practice mode</div>
+                    <div className="flex items-center gap-2 text-xs font-semibold"><BarChart3 size={15} className="text-[#2dd4bf]" /> Practice mode</div>
                     <p className="mt-1 text-[10px] leading-4 text-[#787b86]">Replay, execute, journal, and improve your process.</p>
                 </div>
 
