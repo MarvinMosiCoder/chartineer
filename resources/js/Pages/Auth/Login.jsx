@@ -143,7 +143,7 @@ const LoginPage = () => {
                         Back to home
                     </Link>
                     <div className="flex items-center gap-3">
-                        <div className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-md border ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-gray-300 bg-white'}`}>
+                        <div className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-md ${isDark ? 'bg-black-table-color' : 'bg-white'}`}>
                             {applogo ? (
                                 <img src={applogo} className="h-full w-full object-contain p-1" alt={`${appName} logo`} />
                             ) : (
