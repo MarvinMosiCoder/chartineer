@@ -13,7 +13,8 @@ Administrators create/edit announcements; authenticated users (trader and admin 
 | `GET /market-overview` | Latest four active announcements with sanitized excerpts and read state |
 | `GET /updates` | Full "News & updates" page — every active announcement, paginated 10/page, full rich `message` (not excerpted) |
 | `AnnouncementsController.php` | Announcement CRUD and unread/read-state logic |
-| `Announcement.php` | Many-to-many user relationship (`announcement_user`) |
+| `Announcement.php` | Many-to-many user relationship (`announcement_user`, pivot `hidden_at`) |
+| `DELETE /notifications/announcement/{id}` | Hides one announcement for the calling user only (pivot `hidden_at`) — see [Alerts and notifications](price-alerts-and-notifications.md) |
 | `Components/Announcements/AnnouncementGate.jsx` | The modal itself — mounted once in `Layouts/layout/layout.jsx`, so it's live on both the admin and trader shell |
 | `Pages/AdmVram/AnnouncementPage.jsx`, `AnnouncementForm.jsx` | Admin list and create/edit UI (`WyswygTextEditor` for `message`) |
 
@@ -47,6 +48,8 @@ None of these three were guessed from reading the code and reasoning about what 
 ## Maintenance and verification
 
 - Keep announcement `message` HTML admin-authored only; don't relax `announcements,create`/`edit`/`delete` privilege gating, since the modal and the "News & updates" full page both render it unsanitized by design.
+- A user deleting an announcement from their notification history must never delete the `announcements` row — it is published for everyone. That path sets the per-user `hidden_at` pivot column instead; treat any new "remove announcement" surface the same way.
+- The notification history page is the one surface that renders announcement HTML *sanitized* (`NotificationsController::sanitizeAnnouncementHtml()`) and its list rows as plain text, because that feed mixes announcements with system notifications. Don't paste raw `message` into a mixed feed — it prints literal tags.
 - Never let a user mark another user's pivot record.
 - Enforce admin privileges on create/edit/delete, not only menu visibility.
 - Test unread count, mark-read idempotency (including the multi-item carousel advancing correctly), expired/inactive items, and that `auth.announcement` going false after the last item is read doesn't require a manual refresh to stop refetching (`fetched` state guards against refetch loops within a session).

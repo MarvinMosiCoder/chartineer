@@ -23,6 +23,6 @@ class Announcement extends Model
 
     public function admUsers()
     {
-        return $this->belongsToMany(AdmUser::class,'announcement_user')->withTimestamps();
+        return $this->belongsToMany(AdmUser::class,'announcement_user')->withPivot('hidden_at')->withTimestamps();
     }
 }

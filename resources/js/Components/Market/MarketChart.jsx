@@ -1165,6 +1165,7 @@ export default function MarketReplayChart({
   const drawingSaveVersionRef = useRef(0);
   const restoredReplayProgressKeyRef = useRef(null);
   const latestReplayProgressRef = useRef(null);
+  const pendingReplayProgressSaveRef = useRef(null);
   const replayAccessRequestRef = useRef(null);
   const historyReadyKeyRef = useRef(null);
   const timeframeTransitionKeyRef = useRef(null);
@@ -1761,7 +1762,9 @@ export default function MarketReplayChart({
     const timeout = setTimeout(() => {
       const serverProgress = { ...progress, client_saved_at: progress.saved_at };
       delete serverProgress.saved_at;
-      axios.put('/market-replay-progress', serverProgress).catch(() => {});
+      // Kept so clearSavedReplayProgress can delete *after* this lands — a save
+      // still in flight would otherwise recreate the row it just deleted.
+      pendingReplayProgressSaveRef.current = axios.put('/market-replay-progress', serverProgress).catch(() => {});
     }, 500);
 
     return () => clearTimeout(timeout);
@@ -1810,6 +1813,35 @@ export default function MarketReplayChart({
       flushReplayProgress();
     };
   }, []);
+
+  // Back to Live is the user saying they are done replaying *this* market, so the
+  // checkpoint has to go with it. Leaving the row behind meant the next visit to
+  // this market — or any reload — silently dropped the chart back into Replay at
+  // the old candle, since the restore path only asks whether a row exists.
+  const clearSavedReplayProgress = useCallback(() => {
+    // Both flush paths (unmount and pagehide) write whatever this ref holds, so
+    // clearing it first is what stops the row being written straight back.
+    latestReplayProgressRef.current = null;
+    setSavedReplayProgress(null);
+    // Blocks a re-restore for this market until the market key changes, which is
+    // when the loader resets this ref and refetches anyway.
+    restoredReplayProgressKeyRef.current = replayProgressKey;
+
+    try {
+      localStorage.removeItem(replayProgressStorageKey);
+    } catch {}
+
+    // The local copy wins over the server one on load, so both have to go — and
+    // the delete has to queue behind any save still in flight.
+    const pendingSave = pendingReplayProgressSaveRef.current;
+    pendingReplayProgressSaveRef.current = null;
+    Promise.resolve(pendingSave).catch(() => {}).then(() => {
+      axios.delete('/market-replay-progress', {
+        data: { symbol, exchange, category: marketCategory },
+        headers: { Accept: 'application/json' },
+      }).catch(() => {});
+    });
+  }, [exchange, marketCategory, replayProgressKey, replayProgressStorageKey, symbol]);
 
   useEffect(() => {
     localStorage.setItem(candleColorsStorageKey, JSON.stringify(candleColors));
@@ -5919,9 +5951,12 @@ export default function MarketReplayChart({
       return;
     }
 
-    // Going live changes only the current view. The last replay checkpoint
-    // and its price guide remain available until the market context changes.
+    // Going live ends this market's replay session: the saved checkpoint is
+    // dropped so coming back to this market later starts Live. The dashed
+    // "Replay" price guide stays on screen until the market context changes —
+    // it marks where the session ended and is not what resumes Replay.
     pendingBackToLiveRef.current = true;
+    clearSavedReplayProgress();
     setReplayMode(false);
     setFollowReplay(true);
     setTool(null);

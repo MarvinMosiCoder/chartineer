@@ -205,6 +205,9 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/admin/reports/feedback/export', [FeedbackReportController::class, 'export'])->middleware('admin.permission:reports_feedback,view')->name('admin.reports.feedback.export');
     Route::get('/market-replay-progress', [MarketReplayProgressController::class, 'show'])->name('market-replay-progress.show');
     Route::put('/market-replay-progress', [MarketReplayProgressController::class, 'update'])->middleware('replay.access')->name('market-replay-progress.update');
+    // No replay.access gate: clearing a checkpoint (Back to Live) is not a replay
+    // action and must stay possible after an entitlement lapses.
+    Route::delete('/market-replay-progress', [MarketReplayProgressController::class, 'destroy'])->name('market-replay-progress.destroy');
     Route::get('/market-backtest/account', [MarketBacktestController::class, 'show'])->middleware(['replay.access', 'throttle:backtest-read'])->name('market-backtest.show');
     Route::get('/market-backtest/playbooks', [MarketBacktestPlaybookController::class, 'index'])->middleware('throttle:backtest-read')->name('market-backtest.playbooks.index');
     Route::post('/market-backtest/playbooks', [MarketBacktestPlaybookController::class, 'store'])->middleware('throttle:backtest-write')->name('market-backtest.playbooks.store');
@@ -321,6 +324,11 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::post('/notifications/read', [NotificationsController::class, 'markAsRead'])->name('notification-read');
     Route::post('/notifications/read-all', [NotificationsController::class, 'markAllAsRead'])->name('notification-read-all');
     Route::post('/notifications/dismiss', [NotificationsController::class, 'dismiss'])->name('notification-dismiss');
+    // Deletes from the history page — unlike /notifications/dismiss these do not
+    // come back. `all` is declared first so it is not read as a source type.
+    Route::delete('/notifications/all', [NotificationsController::class, 'destroyAll'])->name('notification-delete-all');
+    Route::delete('/notifications/{sourceType}/{id}', [NotificationsController::class, 'destroy'])
+        ->whereIn('sourceType', ['notification', 'announcement'])->whereNumber('id')->name('notification-delete');
     Route::patch('/notification-preferences', [NotificationsController::class, 'updatePreferences'])->name('notification-preferences');
     Route::get('/notifications/view-notification/{id}', [NotificationsController::class, 'viewNotification'])->name('view-notification');
     Route::get('/notifications/view-all-notifications', [NotificationsController::class, 'viewAllNotification'])->name('view-all-notifications');

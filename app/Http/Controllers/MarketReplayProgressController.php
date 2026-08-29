@@ -28,6 +28,36 @@ class MarketReplayProgressController extends Controller
         ]);
     }
 
+    /**
+     * Drops one market's saved checkpoint — the chart calls this when the user
+     * goes Back to Live, so returning to the market later starts in Live rather
+     * than resuming the abandoned replay.
+     *
+     * Deliberately outside the `replay.access` middleware the update route uses:
+     * clearing state is not a replay action, and a user whose entitlement has
+     * lapsed must still be able to drop a stale row.
+     */
+    public function destroy(Request $request)
+    {
+        $validated = $request->validate([
+            'symbol' => ['required', 'string', 'max:30'],
+            'exchange' => ['required', 'string', 'max:30'],
+            'category' => ['required', 'string', 'max:30'],
+        ]);
+
+        $deleted = MarketReplayProgress::query()
+            ->where('adm_user_id', $request->user()->id)
+            ->where('symbol', strtoupper($validated['symbol']))
+            ->where('exchange', strtolower($validated['exchange']))
+            ->where('category', strtolower($validated['category']))
+            ->delete();
+
+        return response()->json([
+            'success' => true,
+            'deleted' => (int) $deleted,
+        ]);
+    }
+
     public function update(Request $request)
     {
         $validated = $request->validate([

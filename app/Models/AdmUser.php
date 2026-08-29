@@ -150,7 +150,9 @@ class AdmUser extends Authenticatable
     }
 
     public function announcements(){
-        return $this->belongsToMany(Announcement::class,'announcement_user')->withTimestamps();
+        // `hidden_at` marks an announcement the user deleted from their own
+        // notification history; the announcement row itself is global.
+        return $this->belongsToMany(Announcement::class,'announcement_user')->withPivot('hidden_at')->withTimestamps();
     }
     
     public function notifications()
