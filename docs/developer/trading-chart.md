@@ -11,7 +11,8 @@ The workspace chart renders candlesticks and volume with Lightweight Charts, ind
 | `MarketChart.jsx` | Main state, refs, fetching, chart events, feature coordination |
 | `ChartHeader.jsx` | Market/timeframe/replay/indicator/appearance commands |
 | `TimeframeSelector.jsx` | Favorite-timeframe pill row + "Select period" grid, used by both `ChartHeader.jsx` layouts |
-| `ChartSettingsModal.jsx` | Chart settings dialog (Symbol/Status line/Scales/Canvas) opened from the chart legend's "•••" menu |
+| `ChartSettingsModal.jsx` | Chart settings dialog (Symbol/Status line/Sessions/Scales/Canvas) opened from the chart legend's "•••" menu |
+| `marketSessions.js` | Market session windows, DST-aware resolution, and band segment building |
 | `FullscreenChartHeader.jsx` | Fullscreen command bar |
 | `ReplayPanel.jsx` | Drawing, replay, and order rail |
 | `ChartStage.jsx` | Chart container and SVG overlays |
@@ -341,3 +342,67 @@ This workspace spotlight tour is the first of two product tours sharing the same
 `WorkspaceTour.jsx` itself is generic — a `step`/`steps`/`onStep`/`onFinish`/`dark` component with no chart-specific coupling, spotlighting whatever DOM node matches each step's plain CSS `selector` (conventionally a `data-tour="..."` attribute placed on the real control) via `getBoundingClientRect()`, scrolling it into view, and re-measuring on resize/scroll/fullscreen-change. A missing selector degrades to a centered dialog with an inline notice instead of erroring. Reuse it directly for any future tour rather than forking it — the two existing tours differ only in their `steps` array and completion endpoint, never in the engine.
 
 `MarketChart.jsx` is mounted with `key={chartKey}` in `Dashboard.jsx` and fully remounts whenever the active symbol changes. Its tour-completed flag is therefore owned by the parent `Dashboard.jsx` (`chartTourCompleted` state, seeded from `auth.user.chart_tour_completed_at`) rather than re-read from the Inertia `auth` prop on every mount, which can be stale mid-session (a plain `axios.post` does not refresh Inertia's shared props). `Dashboard.jsx` passes `tourCompleted`/`onTourComplete` down; `MarketChart.jsx`'s `finishTour` calls `onTourComplete()` synchronously so a symbol change immediately after finishing the tour cannot re-trigger it.
+
+# Market sessions (Asian / London / New York)
+
+Session windows are defined by each market's own local trading hours in its own IANA timezone (`MARKET_SESSIONS` in `marketSessions.js`; `MarketSessionService::DEFINITIONS` in PHP), not by fixed UTC offsets: Tokyo 09:00-18:00 `Asia/Tokyo`, London 08:00-17:00 `Europe/London`, New York 08:00-17:00 `America/New_York`, stored as minutes from local midnight. Converting per-timestamp is what makes the boundaries follow BST/EDT automatically -- London opens at 08:00 UTC in January and 07:00 UTC in July. The previous implementation (a `match` on `gmdate('G')` inside the analytics service) hardcoded UTC hours and was therefore an hour wrong for roughly half the year, silently misfiling every trade near a boundary.
+
+**The definitions are deliberately duplicated in PHP and JS rather than plumbed from server to client.** They never change at runtime, and passing them through Inertia props for the chart to read would add a request-shaped dependency to a constant. The safeguard is that `MarketSessionServiceTest` and `tests/js/marketSessions.test.js` pin the *same* winter and summer instants (2024-01-15 and 2024-07-15 UTC) and assert the same labels, so a change to one set of windows fails the other language's suite. Run both (`php artisan test --filter=MarketSessionServiceTest`, `npm run test:market-sessions`) when touching either file.
+
+**London and New York overlap gets its own bucket** (`London / New York`), rather than being absorbed into New York. It is the highest-volume window of the day -- 13:00-17:00 UTC in winter, 12:00-16:00 in summer -- and collapsing it into a neighbour hides the one session distinction most worth measuring. `label()`/`resolveSession()` return the overlap first, then fall back through New York, London, Asian, and finally `Off-session`. The Asian/London overlap has no equivalent bucket; it reads as London.
+
+Sessions are **time-of-day only, with no weekday filter**, because this app covers crypto as well as FX. A Saturday timestamp still resolves to whichever window contains it instead of falling back to off-session. `MarketSessionServiceTest::test_sessions_are_not_closed_at_weekends` pins this so it is not "fixed" back into a weekday check without a deliberate decision.
+
+## Two surfaces, two settings
+
+Both live under `chartDisplay.sessions` (`DEFAULT_CHART_DISPLAY` in `constants.js`), so both ride along in saved chart-settings templates for free -- `onSavePreset` serializes the whole `chartDisplay` object, and anything stored outside it would silently not be part of a template.
+
+- **Status-bar badge** (`showSessionBadge`/`sessionTimestamp` on `ChartBottomBar`, `MarketChart.jsx`) -- a coloured chip beside the existing clock. **Defaults on**: it is one small element next to a control that is already there, and it is how the feature gets discovered at all.
+- **Chart marking** (`SessionOverlay` in `ChartStage.jsx`) -- shaded bands or dashed boundary lines. **Defaults off**, since it repaints the whole chart and should be an opt-in.
+
+Both are configured from the settings modal's new **Sessions** tab, not from the chart's right-click menu. That menu is price-anchored (its header is literally `Price {formatOverlayPrice(...)}` and every item acts on the clicked price or is a one-shot action); a chart-wide display preference has nothing to do with the price under the cursor, and the menu's existing last item already routes to Chart Settings rather than hosting settings itself.
+
+**Above 4h the badge stops naming a session while replaying.** A candle's `time` is its *open*, so replaying a daily chart resolves every bar from 00:00 UTC and reports Asian forever -- a wrong answer delivered with full confidence, which is worse than no answer. `sessionBadgeSpansBar` (`replayMode` plus the same timeframe cutoff the overlay uses) switches the chip to a muted `ALL` whose tooltip explains that the bar covers every session. Live charts are deliberately unaffected: the wall clock is a real instant regardless of what timeframe is on screen, so a 1d chart still reports the genuine current session.
+
+**The badge reads the replay bar's time, not `Date.now()`.** `sessionBadgeTimestamp` (`MarketChart.jsx`) is the last entry of `visibleCandles` while `replayMode` is on and `null` otherwise; `ChartBottomBar` falls back to its own ticking wall clock only for that `null`. This is the whole point of the badge -- during replay the trader is sitting on a bar from months or years ago, so a badge wired to the live clock would report *today's* session, confidently wrong exactly where the feature is most useful. The neighbouring `clockLabel` is still genuine wall-clock time; the two intentionally disagree during replay.
+
+## Overlay rendering
+
+`renderedSessionBands` (`MarketChart.jsx`) is a derived memo, keyed on `overlayRenderVersion` like `renderedDrawings`, that projects `buildSessionSegments()` output to screen x through `timeToX` -- an x-only twin of `toScreen`. It must use the `logicalToCoordinate` path: session boundaries have no price and rarely coincide with a candle open (08:00 London is not a bar start on a 90m chart), and `timeToCoordinate` returns `null` for any time not on the scale, which would drop those lines entirely.
+
+Three gates, all of which matter:
+- **Timeframe** -- hidden above `SESSION_OVERLAY_MAX_TIMEFRAME_SECONDS` (4h). Above that a single candle already spans most of a session, so every bar would carry a boundary and the overlay reads as noise.
+- **Day width** -- hidden when a day occupies less than `SESSION_MIN_DAY_WIDTH_PX` (18px), i.e. more than about two months across a full-width pane. `SESSION_BAND_MIN_WIDTH_PX` (2px) is only a safety net beneath it, for a band clipped to nothing at the pane edge; labels render above `SESSION_BAND_LABEL_MIN_WIDTH_PX` (56px).
+- **Layer visibility** -- `hiddenLayers.sessions`, alongside `drawings`/`indicators`/`positions`, so the rail's Show/Hide and its "Hide all" cover it too.
+
+**The gate is on pixels per day, not on band width, and it reports itself.** This started as a plain per-band cull at 8px and that was wrong twice over. It measured the wrong thing -- what matters is whether a *day* is wide enough to tell three sessions and the off-session gaps apart, not whether one band clears a pixel count -- and, worse, it failed silently. A chart auto-fits its whole loaded history on a fresh load (about seven months at 4h, seven weeks at 15m), so the layer suppressed itself on most first loads and the feature simply looked broken; 15m happened to sit just the right side of the threshold, which is exactly the kind of "works on one timeframe only" report it produced.
+
+So the memo returns `{ bands, hiddenReason }` rather than a bare array, and `ChartBottomBar` renders a dashed `Sessions: zoom in` / `Sessions: above 4h` chip beside the badge whenever marking is on but not drawn, with the full explanation in its `title`. An empty overlay is a legitimate state here -- it must never be an unexplained one. Any future gate on this layer should set a `hiddenReason` too instead of quietly returning `[]`.
+
+### Three projection traps, all found by rendering it and measuring
+
+Every one of these produced a plausible-looking chart while being wrong, and none would have been caught by the unit tests -- the session math was correct throughout. If this layer ever misbehaves, check these first.
+
+1. **Do not project through `estimateDrawingLogicalFromTime`.** It snaps a time to its containing candle index at 15m and above. That is right for a saved drawing anchor, which belongs on a real bar, and wrong for a session edge, which is a continuous instant: on a 4h chart the 07:00 London open rendered against the 04:00 bar, three hours adrift, and looked merely "a bit off" rather than broken. `timeToX` uses `estimateLogicalFromTime`, which interpolates. `marketSessions.test.js` pins the difference (logical `1` vs `1.75`).
+2. **`logicalToCoordinate` returns 0 for a fractional logical.** It only answers correctly for whole bars. Because of trap 1 the drawing path had never passed it a fraction at 15m or above, so this had never surfaced. Every mid-bar boundary collapsed to x=0 and the bands stacked at the left edge. `timeToX` therefore resolves the two neighbouring whole bars and interpolates between them itself -- bar spacing is uniform in logical space, so that is exact, not an approximation.
+3. **Never fall back to the full candle span when the visible range is unavailable.** `getVisibleRange()` returns null more often than you would expect and does so silently. Falling back to first-to-last candle built a segment for every session in the entire loaded history -- 491 of them on a 4h chart, all off-screen, each clamping to x=0 and painting the pane solid. The memo now reads `getVisibleLogicalRange()` (as the rest of the file does), returns `[]` when there is no range yet, and bounds the window to the loaded candles so `estimateLogicalFromTime` only ever interpolates between real bars instead of extrapolating into the whitespace past the newest one. The visible-range subscription re-runs the memo, so an early empty pass costs nothing.
+
+`ChartStage.jsx`'s overlay div carries `data-chart-ui="session-overlay"`, which is how the above were measured -- count its `rect` children and read their `x`/`width` against the timeframe's known px-per-hour.
+
+`SessionOverlay` sits at `z-[5]`, below `DrawingOverlay` (`z-10`) so user drawings always read on top, and above the chart canvas (`z-0`) because Lightweight Charts paints candles into a single canvas there is no drawing *behind*. That is why the fill is a low-opacity tint (default 8%, capped at 40% in the component regardless of the stored value) rather than a solid background -- it cannot go under the candles, so it must not obscure them.
+
+## Report attribution
+
+`MarketBacktestAdvancedAnalyticsService` now keys `byTradingSession` on **entry** time (`opened_at_time`, falling back to `closed_at_time`), not close time. The session is the context the setup was taken in; a trade opened in London that runs past the New York open is still a London trade. `byWeekday` and `byHourUtc` remain close-oriented, so the three breakdowns in that panel no longer share one time convention -- see [Trade reports and journals](trade-reports-and-journals.md).
+
+## Verification
+
+- Switch between 1m and 4h with shading on: bands re-project and stay aligned to the same wall-clock boundaries. Switch to 6h or higher and confirm the overlay disappears rather than drawing a boundary per candle.
+- Load a January date range and a July one on an intraday timeframe and confirm the London band starts at 08:00 and 07:00 UTC respectively -- the DST case the old implementation got wrong.
+- Enter replay, scrub to a bar in a different session from the current live one, and confirm the badge follows the *bar*, not the wall clock beside it.
+- Replay on 1d (or 6h/12h) and confirm the badge reads `ALL`, not a session name — a daily bar resolved from its 00:00 open would otherwise claim Asian on every bar. Drop to 4h or below while still replaying and confirm it names a real session again. **Needs a replay-entitled account**: replay is paywalled, so a plain test user hits the Replay Access modal and never reaches this path.
+- Draw a few trendlines with shading on, then use Clear Tools: the drawings clear, the session bands stay.
+- Save a chart-settings template with shading on and a custom colour, apply a template saved *before* this feature existed, and confirm the Sessions tab still renders with defaults instead of throwing on a missing `sessions` key.
+- Zoom out past about two months on any intraday timeframe: the bands must disappear *and* the `Sessions: zoom in` chip must appear in the status bar. Zoom back in and both must reverse. A blank chart with no chip means the gate returned early without setting a `hiddenReason`.
+- Load the workspace fresh (the chart auto-fits its whole history) on 1h and 4h, not just 15m. This is the path that made the feature look broken on every timeframe but one.
+- On a 4h chart zoomed to a couple of days, check a band edge against the axis: London must start 7 hours after the Asian open in summer and 8 in winter, and a band whose edge falls mid-candle must sit proportionally inside that candle rather than snapping to its open. This is the check that catches all three projection traps above.

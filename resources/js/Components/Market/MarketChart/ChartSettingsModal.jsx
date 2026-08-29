@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Layers, LineChart, Move, MoreHorizontal, Palette, Rows3, Trash2, X } from 'lucide-react';
+import { ChevronDown, Clock, Layers, LineChart, Move, MoreHorizontal, Palette, Rows3, Trash2, X } from 'lucide-react';
 import { useAnchoredTooltip, AnchoredTooltipPortal } from '../../Tooltip/AnchoredTooltip';
 import { ConfirmOverwriteDialog } from './ReplayPanel';
-import { DEFAULT_CANDLE_COLORS, DEFAULT_CANDLE_SIZE, DEFAULT_CHART_DISPLAY } from './constants';
+import { DEFAULT_CANDLE_COLORS, DEFAULT_CANDLE_SIZE, DEFAULT_CHART_DISPLAY, withChartDisplayDefaults } from './constants';
+import { MARKET_SESSIONS, SESSION_KEYS } from './marketSessions';
 
 const TABS = [
   { key: 'symbol', label: 'Symbol', icon: Rows3 },
   { key: 'statusLine', label: 'Status line', icon: LineChart },
+  { key: 'sessions', label: 'Sessions', icon: Clock },
   { key: 'scales', label: 'Scales', icon: Layers },
   { key: 'canvas', label: 'Canvas', icon: Palette },
 ];
@@ -125,6 +127,94 @@ function StatusLineTab({ isDark, statusLine, onChange }) {
   );
 }
 
+function SessionsTab({ isDark, fieldClass, sessions, onChange }) {
+  const mutedClass = isDark ? 'text-gray-500' : 'text-gray-400';
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <SectionLabel isDark={isDark}>Status bar</SectionLabel>
+        <CheckRow
+          isDark={isDark}
+          checked={sessions.badge}
+          onToggle={() => onChange({ badge: !sessions.badge })}
+          label="Show current session badge"
+        />
+        <p className={`mt-1 text-[11px] leading-4 ${mutedClass}`}>
+          Sits next to the clock. During replay it reports the session of the bar you are on, not the session right now.
+        </p>
+      </div>
+
+      <div>
+        <SectionLabel isDark={isDark}>Chart</SectionLabel>
+        <CheckRow
+          isDark={isDark}
+          checked={sessions.enabled}
+          onToggle={() => onChange({ enabled: !sessions.enabled })}
+          label="Mark sessions on the chart"
+        />
+
+        <div className={`mt-3 space-y-3 ${sessions.enabled ? '' : 'pointer-events-none opacity-40'}`}>
+          <label className="flex items-center gap-2 text-sm">
+            <span className="w-16 shrink-0">Style</span>
+            <select
+              value={sessions.display}
+              onChange={(event) => onChange({ display: event.target.value })}
+              className={`h-9 min-w-0 flex-1 rounded-md border px-3 text-sm outline-none ${fieldClass}`}
+            >
+              <option value="bands">Shaded bands</option>
+              <option value="lines">Boundary lines</option>
+            </select>
+          </label>
+
+          {sessions.display !== 'lines' && (
+            <label className="flex items-center gap-2 text-sm">
+              <span className="w-16 shrink-0">Opacity</span>
+              <input
+                type="range"
+                min="2"
+                max="40"
+                step="1"
+                value={sessions.opacity}
+                onChange={(event) => onChange({ opacity: Number(event.target.value) })}
+                className="min-w-0 flex-1 accent-[#2dd4bf]"
+              />
+              <span className="w-8 shrink-0 text-right text-xs tabular-nums">{sessions.opacity}%</span>
+            </label>
+          )}
+
+          <div>
+            <SectionLabel isDark={isDark}>Sessions shown</SectionLabel>
+            {SESSION_KEYS.map((key) => (
+              <CheckRow
+                key={key}
+                isDark={isDark}
+                checked={sessions[key].enabled}
+                onToggle={() => onChange({ [key]: { ...sessions[key], enabled: !sessions[key].enabled } })}
+                label={MARKET_SESSIONS[key].label}
+              >
+                <input
+                  type="color"
+                  value={sessions[key].color}
+                  onChange={(event) => onChange({ [key]: { ...sessions[key], color: event.target.value } })}
+                  className="h-6 w-7 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
+                  aria-label={`${MARKET_SESSIONS[key].label} colour`}
+                />
+              </CheckRow>
+            ))}
+          </div>
+        </div>
+
+        <p className={`mt-3 text-[11px] leading-4 ${mutedClass}`}>
+          Boundaries follow each market's own opening hours, so they shift with BST and EDT rather than sitting on fixed
+          UTC times. Marking needs room to read: it is hidden above the 4-hour timeframe, and when the chart is zoomed
+          out past about two months. The status bar says which is happening.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ScalesTab({ isDark, fieldClass, scales, onChange }) {
   return (
     <div className="space-y-5">
@@ -171,7 +261,7 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
   const [activeTab, setActiveTab] = useState('symbol');
   const [draftColors, setDraftColors] = useState(candleColors);
   const [draftSize, setDraftSize] = useState(candleSize);
-  const [draftDisplay, setDraftDisplay] = useState(chartDisplay);
+  const [draftDisplay, setDraftDisplay] = useState(() => withChartDisplayDefaults(chartDisplay));
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
@@ -188,7 +278,7 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
     setActiveTab('symbol');
     setDraftColors(candleColors);
     setDraftSize(candleSize);
-    setDraftDisplay(chartDisplay);
+    setDraftDisplay(withChartDisplayDefaults(chartDisplay));
     setDragOffset({ x: 0, y: 0 });
     setShowTemplateMenu(false);
     setShowSaveAsDialog(false);
@@ -222,7 +312,8 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
   const handleApplyPreset = (preset) => {
     if (preset?.settings?.candleColors) setDraftColors(preset.settings.candleColors);
     if (Number.isFinite(preset?.settings?.candleSize)) setDraftSize(preset.settings.candleSize);
-    if (preset?.settings?.chartDisplay) setDraftDisplay(preset.settings.chartDisplay);
+    // A template saved before a section existed comes back without it.
+    if (preset?.settings?.chartDisplay) setDraftDisplay(withChartDisplayDefaults(preset.settings.chartDisplay));
     setShowTemplateMenu(false);
   };
 
@@ -340,6 +431,9 @@ export default function ChartSettingsModal({ open, onClose, isDark, candleColors
             )}
             {activeTab === 'statusLine' && (
               <StatusLineTab isDark={isDark} statusLine={draftDisplay.statusLine} onChange={(patch) => patchDraft('statusLine', patch)} />
+            )}
+            {activeTab === 'sessions' && (
+              <SessionsTab isDark={isDark} fieldClass={fieldClass} sessions={draftDisplay.sessions} onChange={(patch) => patchDraft('sessions', patch)} />
             )}
             {activeTab === 'scales' && (
               <ScalesTab isDark={isDark} fieldClass={fieldClass} scales={draftDisplay.scales} onChange={(patch) => patchDraft('scales', patch)} />

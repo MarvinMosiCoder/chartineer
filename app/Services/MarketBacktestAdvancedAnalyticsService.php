@@ -6,6 +6,8 @@ use Illuminate\Support\Collection;
 
 class MarketBacktestAdvancedAnalyticsService
 {
+    public function __construct(private MarketSessionService $sessions = new MarketSessionService()) {}
+
     public function build(Collection $positions, float $startingBalance): array
     {
         $pnls = $positions->reverse()->values()->map(fn ($position) => (float) $position->realized_pnl);
@@ -54,7 +56,14 @@ class MarketBacktestAdvancedAnalyticsService
             'byWeekday' => $this->groupPerformance($positions, fn ($position) => gmdate('D', (int) ($position->closed_at_time ?: 0))),
             'byHourUtc' => $this->groupPerformance($positions, fn ($position) => gmdate('H:00', (int) ($position->closed_at_time ?: 0))),
             'maeMfe' => $this->maeMfe($positions),
-            'byTradingSession' => $this->groupPerformance($positions, fn ($position) => $this->tradingSession((int) ($position->closed_at_time ?: 0))),
+            // Session is attributed to the entry, not the close: the session is
+            // the context you took the setup in, and a trade opened in London
+            // that runs past the New York open is still a London trade. The
+            // weekday/hour breakdowns above stay close-oriented.
+            'byTradingSession' => $this->groupPerformance(
+                $positions,
+                fn ($position) => $this->sessions->label((int) ($position->opened_at_time ?: $position->closed_at_time ?: 0))
+            ),
         ];
     }
 
@@ -132,17 +141,6 @@ class MarketBacktestAdvancedAnalyticsService
             'avgMaeAmount' => round(array_sum($maeAmounts) / $count, 8),
             'edgeRatio' => array_sum($maePercents) > 0 ? round(array_sum($mfePercents) / array_sum($maePercents), 4) : null,
         ];
-    }
-
-    private function tradingSession(int $timestamp): string
-    {
-        $hour = (int) gmdate('G', $timestamp);
-        return match (true) {
-            $hour >= 0 && $hour < 8 => 'Asian',
-            $hour >= 8 && $hour < 13 => 'London',
-            $hour >= 13 && $hour < 21 => 'New York',
-            default => 'Late/Off-session',
-        };
     }
 
     private function percentile(array $values, int $percentile): float

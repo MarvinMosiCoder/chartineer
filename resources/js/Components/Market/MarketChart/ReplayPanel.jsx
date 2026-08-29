@@ -2604,7 +2604,7 @@ export default function ReplayPanel({
         {(fullscreenDrawingOnly || groupedWorkspaceRail) && (
           <div className="flex w-12 items-center justify-center">
             <RailButton
-              icon={(hiddenLayers?.drawings || hiddenLayers?.indicators || hiddenLayers?.positions) ? EyeOff : Eye}
+              icon={(hiddenLayers?.drawings || hiddenLayers?.indicators || hiddenLayers?.positions || hiddenLayers?.sessions) ? EyeOff : Eye}
               active={activeGroup === 'visibility'}
               title="Show/Hide"
               onClick={() => toggleGroup('visibility')}
@@ -2760,7 +2760,7 @@ export default function ReplayPanel({
               </ControlButton>
               <div className={`rounded-md border p-2 ${isDarkTheme ? 'border-gray-700 bg-black-table-color' : 'border-slate-200 bg-slate-50'}`}>
                 <div className={`mb-1.5 text-[10px] font-semibold uppercase tracking-wide ${mutedTextClass}`}>Show / Hide</div>
-                {[['drawings', 'Drawings'], ['indicators', 'Indicators'], ['positions', 'Positions and orders']].map(([key, label]) => (
+                {[['drawings', 'Drawings'], ['indicators', 'Indicators'], ['positions', 'Positions and orders'], ['sessions', 'Market sessions']].map(([key, label]) => (
                   <label key={key} className="flex cursor-pointer items-center justify-between gap-3 py-1 text-xs">
                     {label}
                     <input type="checkbox" checked={Boolean(hiddenLayers?.[key])} onChange={() => onToggleVisibility?.(key)} className="h-4 w-4 accent-[#2dd4bf]" />
@@ -3439,6 +3439,7 @@ export default function ReplayPanel({
               ['drawings', 'Hide drawings'],
               ['indicators', 'Hide indicators'],
               ['positions', 'Hide positions and orders'],
+              ['sessions', 'Hide market sessions'],
             ].map(([key, label]) => (
               <label key={key} className="flex cursor-pointer items-center justify-between gap-3 text-sm">
                 {label}
@@ -3447,12 +3448,12 @@ export default function ReplayPanel({
             ))}
             <div className={`border-t pt-3 ${sectionBorderClass}`}>
               <ControlButton
-                icon={(hiddenLayers?.drawings && hiddenLayers?.indicators && hiddenLayers?.positions) ? Eye : EyeOff}
+                icon={(hiddenLayers?.drawings && hiddenLayers?.indicators && hiddenLayers?.positions && hiddenLayers?.sessions) ? Eye : EyeOff}
                 onClick={() => onToggleVisibility?.('all')}
                 className="w-full"
                 chartTheme={chartTheme}
               >
-                {(hiddenLayers?.drawings && hiddenLayers?.indicators && hiddenLayers?.positions) ? 'Show all' : 'Hide all'}
+                {(hiddenLayers?.drawings && hiddenLayers?.indicators && hiddenLayers?.positions && hiddenLayers?.sessions) ? 'Show all' : 'Hide all'}
               </ControlButton>
             </div>
           </Flyout>

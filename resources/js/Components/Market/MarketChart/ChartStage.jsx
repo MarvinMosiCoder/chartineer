@@ -694,6 +694,63 @@ function BacktestOrderOverlay({ renderedBacktestOrders = [], overlaySize, chartT
   );
 }
 
+/**
+ * Market session shading. Sits above the chart canvas because Lightweight
+ * Charts paints candles into a single canvas we cannot draw behind, so the fill
+ * stays at a low opacity to tint the background without washing out bodies.
+ * Rendered below DrawingOverlay so user drawings always read on top.
+ */
+function SessionOverlay({ bands = [], displayMode, opacity, overlaySize, chartTheme }) {
+  if (!bands.length) return null;
+
+  const asBands = displayMode !== 'lines';
+  const fillOpacity = Math.min(Math.max(Number(opacity) || 0, 0), 40) / 100;
+  const labelOpacity = chartTheme.mode === 'dark' ? 0.85 : 0.7;
+  const rightEdge = Math.max(overlaySize.width - 88, 0);
+
+  return (
+    <div
+      data-chart-ui="session-overlay"
+      className="pointer-events-none absolute left-0 top-0 z-[5] overflow-hidden"
+      style={{ width: '100%', height: overlaySize.height }}
+    >
+      <svg
+        className="pointer-events-none absolute inset-0"
+        width={rightEdge}
+        height={overlaySize.height}
+        style={{ width: 'calc(100% - 88px)', height: '100%' }}
+        aria-hidden="true"
+      >
+        {bands.map((band) => {
+          const closeX = band.x + band.width;
+
+          return (
+            <g key={band.id}>
+              {asBands ? (
+                <rect x={band.x} y={0} width={band.width} height={overlaySize.height} fill={band.color} opacity={fillOpacity} />
+              ) : (
+                <>
+                  {band.x > 0 && (
+                    <line x1={band.x} y1={0} x2={band.x} y2={overlaySize.height} stroke={band.color} strokeWidth="1" strokeDasharray="3,3" opacity="0.7" />
+                  )}
+                  {closeX < rightEdge - 1 && (
+                    <line x1={closeX} y1={0} x2={closeX} y2={overlaySize.height} stroke={band.color} strokeWidth="1" strokeDasharray="3,3" opacity="0.35" />
+                  )}
+                </>
+              )}
+              {band.showLabel && (
+                <text x={band.x + 4} y={12} fill={band.color} fontSize="10" fontWeight="600" opacity={labelOpacity}>
+                  {band.short}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDrawingId, overlaySize, chartTheme }) {
   const selectedDrawing = renderedDrawings.find((d) => d.id === selectedDrawingId);
 
@@ -1594,6 +1651,9 @@ export default function ChartStage({
   overlaySize,
   mainPaneHeight,
   renderedDrawings,
+  renderedSessionBands,
+  sessionDisplayMode,
+  sessionOpacity,
   renderedBacktestOrders,
   renderedTradeMarkers,
   swingPointMarkers,
@@ -1693,6 +1753,14 @@ export default function ChartStage({
           chartTheme={chartTheme}
         />
       )}
+
+      <SessionOverlay
+        bands={renderedSessionBands}
+        displayMode={sessionDisplayMode}
+        opacity={sessionOpacity}
+        overlaySize={mainOverlaySize}
+        chartTheme={chartTheme}
+      />
 
       <DrawingOverlay
         renderedDrawings={renderedDrawings}

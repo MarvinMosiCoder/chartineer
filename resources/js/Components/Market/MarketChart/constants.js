@@ -1,3 +1,5 @@
+import { MARKET_SESSIONS, SESSION_KEYS } from './marketSessions';
+
 export const INTERVAL_MAP = {
   '1m': '1',
   '3m': '3',
@@ -128,10 +130,68 @@ export const DEFAULT_CANDLE_SIZE = 24;
 export const MIN_CANDLE_SIZE = 3;
 export const MAX_CANDLE_SIZE = 24;
 
+// Above this timeframe a single candle spans most of a session, so every bar
+// would carry a boundary and the overlay reads as noise rather than context.
+// The Sessions tab explains the cutoff instead of just going blank.
+export const SESSION_OVERLAY_MAX_TIMEFRAME_SECONDS = TIMEFRAME_SECONDS['4h'];
+
+// The real question is not how wide one band is, it is whether a *day* is wide
+// enough for intraday structure to read at all. Below this the three sessions
+// and the off-session gaps compress into a repeating stripe you cannot tell
+// apart, so the whole layer steps aside rather than painting mush — a fresh 4h
+// chart auto-fits roughly seven months, where every band is about a pixel.
+// ~18px/day is about two months across a full-width pane.
+export const SESSION_MIN_DAY_WIDTH_PX = 18;
+
+// Safety net under the day-width gate, for a range so short that one band would
+// still round down to nothing.
+export const SESSION_BAND_MIN_WIDTH_PX = 2;
+
+export const SESSION_BAND_LABEL_MIN_WIDTH_PX = 56;
+
 export const DEFAULT_CHART_DISPLAY = {
   candles: { bodyEnabled: true, borderEnabled: true, borderUp: null, borderDown: null, wickEnabled: true, wickUp: null, wickDown: null },
   priceLines: { last: true, previousClose: false, highLow: false },
   statusLine: { symbol: true, exchange: true, ohlc: true, change: true },
   scales: { precision: 'default', autoScale: true, logScale: false },
   canvas: { background: null, gridColor: null },
+  // Shading is off by default because it repaints the whole chart, but the
+  // status-bar badge is on: it is one small chip next to the clock that is
+  // already there, and it is how the feature gets discovered at all.
+  sessions: {
+    enabled: false,
+    badge: true,
+    display: 'bands',
+    opacity: 8,
+    asian: { enabled: true, color: MARKET_SESSIONS.asian.color },
+    london: { enabled: true, color: MARKET_SESSIONS.london.color },
+    newYork: { enabled: true, color: MARKET_SESSIONS.newYork.color },
+  },
 };
+
+/**
+ * Fills in every section of a saved or preset chart display.
+ *
+ * Settings saved before a section existed come back without it — a chart
+ * settings template saved before sessions were added has no `sessions` key at
+ * all — so anything reading `display.sessions.badge` would throw. Sessions also
+ * nest a `{ enabled, color }` object per market, which a single shallow spread
+ * would replace wholesale rather than merge.
+ */
+export function withChartDisplayDefaults(saved) {
+  const source = saved ?? {};
+  const sessions = { ...DEFAULT_CHART_DISPLAY.sessions, ...(source.sessions ?? {}) };
+
+  for (const key of SESSION_KEYS) {
+    sessions[key] = { ...DEFAULT_CHART_DISPLAY.sessions[key], ...(source.sessions?.[key] ?? {}) };
+  }
+
+  return {
+    candles: { ...DEFAULT_CHART_DISPLAY.candles, ...(source.candles ?? {}) },
+    priceLines: { ...DEFAULT_CHART_DISPLAY.priceLines, ...(source.priceLines ?? {}) },
+    statusLine: { ...DEFAULT_CHART_DISPLAY.statusLine, ...(source.statusLine ?? {}) },
+    scales: { ...DEFAULT_CHART_DISPLAY.scales, ...(source.scales ?? {}) },
+    canvas: { ...DEFAULT_CHART_DISPLAY.canvas, ...(source.canvas ?? {}) },
+    sessions,
+  };
+}

@@ -30,6 +30,7 @@ Use this index to find the feature owner of a source file. Detailed behavior bel
 | `Components/Market/MarketChart*` | [Trading chart](trading-chart.md) |
 | `MarketDrawingController.php`, `MarketToolSettingController.php` | [Drawings and settings](chart-drawings-and-settings.md) |
 | `liveCandleStream.js` | [Live streaming](live-market-streaming.md) |
+| `MarketSessionService.php`, `MarketChart/marketSessions.js` | [Trading chart](trading-chart.md#market-sessions-asian--london--new-york) — mirrored PHP/JS session windows, keep in sync |
 | `MarketReplayProgressController.php`, `MarketReplayProgress.php` | [Replay](replay-and-progress.md) |
 | `MarketBacktestController.php`, `MarketBacktest*.php` | [Backtesting](backtesting-and-orders.md) and [Reports](trade-reports-and-journals.md) |
 | `Cross*.php`, `MonitorCrossMargin.php`, `config/cross-margin.php` | [Backtesting](backtesting-and-orders.md#backtradelab-cross-margin) |

@@ -35,19 +35,25 @@ import {
   CHART_HEIGHT,
   DEFAULT_CANDLE_COLORS,
   DEFAULT_CANDLE_SIZE,
-  DEFAULT_CHART_DISPLAY,
   DRAWING_COLOR,
   INTERVAL_MAP,
   MAX_CANDLE_SIZE,
   MIN_CANDLE_SIZE,
+  SESSION_BAND_LABEL_MIN_WIDTH_PX,
+  SESSION_BAND_MIN_WIDTH_PX,
+  SESSION_MIN_DAY_WIDTH_PX,
+  SESSION_OVERLAY_MAX_TIMEFRAME_SECONDS,
   TIMEFRAME_SECONDS,
   supportedTimeframes,
+  withChartDisplayDefaults,
 } from './MarketChart/constants';
+import { buildSessionSegments, resolveSession, SESSION_KEYS } from './MarketChart/marketSessions';
 import {
   buildStorageKey,
   CYCLE_TOOL_TYPES,
   distanceToSegment,
   estimateDrawingLogicalFromTime,
+  estimateLogicalFromTime,
   estimateTimeFromLogical,
   findNearestCandleIndex,
   ICON_ONLY_MARKER_TYPES,
@@ -791,6 +797,10 @@ function ChartBottomBar({
   timezoneOptions,
   timezoneSaving,
   onTimezoneChange,
+  showSessionBadge,
+  sessionTimestamp,
+  sessionSpansBar,
+  sessionsHiddenReason,
 }) {
   const [clock, setClock] = useState(() => Date.now());
   const timezoneTooltip = useAnchoredTooltip('right');
@@ -799,6 +809,14 @@ function ChartBottomBar({
     const timer = window.setInterval(() => setClock(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  // In replay the trader is sitting on a bar from months ago, so the session
+  // has to come from that bar's time. Reading the wall clock here would report
+  // today's session — confidently wrong exactly where it matters most.
+  const session = useMemo(
+    () => resolveSession(sessionTimestamp ?? Math.floor(clock / 1000)),
+    [sessionTimestamp, clock]
+  );
 
   const clockLabel = useMemo(() => {
     try {
@@ -866,6 +884,34 @@ function ChartBottomBar({
       </div>
 
       <div className="flex min-w-0 items-center gap-1.5">
+        {sessionsHiddenReason && (
+          <span
+            className="hidden whitespace-nowrap rounded border border-dashed px-1.5 leading-4 opacity-70 sm:inline"
+            style={{ borderColor: chartTheme.border }}
+            title={sessionsHiddenReason === 'timeframe'
+              ? 'Session marking is on, but it is not drawn above the 4-hour timeframe — one candle already spans most of a session.'
+              : 'Session marking is on, but the chart is zoomed out too far for a day to read. Zoom in and the bands come back.'}
+          >
+            {sessionsHiddenReason === 'timeframe' ? 'Sessions: above 4h' : 'Sessions: zoom in'}
+          </span>
+        )}
+        {showSessionBadge && (
+          <span
+            className="hidden items-center gap-1 whitespace-nowrap rounded border px-1.5 font-semibold leading-4 sm:inline-flex"
+            style={{ borderColor: chartTheme.border, color: sessionSpansBar ? undefined : (session.color ?? undefined) }}
+            title={sessionSpansBar
+              ? 'This bar covers every session, so there is no single session to report. Drop to 4h or below while replaying.'
+              : sessionTimestamp != null
+                ? `Market session at the replay bar: ${session.label}`
+                : `Current market session: ${session.label}`}
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: sessionSpansBar ? '#787b86' : (session.color ?? '#787b86') }}
+            />
+            {sessionSpansBar ? 'ALL' : session.short}
+          </span>
+        )}
         <span className="hidden whitespace-nowrap tabular-nums sm:inline">{clockLabel}</span>
         <select
           ref={timezoneTooltip.anchorRef}
@@ -1162,7 +1208,7 @@ export default function MarketReplayChart({
   const [indicatorContextMenu, setIndicatorContextMenu] = useState(null);
   const [allDrawingsLocked, setAllDrawingsLocked] = useState(false);
   const allDrawingsLockedRef = useRef(false);
-  const [hiddenLayers, setHiddenLayers] = useState({ drawings: false, indicators: false, positions: false });
+  const [hiddenLayers, setHiddenLayers] = useState({ drawings: false, indicators: false, positions: false, sessions: false });
   const [symbols, setSymbols] = useState([]);
   const [availableSymbols, setAvailableSymbols] = useState([]);
   const [symbolError, setSymbolError] = useState('');
@@ -2045,25 +2091,20 @@ export default function MarketReplayChart({
     return toolSettings[type] ?? {};
   }, [toolSettings]);
 
-  const chartDisplay = useMemo(() => {
-    const saved = toolSettings.chartDisplay ?? {};
-    return {
-      candles: { ...DEFAULT_CHART_DISPLAY.candles, ...(saved.candles ?? {}) },
-      priceLines: { ...DEFAULT_CHART_DISPLAY.priceLines, ...(saved.priceLines ?? {}) },
-      statusLine: { ...DEFAULT_CHART_DISPLAY.statusLine, ...(saved.statusLine ?? {}) },
-      scales: { ...DEFAULT_CHART_DISPLAY.scales, ...(saved.scales ?? {}) },
-      canvas: { ...DEFAULT_CHART_DISPLAY.canvas, ...(saved.canvas ?? {}) },
-    };
-  }, [toolSettings.chartDisplay]);
+  const chartDisplay = useMemo(
+    () => withChartDisplayDefaults(toolSettings.chartDisplay),
+    [toolSettings.chartDisplay]
+  );
 
   const updateChartDisplay = useCallback((patch) => {
-    saveToolSettingsForType('chartDisplay', {
+    saveToolSettingsForType('chartDisplay', withChartDisplayDefaults({
       candles: { ...chartDisplay.candles, ...(patch.candles ?? {}) },
       priceLines: { ...chartDisplay.priceLines, ...(patch.priceLines ?? {}) },
       statusLine: { ...chartDisplay.statusLine, ...(patch.statusLine ?? {}) },
       scales: { ...chartDisplay.scales, ...(patch.scales ?? {}) },
       canvas: { ...chartDisplay.canvas, ...(patch.canvas ?? {}) },
-    });
+      sessions: { ...chartDisplay.sessions, ...(patch.sessions ?? {}) },
+    }));
   }, [chartDisplay, saveToolSettingsForType]);
 
   const timeframeFavorites = useMemo(() => (
@@ -2481,6 +2522,154 @@ export default function MarketReplayChart({
     if (x == null || y == null) return null;
     return { x, y };
   }, [allCandles, loadedTimeframe, visibleCandles]);
+
+  /**
+   * Same projection as toScreen but x only, and deliberately NOT through
+   * estimateDrawingLogicalFromTime.
+   *
+   * That helper snaps a time to its containing candle index at 15m and above,
+   * which is right for a saved drawing anchor (it belongs on a real bar) but
+   * wrong here: a session boundary is a continuous instant with no relationship
+   * to bar starts, so snapping quantizes it backwards to the bar open — on a 4h
+   * chart the 07:00 London open renders at 04:00, three hours adrift.
+   * estimateLogicalFromTime interpolates instead, putting the edge
+   * proportionally inside the bar that contains it.
+   *
+   * timeToCoordinate is only the fallback because it returns null for any time
+   * not exactly on the scale, which is most session boundaries.
+   */
+  const timeToX = useCallback((time) => {
+    const chart = chartRef.current;
+    if (!chart) return null;
+
+    const timeScale = chart.timeScale();
+    const projectionCandles = allCandles.length ? allCandles : visibleCandles;
+    const logical = estimateLogicalFromTime(projectionCandles, time);
+
+    if (!Number.isFinite(logical)) {
+      const fallback = timeScale.timeToCoordinate(time);
+      return fallback == null ? null : Number(fallback);
+    }
+
+    // logicalToCoordinate returns 0 for a fractional logical instead of the
+    // interpolated position — it only answers correctly for whole bars. The
+    // drawing path never noticed because estimateDrawingLogicalFromTime snaps to
+    // integers at 15m and above, but session boundaries are genuinely mid-bar
+    // (07:00 London sits three quarters through a 4h candle) and every one of
+    // them collapsed to x=0, stacking bands at the left edge. Bar spacing is
+    // uniform in logical space, so interpolating between the two neighbouring
+    // whole bars is exact.
+    const lower = Math.floor(logical);
+    const lowerX = timeScale.logicalToCoordinate(lower);
+    const upperX = timeScale.logicalToCoordinate(lower + 1);
+    if (lowerX == null || upperX == null) return null;
+
+    return Number(lowerX) + ((Number(upperX) - Number(lowerX)) * (logical - lower));
+  }, [allCandles, visibleCandles]);
+
+  const sessionSettings = chartDisplay.sessions;
+
+  /**
+   * Derived, not a drawing: session bands are recomputed from the visible range
+   * every frame rather than stored in `drawings`, so they are never selectable,
+   * never persisted per chart, and never swept up by Clear Tools.
+   */
+  const sessionOverlay = useMemo(() => {
+    const inactive = { bands: [], hiddenReason: null };
+    if (!sessionSettings.enabled || hiddenLayers.sessions) return inactive;
+
+    const intervalSeconds = TIMEFRAME_SECONDS[loadedTimeframe] ?? 60;
+    if (intervalSeconds > SESSION_OVERLAY_MAX_TIMEFRAME_SECONDS) {
+      return { bands: [], hiddenReason: 'timeframe' };
+    }
+
+    const chart = chartRef.current;
+    if (!chart || !overlaySize.width || visibleCandles.length < 2) return inactive;
+
+    const enabledKeys = SESSION_KEYS.filter((key) => sessionSettings[key]?.enabled);
+    if (!enabledKeys.length) return inactive;
+
+    // Read the window from the *logical* range, like the rest of this file does,
+    // and draw nothing at all when it is not available yet rather than falling
+    // back to the full candle span. That fallback looks harmless and is not: on
+    // a 4h chart with ten months of history it built a segment for every session
+    // in the whole set — 491 of them, all off-screen, every one clamping to x=0
+    // and painting the pane solid. The subscription on visible-range changes
+    // bumps overlayRenderVersion, so an early empty pass is re-run for free as
+    // soon as the chart has a range to report.
+    const logicalRange = chart.timeScale().getVisibleLogicalRange();
+    if (!logicalRange) return inactive;
+
+    const rawFrom = Number(estimateTimeFromLogical(visibleCandles, logicalRange.from));
+    const rawTo = Number(estimateTimeFromLogical(visibleCandles, logicalRange.to));
+    if (!Number.isFinite(rawFrom) || !Number.isFinite(rawTo)) return inactive;
+
+    // Bound to the loaded candles: the window runs into the whitespace past the
+    // newest bar, where estimateLogicalFromTime extrapolates on an assumed
+    // interval and a segment out there projects to a wild coordinate. Inside the
+    // span it only ever interpolates between real bars.
+    const from = Math.max(rawFrom, Number(visibleCandles[0].time));
+    const to = Math.min(rawTo, Number(visibleCandles[visibleCandles.length - 1].time));
+    if (to <= from) return inactive;
+
+    // Step aside when a day is too narrow for session structure to mean
+    // anything, and say so rather than rendering an empty layer that reads as
+    // the feature being broken. This is the common case on a fresh load, where
+    // the chart auto-fits its whole loaded history.
+    const dayWidth = overlaySize.width / ((to - from) / 86400);
+    if (dayWidth < SESSION_MIN_DAY_WIDTH_PX) return { bands: [], hiddenReason: 'zoom' };
+
+    const bands = [];
+
+    for (const segment of buildSessionSegments(from, to, enabledKeys)) {
+      const startX = timeToX(segment.start);
+      const endX = timeToX(segment.end);
+      if (startX == null || endX == null) continue;
+
+      const left = Math.max(Math.min(startX, endX), 0);
+      const right = Math.min(Math.max(startX, endX), overlaySize.width);
+      const width = right - left;
+
+      // Safety net under the day-width gate above, for a band clipped to almost
+      // nothing at the edge of the pane.
+      if (width < SESSION_BAND_MIN_WIDTH_PX) continue;
+
+      bands.push({
+        id: `${segment.key}-${segment.start}`,
+        label: segment.label,
+        short: segment.short,
+        color: sessionSettings[segment.key]?.color ?? segment.color,
+        x: left,
+        width,
+        showLabel: width >= SESSION_BAND_LABEL_MIN_WIDTH_PX,
+      });
+    }
+
+    return { bands, hiddenReason: null };
+  }, [sessionSettings, hiddenLayers.sessions, loadedTimeframe, visibleCandles, overlaySize.width, overlayRenderVersion, timeToX]);
+
+  const renderedSessionBands = sessionOverlay.bands;
+
+  // Replay pins the badge to the bar under the cursor; live charts follow the
+  // wall clock inside ChartBottomBar.
+  const sessionBadgeTimestamp = useMemo(() => {
+    if (!replayMode) return null;
+    const candle = visibleCandles[visibleCandles.length - 1];
+    return candle ? Number(candle.time) : null;
+  }, [replayMode, visibleCandles]);
+
+  /**
+   * A bar only has "a session" while it fits inside one. A candle's time is its
+   * open, so replaying a daily chart would resolve every single bar from 00:00
+   * UTC and report Asian forever — a wrong answer delivered with full
+   * confidence, which is worse than no answer. Above the same cutoff the band
+   * overlay uses, the badge says so instead of naming a session.
+   *
+   * Live charts are unaffected: the wall clock is a real instant no matter what
+   * timeframe is on screen.
+   */
+  const sessionBadgeSpansBar = replayMode
+    && (TIMEFRAME_SECONDS[loadedTimeframe] ?? 60) > SESSION_OVERLAY_MAX_TIMEFRAME_SECONDS;
 
   const setReplayPointFromCoordinates = useCallback((x, y, moveCandle = true) => {
     const chart = chartRef.current;
@@ -6039,8 +6228,8 @@ export default function MarketReplayChart({
   const handleToggleVisibility = (key) => {
     setHiddenLayers((current) => {
       if (key === 'all') {
-        const nextValue = !(current.drawings && current.indicators && current.positions);
-        return { drawings: nextValue, indicators: nextValue, positions: nextValue };
+        const nextValue = !(current.drawings && current.indicators && current.positions && current.sessions);
+        return { drawings: nextValue, indicators: nextValue, positions: nextValue, sessions: nextValue };
       }
       return { ...current, [key]: !current[key] };
     });
@@ -7241,6 +7430,9 @@ export default function MarketReplayChart({
             overlaySize={overlaySize}
             mainPaneHeight={mainPaneHeight}
             renderedDrawings={renderedDrawings}
+            renderedSessionBands={renderedSessionBands}
+            sessionDisplayMode={sessionSettings.display}
+            sessionOpacity={sessionSettings.opacity}
             renderedBacktestOrders={renderedBacktestOrders}
             renderedTradeMarkers={renderedTradeMarkers}
             swingPointMarkers={swingPointMarkers}
@@ -7268,6 +7460,10 @@ export default function MarketReplayChart({
             timezoneOptions={timezoneOptions}
             timezoneSaving={timezoneSaving}
             onTimezoneChange={handleTimezoneChange}
+            showSessionBadge={sessionSettings.badge}
+            sessionTimestamp={sessionBadgeTimestamp}
+            sessionSpansBar={sessionBadgeSpansBar}
+            sessionsHiddenReason={sessionOverlay.hiddenReason}
           />
 
           <ChartMarketLegend
