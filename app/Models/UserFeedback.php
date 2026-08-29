@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class UserFeedback extends Model
 {
@@ -16,6 +17,7 @@ class UserFeedback extends Model
         'title',
         'description',
         'page_url',
+        'context',
         'status',
         'priority',
         'admin_response',
@@ -25,7 +27,20 @@ class UserFeedback extends Model
 
     protected $casts = [
         'responded_at' => 'datetime',
+        'context' => 'array',
     ];
+
+    protected static function booted(): void
+    {
+        // The FK cascade clears attachment rows but leaves their files on disk.
+        // Without this the uploads for every deleted ticket stay there forever.
+        static::deleting(function (self $feedback) {
+            $paths = $feedback->attachments()->pluck('path')->all();
+            if ($paths) {
+                Storage::disk('local')->delete($paths);
+            }
+        });
+    }
 
     public function user(): BelongsTo
     {
@@ -40,6 +55,11 @@ class UserFeedback extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(UserFeedbackMessage::class, 'user_feedback_id');
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(UserFeedbackAttachment::class, 'user_feedback_id');
     }
 
     public function subscriptionRequest(): BelongsTo

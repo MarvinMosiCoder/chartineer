@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, router, usePage } from '@inertiajs/react';
-import { AlertTriangle, BarChart3, Bell, KeyRound, LogOut, Menu, Moon, RefreshCw, Sun, UserRound, Wallet, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bell, BookOpen, CandlestickChart, ChevronDown, CircleHelp, CreditCard, KeyRound, LayoutDashboard, LogOut, Menu, MessageSquarePlus, Moon, RefreshCw, Share2, Sun, Target, UserRound, Wallet, X } from 'lucide-react';
 import axios from 'axios';
 import getAppLogo from '../../Components/SystemSettings/ApplicationLogo';
 import getAppName from '../../Components/SystemSettings/ApplicationName';
 import AppNameWordmark from '../../Components/SystemSettings/AppNameWordmark';
-import { useSidebar } from '../../Context/SidebarContext';
 import { useProfile, useTheme } from '../../Context/ThemeContext';
 import { useConfirm } from '../../Hooks/useConfirm';
 import getInitials from '../../utils/getInitials';
@@ -13,10 +12,63 @@ import colorMap from '../../Components/Notification/ColorMap';
 import AvatarBadge from '../../Components/Profile/AvatarBadge';
 import { getAvatarFromFileName } from '../../Components/Profile/avatarCatalog';
 
+// The trader navigation, moved here from the old left sidebar (`TraderSidebar.jsx`,
+// deleted) so the chart gets that width back for the order column. `label` is the
+// short form used inline in the bar; `full` is the sidebar's original wording, kept
+// for the dropdowns and the tooltip-less mobile list where there is room for it.
+// `primary` items stay inline on lg+; the rest live behind "More".
+const NAV_ITEMS = [
+    { label: 'Market', full: 'Market Summary', href: '/market', icon: CandlestickChart, primary: true },
+    { label: 'Workspace', full: 'Workspace', href: '/workspace', icon: LayoutDashboard, primary: true },
+    { label: 'Journal', full: 'Trade journal', href: '/trade-report', icon: BookOpen, primary: true },
+    { label: 'Training', full: 'Training challenges', href: '/training-challenges', icon: Target, primary: true },
+    { label: 'Mentor review', full: 'Mentor review', href: '/mentor-review', icon: Share2 },
+    { label: 'Subscription', full: 'Subscription', href: '/subscription', icon: CreditCard },
+    { label: 'Feedback & Support', full: 'Feedback & Customer Support', href: '/feedback', icon: MessageSquarePlus },
+    { label: 'How to use', full: 'How to use', href: '/help', icon: CircleHelp },
+];
+
+// Workspace owns several sub-paths (/workspace/<id>), so it stays lit on all of
+// them — the same rule the sidebar used.
+const isNavActive = (url, href) => url === href || (href === '/workspace' && url.startsWith('/workspace'));
+
+function NavBarLink({ item, url, isDark }) {
+    const active = isNavActive(url, item.href);
+    return (
+        <Link
+            href={item.href}
+            className={`flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition ${
+                active
+                    ? 'bg-[#2dd4bf] text-white shadow-[0_6px_20px_rgba(45,212,191,.22)]'
+                    : isDark ? 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-white' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+        >
+            <item.icon size={15} className="shrink-0" />
+            {item.label}
+        </Link>
+    );
+}
+
+function NavMenuLink({ item, url, isDark, onNavigate }) {
+    const active = isNavActive(url, item.href);
+    return (
+        <Link
+            href={item.href}
+            onClick={onNavigate}
+            className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-semibold transition ${
+                active ? 'text-[#5eead4]' : isDark ? 'text-[#b2b5be] hover:bg-white/5' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+        >
+            <item.icon size={15} className="shrink-0" />
+            {item.full}
+        </Link>
+    );
+}
+
 export default function TraderNavbar() {
     const { auth } = usePage().props;
+    const { url } = usePage();
     const activeSymbolStorageKey = `backtradelab-active-symbol:${auth?.user?.id ?? 'guest'}`;
-    const { toggleSidebar } = useSidebar();
     const { theme, setTheme } = useTheme();
     const { profile } = useProfile();
     const { confirm, confirmElement } = useConfirm();
@@ -37,6 +89,8 @@ export default function TraderNavbar() {
     const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [showNotifications, setShowNotifications] = useState(false);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const [showNavMenu, setShowNavMenu] = useState(false);
+    const [showMoreMenu, setShowMoreMenu] = useState(false);
     const [notifications, setNotifications] = useState([]);
     // Backtest fills/closes are written far faster than account messages, so
     // they get their own tab rather than sharing one list that a single Replay
@@ -129,6 +183,23 @@ export default function TraderNavbar() {
             window.removeEventListener('backtradelab-active-symbol-change', syncActiveSymbol);
         };
     }, []);
+
+    // Same guarded-mousedown dismissal the chart header uses for its floating
+    // panels: close on any click that doesn't land inside one of these two menus.
+    useEffect(() => {
+        if (!showNavMenu && !showMoreMenu) return undefined;
+        const handleOutsideClick = (event) => {
+            if (event.target?.closest?.('[data-nav-menu]')) return;
+            setShowNavMenu(false);
+            setShowMoreMenu(false);
+        };
+        document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, [showNavMenu, showMoreMenu]);
+
+    // A route change means the click already navigated; leaving a menu open over
+    // the new page reads as a stuck overlay.
+    useEffect(() => { setShowNavMenu(false); setShowMoreMenu(false); }, [url]);
 
     const toggleTheme = () => {
         const nextTheme = isDark ? 'bg-skin-white' : 'bg-skin-black';
@@ -223,9 +294,18 @@ export default function TraderNavbar() {
     return (
         <header className={`flex h-14 items-center border-b px-3 sm:px-4 ${isDark ? 'border-[#2a2e39] bg-[#131722] text-[#d1d4dc]' : 'border-slate-200 bg-white text-slate-800'}`}>
             {confirmElement}
-            <button type="button" onClick={() => toggleSidebar()} className="mr-2 rounded-md p-2 hover:bg-white/10 lg:hidden" aria-label="Toggle navigation">
-                <Menu size={18} />
-            </button>
+            <div data-nav-menu className="relative lg:hidden">
+                <button type="button" onClick={() => setShowNavMenu((current) => !current)} className="mr-2 rounded-md p-2 hover:bg-white/10" aria-label="Navigation" aria-expanded={showNavMenu}>
+                    <Menu size={18} />
+                </button>
+                {showNavMenu && (
+                    <div className={`absolute left-0 top-12 z-[230] w-60 overflow-hidden rounded-xl border py-1 shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722]' : 'border-slate-200 bg-white'}`}>
+                        {NAV_ITEMS.map((item) => (
+                            <NavMenuLink key={item.href} item={item} url={url} isDark={isDark} onNavigate={() => setShowNavMenu(false)} />
+                        ))}
+                    </div>
+                )}
+            </div>
 
             <Link href="/workspace" className="flex shrink-0 items-center gap-2 pr-3 sm:pr-5">
                 <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md">
@@ -236,6 +316,32 @@ export default function TraderNavbar() {
                     <div className="mt-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-[#787b86]">Trading terminal</div>
                 </div>
             </Link>
+
+            <nav className="hidden min-w-0 items-center gap-1 lg:flex" aria-label="Main">
+                {NAV_ITEMS.filter((item) => item.primary).map((item) => (
+                    <NavBarLink key={item.href} item={item} url={url} isDark={isDark} />
+                ))}
+                <div data-nav-menu className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setShowMoreMenu((current) => !current)}
+                        aria-expanded={showMoreMenu}
+                        className={`flex h-9 items-center gap-1 rounded-md px-2.5 text-xs font-semibold transition ${
+                            showMoreMenu ? 'bg-[#2dd4bf]/15 text-[#5eead4]' : isDark ? 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-white' : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                    >
+                        More
+                        <ChevronDown size={13} className={`transition-transform ${showMoreMenu ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showMoreMenu && (
+                        <div className={`absolute left-0 top-11 z-[230] w-60 overflow-hidden rounded-xl border py-1 shadow-2xl ${isDark ? 'border-[#2a2e39] bg-[#131722]' : 'border-slate-200 bg-white'}`}>
+                            {NAV_ITEMS.filter((item) => !item.primary).map((item) => (
+                                <NavMenuLink key={item.href} item={item} url={url} isDark={isDark} onNavigate={() => setShowMoreMenu(false)} />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </nav>
 
             <div className="ml-auto" />
 

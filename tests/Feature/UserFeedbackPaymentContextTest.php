@@ -53,11 +53,34 @@ class UserFeedbackPaymentContextTest extends TestCase
             $table->string('title', 160);
             $table->text('description');
             $table->string('page_url', 500)->nullable();
+            $table->json('context')->nullable();
             $table->string('status', 24)->default('submitted');
             $table->string('priority', 16)->default('normal');
             $table->text('admin_response')->nullable();
             $table->unsignedBigInteger('responded_by')->nullable();
             $table->timestamp('responded_at')->nullable();
+            $table->timestamps();
+        });
+
+        // store() has loaded these counts since the support-chat feature landed; the
+        // fixture never gained the table, which stayed invisible while the whole
+        // suite skipped for want of pdo_sqlite.
+        Schema::create('user_feedback_messages', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('user_feedback_id');
+            $table->unsignedBigInteger('adm_user_id');
+            $table->text('message')->nullable();
+            $table->timestamp('read_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('user_feedback_attachments', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('user_feedback_id');
+            $table->string('path', 500);
+            $table->string('name', 255);
+            $table->string('mime', 100);
+            $table->unsignedInteger('size');
             $table->timestamps();
         });
     }

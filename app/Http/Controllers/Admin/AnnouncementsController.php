@@ -86,6 +86,30 @@ class AnnouncementsController extends Controller{
         ]);
     }
 
+    /**
+     * JSON feed for the Product Hub modal's Changelog tab. getAllAnnouncements()
+     * covers the same ground but renders an Inertia page, so it cannot be reused
+     * from inside a modal. Read state is marked through the existing
+     * POST /read-announcement, same as AnnouncementGate and Market Summary.
+     */
+    public function getChangelog(Request $request){
+        $readIds = $request->user()->announcements()->pluck('announcements.id')->map(fn ($id) => (int) $id)->all();
+
+        $announcements = Announcement::where('status', 'ACTIVE')
+            ->orderBy('created_at', 'desc')
+            ->limit(15)
+            ->get()
+            ->map(fn (Announcement $announcement) => [
+                'id' => $announcement->id,
+                'title' => $announcement->title ?: 'System update',
+                'message' => $announcement->message,
+                'created_at' => optional($announcement->created_at)->toIso8601String(),
+                'is_read' => in_array((int) $announcement->id, $readIds, true),
+            ]);
+
+        return response()->json(['announcements' => $announcements]);
+    }
+
     public function markAnnouncementAsRead(Request $request){
         $announcementId = $request->validate([
             'announcement_id' => ['required', 'integer', 'exists:announcements,id'],

@@ -12,7 +12,7 @@ Authenticated pages share a role-aware shell. Traders receive compact market nav
 | `Components/Market/WatchlistPanel.jsx` | Watchlist UI, rendered from both `Dashboard.jsx` and `MarketChart.jsx` |
 | `Layouts/layout/layout.jsx` | Main authenticated composition |
 | `AppNavbar.jsx`, `AdminNavbar.jsx`, `TraderNavbar.jsx` | Header variants |
-| `AppSidebar.jsx`, `TraderSidebar.jsx`, `AdminSidebar.jsx` | Navigation variants |
+| `AppSidebar.jsx`, `AdminSidebar.jsx` | Navigation variants — **admin only**; see "Traders have no sidebar" below |
 | `AppContent.jsx` | Main content sizing/scrolling |
 | `ContentLoader.jsx` | Per-navigation loading overlay, content area only |
 | `app.jsx` | Public/auth page layout selection |
@@ -24,6 +24,16 @@ Authenticated pages share a role-aware shell. Traders receive compact market nav
 3. Layout reads the authenticated privilege/session state.
 4. Admin or trader navigation is selected.
 5. The page renders inside `AppContent`; navigation actions use Inertia or JSON endpoints.
+
+## Traders have no sidebar
+
+`TraderSidebar.jsx` **was deleted.** Trader navigation now lives in `TraderNavbar.jsx` as a `NAV_ITEMS` array: four primary entries (Market, Workspace, Journal, Training) render inline on `lg`+ with short labels; the rest (Mentor review, Subscription, Feedback & Support, How to use) sit behind a "More" dropdown; below `lg` the whole set is one hamburger dropdown. Both menus dismiss on outside `mousedown` (the guarded-`closest('[data-nav-menu]')` pattern the chart header uses) and on any `url` change, since the click that navigated would otherwise leave a menu floating over the new page.
+
+The reason is horizontal space: the trader shell is a chart, and the chart now has an order column on its right (see [Trading chart](trading-chart.md)). Paying 56–224px of every viewport for a nav rail that a bar can hold is what made the column affordable. Several paragraphs further down in this file describe `TraderSidebar.jsx`'s mobile-drawer and collapsed-tooltip behaviour — those are history for a file that no longer exists; they are kept because `AppSidebar.jsx` still has the same shape and the same unfixed backdrop gap.
+
+Two decorative pieces went with it and were not recreated: the "Replay ready" status pill and the "Practice mode" blurb card. Neither carried live state.
+
+**Admin keeps `AppSidebar.jsx`.** Its menu tree is data-driven from `auth.sessions.user_menus` with arbitrary nesting (`SidebarMenuCardMultiple.jsx`), which a horizontal bar cannot hold. `SidebarContext` therefore still exists and is still used — do not delete it on the assumption that removing the trader sidebar made it dead.
 
 `GET /dashboard` uses `auth` and `account.active`. `GET /market` is the normal trader workspace.
 

@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { ListChecks, Maximize2, Minimize2, Wallet } from 'lucide-react';
+import { ListChecks, Maximize2, MessageSquarePlus, Minimize2, Wallet } from 'lucide-react';
 import getAppLogo from '../../SystemSettings/ApplicationLogo';
 import getAppName from '../../SystemSettings/ApplicationName';
 import AppNameWordmark from '../../SystemSettings/AppNameWordmark';
 import ChartHeader from './ChartHeader';
+import ProductHubModal from '../../Feedback/ProductHubModal';
 import WatchlistPanel from '../WatchlistPanel';
 import { watchlistMarketKey } from '../../../Context/WatchlistContext';
 import { useAnchoredTooltip, AnchoredTooltipPortal } from '../../Tooltip/AnchoredTooltip';
@@ -22,12 +23,14 @@ export default function FullscreenChartHeader({
   const [appLogo, setAppLogo] = useState('');
   const [appName, setAppName] = useState('BacktradeLab');
   const [isWatchlistPanelOpen, setIsWatchlistPanelOpen] = useState(false);
+  const [isProductHubOpen, setIsProductHubOpen] = useState(false);
   const isDark = chartTheme?.mode === 'dark';
   // Manual wiring, not IconTooltipButton: its wrapping <span> duplicates the
   // full className onto both itself and the <button>, so a visible
-  // border/background (as these three buttons have) renders as a nested
+  // border/background (as these four buttons have) renders as a nested
   // double box. See docs/developer/trading-chart.md.
   const watchlistsTooltip = useAnchoredTooltip('bottom');
+  const productHubTooltip = useAnchoredTooltip('bottom');
   const enterPositionTooltip = useAnchoredTooltip('bottom');
   const fullscreenTooltip = useAnchoredTooltip('bottom');
 
@@ -90,6 +93,44 @@ export default function FullscreenChartHeader({
         />
       </div>
 
+      {/* Every button in this bar is an icon-only h-8 square: their anchored hover
+          labels already name them, so text spans only ate header width the symbol
+          and timeframe controls need more. Enter Position is min-w-8 rather than w-8
+          because it still shows the account balance beside its icon — data, not a
+          label the tooltip repeats. */}
+      <button
+        ref={productHubTooltip.anchorRef}
+        type="button"
+        aria-label="Product Hub"
+        onClick={() => setIsProductHubOpen(true)}
+        onMouseEnter={productHubTooltip.show}
+        onMouseLeave={productHubTooltip.hide}
+        onFocus={productHubTooltip.show}
+        onBlur={productHubTooltip.hide}
+        className={`mx-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition ${
+          isProductHubOpen
+            ? 'border-[#2dd4bf] bg-[#2dd4bf] text-white'
+            : isDark
+              ? 'border-gray-700 bg-black-table-color text-white hover:bg-skin-black-light'
+              : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+        }`}
+      >
+        <MessageSquarePlus size={14} />
+      </button>
+      <AnchoredTooltipPortal pos={productHubTooltip.pos} label="Suggestions and changelog" isDark={isDark} />
+      <ProductHubModal
+        open={isProductHubOpen}
+        onClose={() => setIsProductHubOpen(false)}
+        chartTheme={chartTheme}
+        context={{
+          symbol: chartHeaderProps?.symbol,
+          exchange: chartHeaderProps?.exchange,
+          category: chartHeaderProps?.marketCategory,
+          timeframe: chartHeaderProps?.timeframe,
+          replayMode: Boolean(chartHeaderProps?.replayMode),
+        }}
+      />
+
       <div data-chart-ui="watchlists-panel" className="relative mx-1 shrink-0">
         <button
           ref={watchlistsTooltip.anchorRef}
@@ -101,7 +142,7 @@ export default function FullscreenChartHeader({
           onFocus={watchlistsTooltip.show}
           onBlur={watchlistsTooltip.hide}
           aria-expanded={isWatchlistPanelOpen}
-          className={`flex h-9 items-center gap-2 rounded-md border px-2 transition ${
+          className={`flex h-8 w-8 items-center justify-center rounded-md border transition ${
             isWatchlistPanelOpen
               ? 'border-[#2dd4bf] bg-[#2dd4bf] text-white'
               : isDark
@@ -109,8 +150,7 @@ export default function FullscreenChartHeader({
                 : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
           }`}
         >
-          <ListChecks size={15} />
-          <span className="hidden text-[11px] font-semibold lg:inline">Watchlists</span>
+          <ListChecks size={14} />
         </button>
         <AnchoredTooltipPortal pos={watchlistsTooltip.pos} label="Watchlists" isDark={isDark} />
         {isWatchlistPanelOpen && (
@@ -125,6 +165,9 @@ export default function FullscreenChartHeader({
         )}
       </div>
 
+      {/* min-w-9 rather than w-9: collapses to the same square as its neighbours,
+          but still grows for the balance readout below, which is data (the account's
+          cash) rather than a label the hover tooltip already repeats. */}
       {showEntryWallet && <button
         ref={enterPositionTooltip.anchorRef}
         type="button"
@@ -136,7 +179,7 @@ export default function FullscreenChartHeader({
         onFocus={enterPositionTooltip.show}
         onBlur={enterPositionTooltip.hide}
         aria-expanded={isEntryPanelOpen}
-        className={`mx-1 flex h-9 shrink-0 items-center gap-2 rounded-md border px-2 transition ${
+        className={`mx-1 flex h-8 min-w-8 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 transition ${
           isEntryPanelOpen
             ? 'border-[#2dd4bf] bg-[#2dd4bf] text-white'
             : isDark
@@ -144,8 +187,7 @@ export default function FullscreenChartHeader({
               : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
         }`}
       >
-        <Wallet size={15} />
-        <span className="hidden text-[11px] font-semibold lg:inline">Enter Position</span>
+        <Wallet size={14} />
         {backtestAccount && (
           <span className="hidden text-[10px] tabular-nums opacity-75 xl:inline">
             {Number(backtestAccount.cashBalance ?? backtestAccount.cash_balance ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
@@ -163,13 +205,13 @@ export default function FullscreenChartHeader({
         onMouseLeave={fullscreenTooltip.hide}
         onFocus={fullscreenTooltip.show}
         onBlur={fullscreenTooltip.hide}
-        className={`mx-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition sm:mx-2 ${
+        className={`mx-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition sm:mx-2 ${
           isDark
             ? 'border-gray-700 bg-black-table-color text-white hover:bg-white hover:text-black'
             : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-900 hover:text-white'
         }`}
       >
-        {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
       </button>
       <AnchoredTooltipPortal pos={fullscreenTooltip.pos} label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} isDark={isDark} />
     </header>

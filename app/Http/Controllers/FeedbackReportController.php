@@ -9,7 +9,9 @@ use Inertia\Inertia;
 
 class FeedbackReportController extends Controller
 {
-    private const CATEGORIES = ['payment', 'subscription', 'account', 'enhancement', 'feature', 'bug', 'usability', 'performance', 'other'];
+    // Must stay in sync with UserFeedbackController::CATEGORIES — an unlisted category
+    // is silently dropped from the breakdown rather than erroring.
+    private const CATEGORIES = ['payment', 'subscription', 'account', 'chart', 'trading', 'replay', 'enhancement', 'feature', 'bug', 'usability', 'performance', 'other'];
     private const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
     private const STATUSES = ['submitted', 'reviewing', 'planned', 'in_progress', 'completed', 'declined'];
     private const OPEN_STATUSES = ['submitted', 'reviewing', 'planned', 'in_progress'];

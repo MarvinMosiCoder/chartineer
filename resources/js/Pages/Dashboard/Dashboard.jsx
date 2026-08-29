@@ -105,8 +105,12 @@ const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, subscriptionSta
             <Head title={workspaceMode ? "Workspace Chart" : "Dashboard"} />
             {workspaceMode || !isSuperAdmin ? (
                 <WatchlistProvider userId={auth?.user?.id}>
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between px-1">
+                    {/* Cancels AppContent's horizontal `p-2 sm:p-3` for this page only,
+                        so the chart runs edge to edge. Done here rather than by dropping
+                        that padding in AppContent, which would also un-pad every other
+                        trader page (journal, feedback, subscription) that wants it. */}
+                    <div className="-mx-2 space-y-2 sm:-mx-3">
+                        <div className={`flex items-center justify-between border-b px-3 pb-2 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
                             <div>
                                 <h1 className={`text-sm font-bold ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>Trading workspace</h1>
                                 <p className="text-[10px] uppercase tracking-[0.16em] text-[#787b86]">Analyze · Replay · Execute · Review</p>
@@ -116,7 +120,11 @@ const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, subscriptionSta
                             </div>
                         </div>
                         <TradeInsightsWidget />
-                        <div className={`overflow-hidden rounded-lg border p-2 shadow-2xl shadow-black/20 sm:p-3 ${isDark ? 'border-[#2a2e39] bg-[#131722]' : 'border-slate-200 bg-white'}`}>
+                        {/* No border, background, padding, or shadow of its own: the
+                            chart and order panels paint their own surfaces, and an
+                            outer card around them re-introduced the boxed-in look the
+                            flush layout is meant to remove. */}
+                        <div className="overflow-hidden">
                             <MarketChart
                                 key={chartKey}
                                 initialSymbol={activeSymbol?.symbol ?? "BTCUSDT"}

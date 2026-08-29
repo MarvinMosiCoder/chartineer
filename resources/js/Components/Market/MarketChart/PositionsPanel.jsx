@@ -326,7 +326,7 @@ export default function PositionsPanel({
 
   return (
     <>
-    <div className={`mt-2 flex min-h-[240px] flex-col rounded-lg border ${isDark ? 'border-gray-800 bg-[#151617]' : 'border-slate-200 bg-white'}`}>
+    <div className={`mt-px flex min-h-[240px] flex-col border ${isDark ? 'border-gray-800 bg-[#151617]' : 'border-slate-200 bg-white'}`}>
       <div className={`flex items-center gap-5 overflow-x-auto border-b px-3 ${rowBorderClass}`}>
         {TABS.map((tab) => (
           <button

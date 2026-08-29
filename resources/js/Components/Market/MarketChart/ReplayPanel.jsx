@@ -2069,6 +2069,11 @@ export default function ReplayPanel({
   groupedWorkspaceRail = false,
   fullscreenEntryPanelOpen = false,
   onFullscreenEntryPanelOpenChange,
+  // Whether MarketChart is hosting the order panel itself — as a side column on wide
+  // viewports, as a bottom sheet on phones — and the DOM node to portal into once it
+  // exists. These are separate on purpose; see the renderEntryPanel helper below.
+  entryPanelDocked = false,
+  entryPanelContainer = null,
   className = '',
 }) {
   const { auth } = usePage().props;
@@ -2193,6 +2198,33 @@ export default function ReplayPanel({
     }
   }, [entryPanelControlledMode, fullscreenEntryPanelOpen, onBacktestOrderDraftChange]);
 
+  // Enter Position renders into MarketChart's reserved order column when there is
+  // one, so the chart resizes around it (both ResizeObservers key off the chart
+  // container's own width) instead of the panel floating over candles. A portal,
+  // not a moved component: all of this panel's draft state and handlers stay in
+  // this tree, only the DOM parent changes. Below the column's breakpoint
+  // MarketChart passes null and the original overlay is used unchanged.
+  //
+  // `entryPanelDocked` is the layout intent; `entryPanelContainer` is the node,
+  // which lags it by one commit because the host element only mounts on the render
+  // that opens the panel. Treating a missing node as "no column" is what made the
+  // old floating overlay appear instead of the card — briefly on open, and stuck
+  // there after a fullscreen toggle. So: intent decides which layout is used, and a
+  // not-yet-attached node renders nothing for that single frame rather than
+  // flashing the overlay in a mode that isn't supposed to have one.
+  //
+  // In column mode the panel is `absolute inset-0`, not `h-full`. As a normal
+  // in-flow child, this form's own ~800px height becomes the flex row's height,
+  // stretching the chart card to match and pushing everything below it down the
+  // page. Out of flow, the host card has no intrinsic height, so the row stays the
+  // height the chart sets and the form scrolls inside it.
+  const entryIsDocked = entryPanelDocked;
+  const renderEntryPanel = (node) => {
+    if (!entryIsDocked) return node;
+    if (!entryPanelContainer || typeof document === 'undefined') return null;
+    return createPortal(node, entryPanelContainer);
+  };
+
   const handleToolChange = (nextTool) => {
     onToolChange((currentTool) => (currentTool === nextTool ? null : nextTool));
     if (fullscreenDrawingOnly) setActiveGroup(null);
@@ -2285,8 +2317,11 @@ export default function ReplayPanel({
     setOrderEntryPrice(String(Number(requestedPrice.toFixed(8))));
     setShowOrderDraft(true);
     setActiveGroup('backtest');
-    if (fullscreenDrawingOnly) onFullscreenEntryPanelOpenChange?.(true);
-  }, [fullscreenDrawingOnly, onFullscreenEntryPanelOpenChange, orderEntryRequest]);
+    // Every controlled mode, not just fullscreen. The parent's flag decides whether
+    // the panel renders as a column, so opening from the chart's right-click
+    // "Trigger Position" without setting it left the panel in its overlay fallback.
+    if (entryPanelControlledMode) onFullscreenEntryPanelOpenChange?.(true);
+  }, [entryPanelControlledMode, onFullscreenEntryPanelOpenChange, orderEntryRequest]);
 
   useEffect(() => {
     if (!orderDraftClearRequest?.id) return;
@@ -2305,9 +2340,14 @@ export default function ReplayPanel({
       setTpSlEnabled(false);
       onBacktestOrderDraftChange?.(null);
     }
-    setActiveGroup((currentGroup) => (currentGroup === group ? null : group));
-    if (fullscreenDrawingOnly && group !== 'backtest') {
-      onFullscreenEntryPanelOpenChange?.(false);
+    const nextGroup = activeGroup === group ? null : group;
+    setActiveGroup(nextGroup);
+    // Mirror the group into the parent's flag in both directions and in every
+    // controlled mode. The rail's own Enter Position button used to open the group
+    // without announcing it, so the panel had nowhere to portal to and fell back to
+    // the floating overlay.
+    if (entryPanelControlledMode) {
+      onFullscreenEntryPanelOpenChange?.(nextGroup === 'backtest');
     }
   };
 
@@ -2782,12 +2822,13 @@ export default function ReplayPanel({
         </div>
       )}
 
-      {activeGroup === 'backtest' && (
-        <>
+      {activeGroup === 'backtest' && renderEntryPanel(
         <div className={`pointer-events-auto ${
-          fullscreenDrawingOnly
-            ? 'fixed bottom-9 right-[88px] top-14 z-[82] w-[min(340px,calc(100vw-10rem))]'
-            : ''
+          entryIsDocked
+            ? 'absolute inset-0 flex flex-col'
+            : fullscreenDrawingOnly
+              ? 'fixed bottom-9 right-[88px] top-14 z-[82] w-[min(340px,calc(100vw-10rem))]'
+              : ''
         }`}>
           <Flyout
             title="Enter Position"
@@ -2796,11 +2837,15 @@ export default function ReplayPanel({
               setActiveGroup(null);
               onFullscreenEntryPanelOpenChange?.(false);
             }}
-            bodyClassName={fullscreenDrawingOnly
-              ? 'max-h-[calc(100dvh-8rem)] space-y-3 overflow-y-auto pr-1'
-              : 'max-h-[min(78vh,720px)] space-y-3 overflow-y-auto pr-1'}
+            bodyClassName={entryIsDocked
+              ? 'min-h-0 flex-1 space-y-3 overflow-y-auto pr-1'
+              : fullscreenDrawingOnly
+                ? 'max-h-[calc(100dvh-8rem)] space-y-3 overflow-y-auto pr-1'
+                : 'max-h-[min(78vh,720px)] space-y-3 overflow-y-auto pr-1'}
             chartTheme={chartTheme}
-            className={fullscreenDrawingOnly ? 'ml-0 h-full w-full max-w-none overflow-hidden rounded-none' : ''}
+            className={entryIsDocked
+              ? 'ml-0 flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border-0 shadow-none'
+              : fullscreenDrawingOnly ? 'ml-0 h-full w-full max-w-none overflow-hidden rounded-none' : ''}
           >
             <div className={`rounded-md border p-2 ${cardSurfaceClass}`}>
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -3332,7 +3377,6 @@ export default function ReplayPanel({
 
           </Flyout>
         </div>
-        </>
       )}
 
       {showLeverageModal && typeof document !== 'undefined' && createPortal(

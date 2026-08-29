@@ -1241,6 +1241,38 @@ export default function MarketReplayChart({
   const [isReplayPricePickActive, setIsReplayPricePickActive] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFullscreenEntryPanelOpen, setIsFullscreenEntryPanelOpen] = useState(false);
+  // The order panel's host node, handed to ReplayPanel so its Enter Position UI
+  // portals into it. Held in state (not a ref) so ReplayPanel re-renders once the
+  // node exists. Windowed and fullscreen get their own slot deliberately: they are
+  // different elements in different parts of the tree, and sharing one callback ref
+  // meant a fullscreen toggle could detach the outgoing node after attaching the
+  // incoming one, leaving the container null and the panel stuck in its old
+  // floating-overlay fallback.
+  const [windowedOrderPanelEl, setWindowedOrderPanelEl] = useState(null);
+  const [fullscreenOrderPanelEl, setFullscreenOrderPanelEl] = useState(null);
+  // Phones get a bottom sheet instead of a column — see isEntrySheetOpen below.
+  const [sheetOrderPanelEl, setSheetOrderPanelEl] = useState(null);
+  // Below this the chart would be left with too little width to read, so the
+  // column is skipped and Enter Position keeps its original floating overlay.
+  const [hasRoomForEntryColumn, setHasRoomForEntryColumn] = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= 900,
+  );
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 900px)');
+    const sync = () => setHasRoomForEntryColumn(query.matches);
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  }, []);
+  const isEntryColumnOpen = isFullscreenEntryPanelOpen && hasRoomForEntryColumn;
+  // Under 900px a 336px column would leave the chart unreadable, and the old
+  // left-anchored flyout covered it outright — on a 375px phone the panel sat on top
+  // of the candles with its own labels clipped. Below the breakpoint the panel
+  // becomes a bottom sheet instead, which is the only shape that fits.
+  const isEntrySheetOpen = isFullscreenEntryPanelOpen && !hasRoomForEntryColumn;
+  const entryPanelContainer = isEntryColumnOpen
+    ? (isFullscreen ? fullscreenOrderPanelEl : windowedOrderPanelEl)
+    : (isEntrySheetOpen ? sheetOrderPanelEl : null);
   const [priceAlerts, setPriceAlerts] = useState([]);
   const [alertModalOpen, setAlertModalOpen] = useState(false);
   const [showClearDrawingsConfirm, setShowClearDrawingsConfirm] = useState(false);
@@ -3053,6 +3085,11 @@ export default function MarketReplayChart({
         color: options.color ?? (kind === 'tp' ? '#22c55e' : kind === 'sl' ? '#ef4444' : '#f59e0b'),
         isDraft: Boolean(options.isDraft),
         canCancel: Boolean(options.canCancel),
+        // Must be carried through: hitTestBacktestOrder spreads this object into the
+        // click result, and the cancel handler branches on it to clear the local
+        // ticket instead of posting. Dropping it here is what sent the literal id
+        // 'draft' to the API and surfaced Laravel's raw route-model-binding error.
+        cancelDraft: Boolean(options.cancelDraft),
         label: options.label ?? `${sideLabel} ${kindLabel} ${formatOverlayPrice(value)}`,
         pnlText,
         pnlPositive,
@@ -6921,6 +6958,16 @@ export default function MarketReplayChart({
   const handleCancelBacktestPosition = async (positionId) => {
     if (!positionId) return;
 
+    // A draft order line has no server-side row yet — its id is the literal string
+    // 'draft'. Posting that hits route-model binding and returns Laravel's raw
+    // "No query results for model [MarketBacktestPosition] draft". Clearing the
+    // local ticket is the right action, and keeping the guard here (not only at the
+    // click site) means any future caller gets the same correct behaviour.
+    if (!Number.isFinite(Number(positionId))) {
+      setOrderDraftClearRequest({ id: Date.now() });
+      return;
+    }
+
     const targetPosition = backtestAccount?.pendingPositions?.find((item) => item.id === positionId) ?? null;
 
     setIsBacktestLoading(true);
@@ -6934,7 +6981,12 @@ export default function MarketReplayChart({
         handleToast(message, type);
       }
     } catch (err) {
-      setBacktestError(err.response?.data?.message ?? err.message ?? 'Failed to cancel pending entry');
+      // A 404 here is route-model binding failing to find the row, whose default
+      // message names the Eloquent class and is meaningless to a trader. Anything
+      // else already carries a written message from the controller.
+      setBacktestError(err.response?.status === 404
+        ? 'That order is no longer available — it may have already filled or been cancelled.'
+        : err.response?.data?.message ?? err.message ?? 'Failed to cancel pending entry');
     } finally {
       setIsBacktestLoading(false);
     }
@@ -7331,9 +7383,46 @@ export default function MarketReplayChart({
     chartTheme,
   };
 
+  // The order panel's container. ReplayPanel portals its Enter Position UI in here
+  // (see entryPanelContainer), so this element only has to exist and be sized — it
+  // renders no children of its own. Built once and placed by mode below: windowed
+  // gets a standalone bordered card beside the chart card, fullscreen a divided
+  // column inside the fullscreen element. Only one branch renders, so the single
+  // callback ref is never claimed twice.
+  const orderPanelCard = isEntryColumnOpen ? (
+    <aside
+      ref={isFullscreen ? setFullscreenOrderPanelEl : setWindowedOrderPanelEl}
+      aria-label="Order panel"
+      // Stretched, not self-start: the panel's body is `flex-1 overflow-y-auto` and
+      // needs a bounded height to scroll inside. Hugging its content instead would
+      // make an ~800px card that drives the whole row taller than the chart.
+      className={`relative min-h-0 w-[336px] shrink-0 overflow-hidden ${isFullscreen ? 'border-l' : 'border'}`}
+      style={{ borderColor: chartTheme.border, backgroundColor: chartTheme.panel }}
+    />
+  ) : null;
+
+  // Fixed, so it can be rendered once here regardless of fullscreen/windowed. The
+  // backdrop is what makes it dismissible without hunting for the X on a phone.
+  const orderPanelSheet = isEntrySheetOpen ? (
+    <>
+      <div
+        className="fixed inset-0 z-[94] bg-black/60"
+        onClick={() => setIsFullscreenEntryPanelOpen(false)}
+        aria-hidden="true"
+      />
+      <aside
+        ref={setSheetOrderPanelEl}
+        aria-label="Order panel"
+        className="fixed inset-x-0 bottom-0 z-[95] h-[80dvh] overflow-hidden rounded-t-xl border-t shadow-2xl"
+        style={{ borderColor: chartTheme.border, backgroundColor: chartTheme.panel }}
+      />
+    </>
+  ) : null;
+
   return (
     <>
     {confirmElement}
+    {orderPanelSheet}
     {/* Manual wiring, not IconTooltipButton: this button needs `fixed`
         positioning on itself, and IconTooltipButton's wrapping <span>
         hardcodes `relative` — same class landing on the same element
@@ -7350,7 +7439,11 @@ export default function MarketReplayChart({
       onMouseLeave={restartTourTooltip.hide}
       onFocus={restartTourTooltip.show}
       onBlur={restartTourTooltip.hide}
-      className="fixed bottom-4 right-4 z-[10000] flex h-9 w-9 items-center justify-center rounded-full border border-[#2dd4bf]/40 bg-[#131722] text-[#5eead4] shadow-xl"
+      // Lifted clear of ReplayControlBar while Replay is on. That bar is centered in
+      // the chart at bottom-4 and can grow wide enough for its right end to reach
+      // this fixed button, which then sits on top of the follow/reset controls. The
+      // bar occupies roughly 16-56px from the bottom, so bottom-20 clears it.
+      className={`fixed right-4 z-[10000] flex h-9 w-9 items-center justify-center rounded-full border border-[#2dd4bf]/40 bg-[#131722] text-[#5eead4] shadow-xl transition-[bottom] ${replayMode ? 'bottom-20' : 'bottom-4'}`}
     ><HelpCircle size={17}/></button>
     <AnchoredTooltipPortal pos={restartTourTooltip.pos} label="Restart workspace tour" isDark={chartTheme.mode === 'dark'} zIndexClass="z-[10001]" />
     {showSubscriptionModal && <SubscriptionModal onClose={() => setShowSubscriptionModal(false)} onTrialActivated={() => {
@@ -7499,12 +7592,16 @@ export default function MarketReplayChart({
         </button>
       </div>
     )}
+    {/* Windowed mode puts the order panel beside the chart card as its own card, so
+        `contents` keeps this wrapper out of the layout entirely in fullscreen, where
+        the chart element is `fixed inset-0` and can have no outside sibling. */}
+    <div className={isFullscreen ? 'contents' : 'flex min-w-0 items-stretch gap-px'}>
     <div
       ref={fullscreenRef}
       className={
         isFullscreen
           ? 'fixed inset-0 z-[9999] flex h-[100dvh] flex-col overflow-hidden bg-black-screen-color'
-          : 'overflow-hidden rounded-lg border'
+          : 'flex min-w-0 flex-1 flex-col overflow-hidden border'
       }
       style={isFullscreen ? { backgroundColor: chartTheme.panel } : { borderColor: chartTheme.border, backgroundColor: chartTheme.panel }}
     >
@@ -7524,8 +7621,8 @@ export default function MarketReplayChart({
         }}
       />
 
-      <div className="ml-[52px] min-h-0 flex-1">
-        <div className={`relative flex min-w-0 flex-col ${isFullscreen ? 'h-full' : ''}`}>
+      <div className="ml-[52px] flex min-h-0 flex-1">
+        <div className={`relative flex min-w-0 flex-1 flex-col ${isFullscreen ? 'h-full' : ''}`}>
           <ChartStage
             wrapperRef={wrapperRef}
             containerRef={containerRef}
@@ -7845,6 +7942,8 @@ export default function MarketReplayChart({
             marketCategory={marketCategory}
             fullscreenEntryPanelOpen={isFullscreenEntryPanelOpen}
             onFullscreenEntryPanelOpenChange={setIsFullscreenEntryPanelOpen}
+            entryPanelDocked={isFullscreenEntryPanelOpen}
+            entryPanelContainer={entryPanelContainer}
             tool={tool}
             drawingColor={drawingColor}
             drawings={drawings}
@@ -7887,6 +7986,11 @@ export default function MarketReplayChart({
             overlayWidth={overlaySize.width}
           />
         </div>
+
+        {/* Fullscreen has no chart *card* to sit outside of — the chart is the whole
+            viewport — so the order panel is a divided column in here. Windowed mode
+            renders the same element below, outside this container, as its own card. */}
+        {isFullscreen && orderPanelCard}
       </div>
 
       {!isFullscreen && (
@@ -7900,6 +8004,8 @@ export default function MarketReplayChart({
           onUpdatePositionRisk={handleUpdatePositionRiskLevels}
         />
       )}
+    </div>
+    {!isFullscreen && orderPanelCard}
     </div>
     </>
   );

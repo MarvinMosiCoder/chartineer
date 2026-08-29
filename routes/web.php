@@ -113,6 +113,7 @@ Route::group(['middleware' => ['auth', 'account.active', 'web']], function () {
     Route::get('unread-announcement', [AnnouncementsController::class, 'getUnreadAnnouncements'])->name('show-announcement');
     Route::post('read-announcement', [AnnouncementsController::class, 'markAnnouncementAsRead'])->name('read-announcement');
     Route::get('updates', [AnnouncementsController::class, 'getAllAnnouncements'])->name('updates');
+    Route::get('changelog-feed', [AnnouncementsController::class, 'getChangelog'])->name('changelog-feed');
     Route::get('announcements', [AnnouncementsController::class, 'getIndex'])->middleware('admin.permission:announcements,view')->name('announcements');
     Route::get('announcements/add-announcement', [AnnouncementsController::class, 'addAnnouncementForm'])->middleware('admin.permission:announcements,create')->name('add-announcement');
     Route::post('announcements/SaveAnnouncement', [AnnouncementsController::class, 'saveAnnouncement'])->middleware('admin.permission:announcements,create')->name('announcement/SaveAnnouncement');
@@ -194,6 +195,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::post('/feedback/items', [UserFeedbackController::class, 'store'])->middleware('throttle:feedback-write')->name('feedback.store');
     Route::get('/feedback/items/{feedback}/messages', [UserFeedbackController::class, 'messages'])->name('feedback.messages');
     Route::post('/feedback/items/{feedback}/messages', [UserFeedbackController::class, 'storeMessage'])->middleware('throttle:feedback-write')->name('feedback.messages.store');
+    Route::get('/feedback/attachments/{attachment}', [UserFeedbackController::class, 'attachment'])->name('feedback.attachments.show');
     Route::get('/admin/feedback', [UserFeedbackController::class, 'adminPage'])->middleware('superadmin')->name('admin.feedback.index');
     Route::get('/admin/feedback/items', [UserFeedbackController::class, 'adminIndex'])->middleware('superadmin')->name('admin.feedback.items');
     Route::put('/admin/feedback/items/{feedback}', [UserFeedbackController::class, 'update'])->middleware(['superadmin', 'throttle:feedback-write'])->name('admin.feedback.update');

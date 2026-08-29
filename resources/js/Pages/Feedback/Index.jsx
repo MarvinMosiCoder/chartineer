@@ -1,20 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { Head } from '@inertiajs/react';
 import axios from 'axios';
-import { ArrowLeft, Bug, CheckCircle2, ChevronRight, CreditCard, Gauge, Lightbulb, MessageCircle, MessageSquarePlus, Send, Sparkles, UserRound, WandSparkles } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ChevronRight, CreditCard, MessageCircle, MessageSquarePlus, Send, UserRound } from 'lucide-react';
 import { useTheme } from '../../Context/ThemeContext';
 import FeedbackChat from '../../Components/Feedback/FeedbackChat';
+import ProductHubModal from '../../Components/Feedback/ProductHubModal';
 
+// Support categories only. Product feedback (chart, trading, replay, user
+// experience, performance, bug, other) moved to the Product Hub modal opened from
+// the chart header — the card below step 1 is this page's route into it. Retired
+// `enhancement`/`feature` tickets still appear in the history panel on the right.
+// See docs/developer/feedback.md.
 const categories = [
     ['payment', 'Payment issue', CreditCard, 'Failed, missing, or incorrect payment'],
     ['subscription', 'Subscription', CreditCard, 'Plan access, renewal, or cancellation'],
     ['account', 'Account access', UserRound, 'Sign-in, profile, or account help'],
-    ['enhancement', 'Enhancement', WandSparkles, 'Improve an existing workflow'],
-    ['feature', 'Additional feature', Sparkles, 'Suggest a new capability'],
-    ['bug', 'Bug report', Bug, 'Something is not working'],
-    ['usability', 'Usability', Lightbulb, 'Make the interface easier'],
-    ['performance', 'Performance', Gauge, 'Report slowness or delay'],
-    ['other', 'Other', MessageSquarePlus, 'Share another observation'],
 ];
 
 const PAYMENT_REASONS = [
@@ -46,6 +46,7 @@ export default function FeedbackIndex() {
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
     const [chatTicket, setChatTicket] = useState(null);
+    const [hubOpen, setHubOpen] = useState(false);
 
     const loadItems = () => axios.get('/feedback/items').then(({ data }) => setItems(data.feedback ?? [])).catch(() => setError('Unable to load your feedback history.')).finally(() => setLoading(false));
     useEffect(() => { loadItems(); }, []);
@@ -95,6 +96,7 @@ export default function FeedbackIndex() {
                 {step === 1 ? <>
                     <h2 className={`mt-3 text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>How can we help?</h2>
                     <div className="mt-4 grid gap-2 sm:grid-cols-2">{categories.map(([value, label, Icon, copy]) => <button key={value} type="button" onClick={() => chooseCategory(value)} className={`flex items-center gap-3 rounded-lg border p-3 text-left ${isDark ? 'border-[#2a2e39] hover:bg-white/5' : 'border-slate-200 hover:bg-slate-50'}`}><Icon size={17} className="shrink-0 text-[#5eead4]"/><span><span className="block text-xs font-bold">{label}</span><span className="mt-0.5 block text-[10px] text-[#787b86]">{copy}</span></span></button>)}</div>
+                    <button type="button" onClick={() => setHubOpen(true)} className="mt-3 flex w-full items-center gap-3 rounded-lg border border-[#2dd4bf]/35 bg-[#2dd4bf]/5 p-3 text-left hover:bg-[#2dd4bf]/10"><MessageSquarePlus size={17} className="shrink-0 text-[#5eead4]"/><span className="min-w-0 flex-1"><span className="block text-xs font-bold">Have a product idea or found a bug?</span><span className="mt-0.5 block text-[10px] text-[#787b86]">Chart, trading, replay, and performance feedback goes to the Product Hub</span></span><ChevronRight size={15} className="shrink-0 text-[#5eead4]"/></button>
                 </> : <form onSubmit={submit}>
                     <button type="button" onClick={backToCategories} className="flex items-center gap-1.5 text-xs font-semibold text-[#5eead4]"><ArrowLeft size={14}/>Change category</button>
                     <div className="mt-3 flex items-center gap-2">{CategoryIcon && <CategoryIcon size={16} className="text-[#5eead4]"/>}<h2 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedCategory?.[1]}</h2></div>
@@ -122,5 +124,7 @@ export default function FeedbackIndex() {
             <section className={`rounded-xl border p-5 ${panel}`}><div className="flex items-center justify-between"><h2 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Your submissions</h2><span className="text-[10px] text-[#787b86]">{items.length} total</span></div><div className="mt-4 max-h-[620px] space-y-3 overflow-y-auto pr-1">{loading ? <p className="text-xs text-[#787b86]">Loading feedback…</p> : !items.length ? <div className="py-16 text-center text-xs text-[#787b86]">Your submitted feedback will appear here.</div> : items.map((item) => <article key={item.id} className={`rounded-lg border p-4 ${isDark ? 'border-[#2a2e39] bg-[#0b0e14]' : 'border-slate-200 bg-slate-50'}`}><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><div className={`truncate text-xs font-bold ${isDark ? 'text-[#d1d4dc]' : 'text-slate-900'}`}>{item.title}</div><div className="mt-1 text-[10px] uppercase tracking-wider text-[#787b86]">{item.category.replace('_',' ')} · {new Date(item.createdAt).toLocaleDateString()}</div></div><span className={`rounded-full px-2 py-1 text-[9px] font-bold uppercase ${statusStyles[item.status]}`}>{item.status.replace('_',' ')}</span></div>{(item.subscriptionRequest || item.paymentReasonCode) && <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-[#787b86]">{item.subscriptionRequest && <span className="rounded-full border border-[#2a2e39] px-2 py-0.5">#{item.subscriptionRequest.id} · {item.subscriptionRequest.plan} · {money(item.subscriptionRequest) || item.subscriptionRequest.status}</span>}{item.paymentReasonCode && <span className="rounded-full border border-[#2a2e39] px-2 py-0.5">{paymentReasonLabels[item.paymentReasonCode] || item.paymentReasonCode}</span>}</div>}<p className="mt-3 line-clamp-3 text-xs leading-5 text-[#9598a1]">{item.description}</p>{item.adminResponse && <div className="mt-3 rounded-md border border-[#2dd4bf]/25 bg-[#2dd4bf]/5 p-3"><div className="text-[9px] font-bold uppercase tracking-wider text-[#5eead4]">Legacy team response</div><p className={`mt-1 text-xs leading-5 ${isDark ? 'text-[#d1d4dc]' : 'text-slate-700'}`}>{item.adminResponse}</p></div>}{item.chatEnabled&&<button type="button" onClick={()=>setChatTicket(item)} className="mt-3 flex items-center gap-2 rounded-lg border border-[#2dd4bf]/40 px-3 py-2 text-xs font-semibold text-[#5eead4]"><MessageCircle size={14}/>Open conversation{item.unreadMessagesCount>0&&<span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] text-white">{item.unreadMessagesCount}</span>}</button>}</article>)}</div></section>
         </div>
         {chatTicket&&<FeedbackChat ticket={chatTicket} onClose={()=>setChatTicket(null)} onRead={()=>setItems(c=>c.map(i=>i.id===chatTicket.id?{...i,unreadMessagesCount:0}:i))} onSent={()=>setItems(c=>c.map(i=>i.id===chatTicket.id?{...i,messagesCount:(i.messagesCount||0)+1}:i))}/>}
+        {/* No chart context from this page — the modal renders without the market chip. */}
+        <ProductHubModal open={hubOpen} onClose={()=>{setHubOpen(false);loadItems();}}/>
     </div></>;
 }

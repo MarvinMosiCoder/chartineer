@@ -6,8 +6,11 @@ import { AlertTriangle, Download, ListChecks, MessageSquare } from 'lucide-react
 import { useTheme } from '../../Context/ThemeContext';
 
 const CATEGORY_LABELS = {
+    // Keep in sync with UserFeedbackController::CATEGORIES — a missing key renders
+    // the raw slug instead of a label.
     payment: 'Payment', subscription: 'Subscription', account: 'Account', enhancement: 'Enhancement',
-    feature: 'Feature request', bug: 'Bug', usability: 'Usability', performance: 'Performance', other: 'Other',
+    feature: 'Feature request', bug: 'Bug', usability: 'User Experience', performance: 'Performance', other: 'Other',
+    chart: 'Chart', trading: 'Trading', replay: 'Replay & Backtest',
 };
 const PRIORITY_TONES = { urgent: 'text-red-400', high: 'text-amber-400', normal: '', low: '' };
 const STATUS_TONES = {

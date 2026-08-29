@@ -8,7 +8,6 @@ import ContentLoader from "@/Layouts/layout/ContentLoader.jsx";
 import { NavbarProvider } from "../../Context/NavbarContext";
 import { useTheme } from "../../Context/ThemeContext";
 import TraderNavbar from "./TraderNavbar";
-import TraderSidebar from "./TraderSidebar";
 import AdminNavbar from './AdminNavbar';
 import AnnouncementGate from '../../Components/Announcements/AnnouncementGate';
 
@@ -23,7 +22,11 @@ const Layout = ({ children }) => {
                 {isAdmin ? <AdminNavbar /> : <TraderNavbar />}
             </div>
             <div className="flex h-screen pt-14">
-                {isAdmin ? <AppSidebar /> : <TraderSidebar />}
+                {/* Traders have no sidebar — their navigation lives in TraderNavbar,
+                    which frees the full window width for the chart and its order
+                    column. Admin keeps AppSidebar; its menu tree is data-driven and
+                    far too deep for a bar. */}
+                {isAdmin && <AppSidebar />}
                 <div className="relative flex min-w-0 w-full flex-col overflow-hidden">
                     <div className="flex-1 w-full flex flex-col overflow-auto">
                         <div className="flex-1">

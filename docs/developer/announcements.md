@@ -12,6 +12,7 @@ Administrators create/edit announcements; authenticated users (trader and admin 
 | `POST /read-announcement` | Marks one announcement read for the current user (pivot `syncWithoutDetaching`, idempotent); clears the `unread-announcement` session flag once none remain |
 | `GET /market-overview` | Latest four active announcements with sanitized excerpts and read state |
 | `GET /updates` | Full "News & updates" page — every active announcement, paginated 10/page, full rich `message` (not excerpted) |
+| `GET /changelog-feed` | JSON: latest 15 active announcements with `is_read`, for the Product Hub modal's Changelog tab. A separate method from `getAllAnnouncements()` because that one renders an Inertia page and cannot be called from inside a modal — see [Feedback](feedback.md) |
 | `AnnouncementsController.php` | Announcement CRUD and unread/read-state logic |
 | `Announcement.php` | Many-to-many user relationship (`announcement_user`, pivot `hidden_at`) |
 | `DELETE /notifications/announcement/{id}` | Hides one announcement for the calling user only (pivot `hidden_at`) — see [Alerts and notifications](price-alerts-and-notifications.md) |
@@ -24,6 +25,8 @@ Administrators create/edit announcements; authenticated users (trader and admin 
 2. `LoginController::completeLogin()` sets the `unread-announcement` session flag to `true` if any active announcement isn't yet in the logging-in user's `announcement_user` rows. This runs for both trader and admin logins.
 3. `HandleInertiaRequests` shares that flag as `auth.announcement` on every Inertia response (already wired, no extra request needed).
 4. `AnnouncementGate.jsx` (mounted in `layout.jsx`, so present for both `AdminNavbar`/`TraderNavbar` shells) watches `auth.announcement`; the first time it's truthy, it fetches the real list from `/unread-announcement` and shows a theme-aware modal, one announcement at a time, with a progress-dot indicator when there's more than one. "Next"/"Got it" calls `/read-announcement` for the current item before advancing; closing via the X hides it for the rest of the session without marking anything read, so it reappears on the next full page load (matching the old behavior).
+
+The Product Hub modal's Changelog tab is the fourth surface rendering this admin-authored HTML through `dangerouslySetInnerHTML`, on the same trust model as the three below — it adds a surface, not a new trust assumption. Expanding an unread entry there calls the same `POST /read-announcement`, so read state stays consistent everywhere. See [Feedback](feedback.md).
 
 Market Summary separately reuses active administrator announcements as trusted "News & updates" via `/market-overview`. That endpoint returns only plain-text excerpts (latest 4), newest first, and never exposes executable rich content. Its "View all" link goes to `Pages/Announcements/Index.jsx` (`GET /updates`), a paginated, click-to-expand list of every active announcement with the full rich `message` HTML (same trust model as `AnnouncementGate.jsx` — admin-authored, rendered via `dangerouslySetInnerHTML`). Expanding an unread row there calls `/read-announcement` the same way the excerpt card and the modal do, so read state stays consistent across all three surfaces.
 

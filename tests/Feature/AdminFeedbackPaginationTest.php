@@ -11,6 +11,8 @@ use Tests\TestCase;
 
 class AdminFeedbackPaginationTest extends TestCase
 {
+    private int $superadminRoleId;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -29,10 +31,28 @@ class AdminFeedbackPaginationTest extends TestCase
             $table->id();
             $table->string('name');
             $table->string('email')->unique();
+            $table->unsignedBigInteger('id_adm_privileges')->nullable();
             $table->string('status')->default('ACTIVE');
             $table->rememberToken();
             $table->timestamps();
         });
+
+        // AdminAccessService::isSuperadmin() resolves the flag through
+        // adm_users.id_adm_privileges -> adm_privileges.is_superadmin. The session
+        // keys this test used to set were never read by anything.
+        Schema::create('adm_privileges', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->boolean('is_admin')->default(false);
+            $table->boolean('is_superadmin')->default(false);
+            $table->string('theme_color')->nullable();
+            $table->timestamps();
+        });
+
+        $this->superadminRoleId = DB::table('adm_privileges')->insertGetId([
+            'name' => 'Superadmin', 'is_admin' => true, 'is_superadmin' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
 
         Schema::create('subscription_requests', function (Blueprint $table) {
             $table->id();
@@ -53,6 +73,7 @@ class AdminFeedbackPaginationTest extends TestCase
             $table->string('title', 160);
             $table->text('description');
             $table->string('page_url', 500)->nullable();
+            $table->json('context')->nullable();
             $table->string('status', 24)->default('submitted');
             $table->string('priority', 16)->default('normal');
             $table->text('admin_response')->nullable();
@@ -69,11 +90,21 @@ class AdminFeedbackPaginationTest extends TestCase
             $table->timestamp('read_at')->nullable();
             $table->timestamps();
         });
+
+        Schema::create('user_feedback_attachments', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('user_feedback_id');
+            $table->string('path', 500);
+            $table->string('name', 255);
+            $table->string('mime', 100);
+            $table->unsignedInteger('size');
+            $table->timestamps();
+        });
     }
 
     public function test_feedback_admin_index_is_paginated(): void
     {
-        $admin = $this->user('admin@example.test');
+        $admin = $this->user('admin@example.test', $this->superadminRoleId);
         $customer = $this->user('customer@example.test');
         foreach (range(1, 3) as $i) {
             DB::table('user_feedback')->insert([
@@ -84,9 +115,7 @@ class AdminFeedbackPaginationTest extends TestCase
             ]);
         }
 
-        $response = $this->actingAs($admin)->withSession(['admin_is_superadmin' => true, 'admin_privileges' => 1])
-            ->getJson('/admin/feedback/items')
-            ->assertOk();
+        $response = $this->actingAs($admin)->getJson('/admin/feedback/items')->assertOk();
 
         $response->assertJsonStructure(['success', 'feedback' => ['data', 'current_page', 'last_page', 'total']]);
         $this->assertSame(3, $response->json('feedback.total'));
@@ -96,14 +125,13 @@ class AdminFeedbackPaginationTest extends TestCase
     {
         $trader = $this->user('trader@example.test');
 
-        $this->actingAs($trader)->withSession(['admin_is_superadmin' => false])
-            ->getJson('/admin/feedback/items')->assertForbidden();
+        $this->actingAs($trader)->getJson('/admin/feedback/items')->assertForbidden();
     }
 
-    private function user(string $email): AdmUser
+    private function user(string $email, ?int $privilegeId = null): AdmUser
     {
         $id = DB::table('adm_users')->insertGetId([
-            'name' => 'Test', 'email' => $email, 'status' => 'ACTIVE',
+            'name' => 'Test', 'email' => $email, 'id_adm_privileges' => $privilegeId, 'status' => 'ACTIVE',
             'created_at' => now(), 'updated_at' => now(),
         ]);
         return AdmUser::query()->findOrFail($id);
