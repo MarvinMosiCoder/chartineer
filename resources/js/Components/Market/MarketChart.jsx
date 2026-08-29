@@ -50,8 +50,11 @@ import {
 import { buildSessionSegments, resolveSession, SESSION_KEYS } from './MarketChart/marketSessions';
 import {
   buildStorageKey,
+  clampRiskPrice,
   CYCLE_TOOL_TYPES,
   distanceToSegment,
+  GHOST_DRAG_THRESHOLD_PX,
+  ghostLineY,
   estimateDrawingLogicalFromTime,
   estimateLogicalFromTime,
   estimateTimeFromLogical,
@@ -1321,6 +1324,7 @@ export default function MarketReplayChart({
   const [selectedDrawingId, setSelectedDrawingId] = useState(null);
   const [hoveredPositionDrawingId, setHoveredPositionDrawingId] = useState(null);
   const [isHoveringBacktestOrderCancel, setIsHoveringBacktestOrderCancel] = useState(false);
+  const [isHoveringBacktestOrderLine, setIsHoveringBacktestOrderLine] = useState(false);
   const [toolSettings, setToolSettings] = useState({});
   const [backtestAccount, setBacktestAccount] = useState(null);
   const [isBacktestLoading, setIsBacktestLoading] = useState(false);
@@ -3009,6 +3013,9 @@ export default function MarketReplayChart({
         side: position.side,
         kind,
         price: value,
+        // Carried so a drag can clamp against it without re-finding the
+        // position. Absent on draft lines, which are validated by the ticket.
+        entryPrice: getPositiveNumber(position.entryPrice),
         y,
         dashed: options.dashed ?? position.status === 'pending',
         color: options.color ?? (kind === 'tp' ? '#22c55e' : kind === 'sl' ? '#ef4444' : '#f59e0b'),
@@ -3019,6 +3026,39 @@ export default function MarketReplayChart({
         pnlPositive,
       };
     };
+    /**
+     * A placeholder for a level the position does not have yet. Unlike every
+     * other order line it has no price at all — only a screen position derived
+     * from the entry line — because until it is dragged there is no value to
+     * show, and showing one would read as protection the trader never set.
+     */
+    const buildGhostLine = (position, kind, entryY) => {
+      const y = ghostLineY(entryY, kind, position.side, mainPaneHeight);
+      if (y == null) return null;
+
+      const entryPrice = getPositiveNumber(position.entryPrice);
+      if (entryPrice == null) return null;
+
+      return {
+        id: `ghost:${position.id}:${kind}`,
+        positionId: position.id,
+        status: position.status,
+        side: position.side,
+        kind,
+        price: null,
+        entryPrice,
+        y,
+        isGhost: true,
+        dashed: true,
+        color: kind === 'tp' ? '#22c55e' : '#ef4444',
+        isDraft: false,
+        canCancel: false,
+        label: kind === 'tp' ? 'SET TP' : 'SET SL',
+        pnlText: null,
+        pnlPositive: null,
+      };
+    };
+
     const draftEntryPrice = getPositiveNumber(
       backtestOrderDraft?.isPendingOrder
         ? backtestOrderDraft?.entryPrice
@@ -3099,11 +3139,20 @@ export default function MarketReplayChart({
         : []),
       ...(backtestAccount?.pendingPositions ?? [])
         .filter((position) => position.symbol === symbol)
-        .flatMap((position) => [
-          buildLine({ ...position, status: 'pending' }, 'entry', position.entryPrice, { dashed: true, canCancel: true }),
-          buildLine({ ...position, status: 'pending' }, 'sl', position.stopLoss, { dashed: true }),
-          buildLine({ ...position, status: 'pending' }, 'tp', position.takeProfit, { dashed: true }),
-        ]),
+        .flatMap((position) => {
+          const pendingPosition = { ...position, status: 'pending' };
+          const entry = buildLine(pendingPosition, 'entry', position.entryPrice, { dashed: true, canCancel: true });
+
+          // A level the order does not have falls back to a ghost, so there is
+          // always something on the chart to drag.
+          return [
+            entry,
+            buildLine(pendingPosition, 'sl', position.stopLoss, { dashed: true })
+              ?? buildGhostLine(pendingPosition, 'sl', entry?.y),
+            buildLine(pendingPosition, 'tp', position.takeProfit, { dashed: true })
+              ?? buildGhostLine(pendingPosition, 'tp', entry?.y),
+          ];
+        }),
       ...(backtestAccount?.openPositions ?? [])
         .filter((position) => position.symbol === symbol)
         .flatMap((position) => {
@@ -3130,24 +3179,26 @@ export default function MarketReplayChart({
             ? ` · ${position.partialTakeProfitPercent}% close`
             : '';
 
+          const entry = buildLine(openPosition, 'entry', position.entryPrice, {
+            dashed: false,
+            color: livePnl == null ? '#f59e0b' : livePnl >= 0 ? '#22c55e' : '#ef4444',
+            label: `${sideLabel} OPEN ${formatOverlayPrice(position.entryPrice)}${livePnlLabel}`,
+          });
+
           return [
-            buildLine(openPosition, 'entry', position.entryPrice, {
-              dashed: false,
-              color: livePnl == null ? '#f59e0b' : livePnl >= 0 ? '#22c55e' : '#ef4444',
-              label: `${sideLabel} OPEN ${formatOverlayPrice(position.entryPrice)}${livePnlLabel}`,
-            }),
+            entry,
             buildLine(openPosition, 'sl', position.stopLoss, {
               dashed: false,
               label: `${sideLabel} ${slPrefix}SL ${formatOverlayPrice(position.stopLoss)}`,
-            }),
+            }) ?? buildGhostLine(openPosition, 'sl', entry?.y),
             buildLine(openPosition, 'tp', position.takeProfit, {
               dashed: false,
               label: `${sideLabel} TP ${formatOverlayPrice(position.takeProfit)}${tpSuffix}`,
-            }),
+            }) ?? buildGhostLine(openPosition, 'tp', entry?.y),
           ];
         }),
     ].filter(Boolean);
-  }, [backtestAccount, backtestOrderDraft, executionPrice, marketCategory, overlayRenderVersion, overlaySize.width, symbol]);
+  }, [backtestAccount, backtestOrderDraft, executionPrice, mainPaneHeight, marketCategory, overlayRenderVersion, overlaySize.width, symbol]);
 
   const renderedTradeMarkers = useMemo(() => {
     const chart = chartRef.current;
@@ -4877,8 +4928,13 @@ export default function MarketReplayChart({
           positionId: backtestOrderHit.positionId,
           status: backtestOrderHit.status,
           kind: backtestOrderHit.kind,
+          side: backtestOrderHit.side,
           price: backtestOrderHit.price,
+          entryPrice: backtestOrderHit.entryPrice ?? null,
           isDraft: backtestOrderHit.isDraft,
+          isGhost: Boolean(backtestOrderHit.isGhost),
+          startY: y,
+          moved: false,
         };
         dragDrawingRef.current = null;
         resizeDrawingRef.current = null;
@@ -5124,6 +5180,9 @@ export default function MarketReplayChart({
 
       const backtestOrderHoverHit = isInsideChart ? hitTestBacktestOrder(x, y) : null;
       setIsHoveringBacktestOrderCancel(backtestOrderHoverHit?.action === 'cancel');
+      // Cancel wins: hitTestBacktestOrder returns the cancel action before it
+      // considers a line hit, so the x keeps its pointer cursor.
+      setIsHoveringBacktestOrderLine(Boolean(backtestOrderHoverHit) && !backtestOrderHoverHit.action);
 
       if (isSpacePressedRef.current || !isInsideChart) return;
 
@@ -5272,22 +5331,36 @@ export default function MarketReplayChart({
         const coords = getChartCoordinates(x, y);
         if (!coords) return;
 
+        const current = dragBacktestOrderRef.current;
+
+        // A ghost is a placeholder until it is actually dragged. Below the
+        // threshold this is a click, which must leave it a ghost and write
+        // nothing — locally or to the server. Real lines keep updating on any
+        // movement, as they always have.
+        if (current.isGhost && !current.moved && Math.abs(y - current.startY) < GHOST_DRAG_THRESHOLD_PX) {
+          return;
+        }
+
         event.preventDefault();
         event.stopPropagation();
 
-        const dragState = {
-          ...dragBacktestOrderRef.current,
-          price: coords.price,
-        };
+        // Clamping here rather than letting the server reject on release makes
+        // an invalid level unreachable instead of a surprise. Entry lines and
+        // draft lines carry no entryPrice and so pass through unclamped.
+        const price = current.entryPrice != null
+          ? clampRiskPrice(current.kind, current.side, current.entryPrice, coords.price)
+          : coords.price;
+
+        const dragState = { ...current, price, moved: true };
         dragBacktestOrderRef.current = dragState;
 
         if (dragState.isDraft) {
-          const value = String(Number(coords.price.toFixed(8)));
+          const value = String(Number(price.toFixed(8)));
           setBacktestOrderDraft((currentDraft) => {
             if (!currentDraft) return currentDraft;
 
             if (dragState.kind === 'entry') {
-              return { ...currentDraft, entryPrice: value, effectiveEntryPrice: coords.price };
+              return { ...currentDraft, entryPrice: value, effectiveEntryPrice: price };
             }
 
             if (dragState.kind === 'sl') {
@@ -5310,11 +5383,11 @@ export default function MarketReplayChart({
 
         const updates = {};
         if (dragState.kind === 'entry') {
-          updates.entryPrice = coords.price;
+          updates.entryPrice = price;
         } else if (dragState.kind === 'sl') {
-          updates.stopLoss = coords.price;
+          updates.stopLoss = price;
         } else if (dragState.kind === 'tp') {
-          updates.takeProfit = coords.price;
+          updates.takeProfit = price;
         }
 
         updateLocalBacktestPositionLine(dragState.positionId, updates);
@@ -5348,7 +5421,10 @@ export default function MarketReplayChart({
         const dragState = dragBacktestOrderRef.current;
         dragBacktestOrderRef.current = null;
         restoreChartMouseInteractions();
-        if (!dragState.isDraft) {
+        // A ghost that was never dragged is still a ghost: nothing was written
+        // locally, so there is nothing to persist and nothing to roll back.
+        const wasClickedNotDragged = dragState.isGhost && !dragState.moved;
+        if (!dragState.isDraft && !wasClickedNotDragged) {
           handleUpdateBacktestPositionRisk(dragState);
         }
       }
@@ -7425,6 +7501,7 @@ export default function MarketReplayChart({
             isSpacePressed={isSpacePressed}
             isReplayPricePickActive={isReplayPricePickActive}
             isHoveringBacktestOrderCancel={isHoveringBacktestOrderCancel}
+            isHoveringBacktestOrderLine={isHoveringBacktestOrderLine}
             tool={tool}
             chartTheme={chartTheme}
             overlaySize={overlaySize}

@@ -217,6 +217,52 @@ class MarketBacktestPositionRiskTest extends TestCase
         ]);
     }
 
+    /**
+     * The path the chart's ghost SL/TP lines open up: a position that has never
+     * had a stop or target gets one set for the first time. Every other test
+     * here starts from a position that already carries both, so nothing covered
+     * setting one from null.
+     */
+    public function test_it_sets_stop_loss_and_take_profit_on_a_position_that_had_neither(): void
+    {
+        [$user, , $position] = $this->openPosition();
+        $position->update(['stop_loss' => null, 'take_profit' => null]);
+
+        $this->actingAs($user)->putJson("/_test/market-backtest/positions/{$position->id}/risk", [
+            'stop_loss' => 92,
+            'take_profit' => 118,
+            'price' => 105,
+        ])->assertOk()
+            ->assertJsonPath('account.openPositions.0.stopLoss', 92)
+            ->assertJsonPath('account.openPositions.0.takeProfit', 118);
+
+        $position->refresh();
+
+        $this->assertSame(92.0, (float) $position->stop_loss);
+        $this->assertSame(118.0, (float) $position->take_profit);
+    }
+
+    /**
+     * The chart clamps a dragged level to just inside the entry rather than onto
+     * it, because landing exactly on the entry is still rejected here. This pins
+     * the rule the clamp's epsilon exists to satisfy.
+     */
+    public function test_it_rejects_a_stop_loss_that_merely_equals_the_entry_price(): void
+    {
+        [$user, , $position] = $this->openPosition();
+        $position->update(['stop_loss' => null]);
+
+        $this->actingAs($user)->putJson("/_test/market-backtest/positions/{$position->id}/risk", [
+            'stop_loss' => 100,
+            'price' => 105,
+        ])->assertStatus(422);
+
+        $this->actingAs($user)->putJson("/_test/market-backtest/positions/{$position->id}/risk", [
+            'stop_loss' => 100 * (1 - 0.0001),
+            'price' => 105,
+        ])->assertOk();
+    }
+
     private function openPosition(float $cashBalance = 899.6): array
     {
         $user = $this->user(uniqid('trader-', true).'@example.test');

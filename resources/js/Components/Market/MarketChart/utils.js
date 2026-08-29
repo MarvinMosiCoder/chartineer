@@ -288,6 +288,86 @@ export function estimateDrawingLogicalFromTime(candles, time, intervalSeconds = 
   return estimateLogicalFromTime(candles, numericTime);
 }
 
+// How far an unset SL/TP placeholder sits from its entry line, in pixels. This
+// is deliberately a screen distance and not a percentage of the entry price: a
+// percentage overlaps the entry line when zoomed out and lands off-pane when
+// zoomed in, and a ghost that cannot be grabbed is worse than no ghost at all.
+export const GHOST_LINE_OFFSET_PX = 80;
+
+// Closer than this to the entry line and the ghost is neither grabbable nor
+// distinguishable from it, so none is drawn.
+export const GHOST_LINE_MIN_GAP_PX = 20;
+
+const GHOST_LINE_PANE_MARGIN_PX = 8;
+
+// A ghost commits only on a real drag. Pointer travel below this is treated as
+// a click and leaves the ghost untouched, so neither a stray click nor a hand
+// tremor can create a stop loss on a live position.
+export const GHOST_DRAG_THRESHOLD_PX = 3;
+
+// `updatePositionRisk` rejects a level that merely equals the entry price
+// (`$stopLoss >= $entryPrice`), so a clamp has to land strictly inside it.
+// Relative rather than absolute because prices here span many orders of
+// magnitude, from sub-cent tokens to five-figure indices.
+export const RISK_CLAMP_EPSILON = 0.0001;
+
+/**
+ * Keeps a stop loss or take profit on the side of the entry price the server
+ * will accept, so an invalid level is unreachable by drag rather than rejected
+ * after the fact. Long stops and short targets sit below entry; long targets
+ * and short stops sit above. Anything that is not an sl/tp passes through
+ * untouched — an entry line is free to move anywhere.
+ */
+export function clampRiskPrice(kind, side, entryPrice, price) {
+  const entry = Number(entryPrice);
+  const value = Number(price);
+
+  if (kind !== 'sl' && kind !== 'tp') return value;
+  if (!Number.isFinite(entry) || entry <= 0 || !Number.isFinite(value)) return value;
+
+  const mustBeBelow = side === 'short' ? kind === 'tp' : kind === 'sl';
+
+  return mustBeBelow
+    ? Math.min(value, entry * (1 - RISK_CLAMP_EPSILON))
+    : Math.max(value, entry * (1 + RISK_CLAMP_EPSILON));
+}
+
+/**
+ * Screen y for an unset SL/TP placeholder, or null when there is nowhere
+ * sensible to put one. Unlike a real order line this is derived from the entry
+ * line's position rather than from a price, because a ghost has no price until
+ * it is dragged.
+ *
+ * Returns null rather than an off-pane coordinate so the caller can simply not
+ * emit the ghost.
+ */
+export function ghostLineY(entryY, kind, side, overlayHeight) {
+  if (kind !== 'sl' && kind !== 'tp') return null;
+
+  // Explicit, because Number(null) is 0: priceToCoordinate returns null for an
+  // entry it cannot place, and coercing that to the top of the pane would put a
+  // ghost on a chart whose entry line is not even drawn.
+  if (entryY == null) return null;
+
+  const anchor = Number(entryY);
+  const height = Number(overlayHeight);
+
+  if (!Number.isFinite(anchor) || !Number.isFinite(height) || height <= 0) return null;
+
+  // Screen y grows downward, so "above the entry price" is the smaller y.
+  const mustBeAbove = side === 'short' ? kind === 'sl' : kind === 'tp';
+  const raw = anchor + (mustBeAbove ? -GHOST_LINE_OFFSET_PX : GHOST_LINE_OFFSET_PX);
+
+  const clamped = Math.min(
+    Math.max(raw, GHOST_LINE_PANE_MARGIN_PX),
+    height - GHOST_LINE_PANE_MARGIN_PX
+  );
+
+  if (Math.abs(clamped - anchor) < GHOST_LINE_MIN_GAP_PX) return null;
+
+  return clamped;
+}
+
 function offsetPoint(point, deltaTime, deltaPrice, deltaLogical) {
   const nextPoint = {
     ...point,

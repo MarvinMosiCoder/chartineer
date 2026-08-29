@@ -5,7 +5,8 @@
         "dev": "vite",
         "build": "vite build",
         "test:chart-utils": "node tests/js/marketChartUtils.test.js",
-        "test:market-sessions": "node tests/js/marketSessions.test.js"
+        "test:market-sessions": "node tests/js/marketSessions.test.js",
+        "test:order-risk-lines": "node tests/js/orderRiskLines.test.js"
     },
     "devDependencies": {
         "autoprefixer": "^10.4.19",

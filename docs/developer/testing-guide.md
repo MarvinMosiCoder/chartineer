@@ -8,6 +8,14 @@ npm run build
 php artisan route:list
 ```
 
+The pure frontend helpers have their own suites under `tests/js`, run on Node's built-in test runner (no bundler, no component harness). Each is its own npm script, so add one alongside the file when you add a suite:
+
+```bash
+npm run test:chart-utils        # tests/js/marketChartUtils.test.js
+npm run test:market-sessions    # tests/js/marketSessions.test.js
+npm run test:order-risk-lines   # tests/js/orderRiskLines.test.js
+```
+
 Current automated coverage includes PayMongo client/signature/route behavior and subscription entitlement service behavior under `tests/Unit` and `tests/Feature`. Add tests beside the changed domain; do not rely only on manual chart testing.
 
 ## Test layers
@@ -62,6 +70,7 @@ After documentation changes:
 - Change only the timeframe and confirm the current chart stays visible beneath a light text-free, blur-free blocking shield while header controls remain available; then change the symbol and confirm the full loading skeleton still appears.
 - Create drawings and buy/sell executions on 5m, switch through 1h and back, and confirm drawings, markers, Price Range handles, and long/short right-axis guides remain available.
 - Reprice an open simulated entry and verify quantity is fixed while margin, fee, cash, opening trade, and PnL inputs update atomically; verify invalid risk and insufficient cash roll back.
+- On a position with no stop or target, confirm faint `SET SL`/`SET TP` ghost lines appear, a click on one writes nothing, a drag past a few pixels commits a real level, and dragging either across the entry clamps just short of it instead of returning a 422; confirm no ghost is drawn when the entry line is off-pane or the offset would collide with it.
 - In fullscreen, open Enter Position and verify the visible chart remains interactive, the right price scale is unobstructed on desktop, and the responsive sheet remains non-modal.
 - Verify the bottom Market Feed details, live timezone clock, valid profile-timezone persistence, and invalid-timezone rejection.
 - Return from Replay to Live and confirm the last Replay price guide remains visible immediately without changing timeframe, live candles resume, and saved horizontal-line drawings remain intact.

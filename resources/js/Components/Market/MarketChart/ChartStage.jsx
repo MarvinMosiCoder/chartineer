@@ -596,7 +596,10 @@ function BacktestOrderOverlay({ renderedBacktestOrders = [], overlaySize, chartT
         const shouldCompressText = estimatedTextWidth > availableTextWidth;
 
         return (
-          <g key={item.id}>
+          // A ghost is an unset level. It is drawn faint and finely dotted so it
+          // never reads as protection the trader actually has, while keeping the
+          // right-edge handle below that says it can be dragged into one.
+          <g key={item.id} opacity={item.isGhost ? 0.45 : undefined}>
             <line
               x1={0}
               y1={item.y}
@@ -604,7 +607,7 @@ function BacktestOrderOverlay({ renderedBacktestOrders = [], overlaySize, chartT
               y2={item.y}
               stroke={item.color}
               strokeWidth={0.5}
-              strokeDasharray={item.dashed ? '7,5' : undefined}
+              strokeDasharray={item.isGhost ? '2,4' : item.dashed ? '7,5' : undefined}
               opacity="0.95"
             />
             <rect
@@ -1646,6 +1649,7 @@ export default function ChartStage({
   isSpacePressed,
   isReplayPricePickActive,
   isHoveringBacktestOrderCancel,
+  isHoveringBacktestOrderLine,
   tool,
   chartTheme,
   overlaySize,
@@ -1717,6 +1721,8 @@ export default function ChartStage({
             ? 'grab'
           : isHoveringBacktestOrderCancel
             ? 'pointer'
+          : isHoveringBacktestOrderLine
+            ? 'ns-resize'
           : tool || isReplayPricePickActive
             ? 'crosshair'
             : 'default',
