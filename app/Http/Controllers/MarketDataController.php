@@ -15,6 +15,13 @@ class MarketDataController extends Controller
 {
     private const EXCHANGES = ['binance', 'bybit', 'okx', 'bingx', 'mexc'];
 
+    /**
+     * Matches App\Http\Middleware\CompressResponse — level 1 buys ~70% of a
+     * kline payload's size for a quarter of level 6's CPU. See that class for
+     * the measured comparison.
+     */
+    private const KLINE_CACHE_COMPRESSION_LEVEL = 1;
+
     public function __construct(private readonly ExchangeMarketDataGateway $marketGateway)
     {
     }
@@ -352,8 +359,11 @@ class MarketDataController extends Controller
             ], 422);
         }
 
+        // v2 stores the gzipped JSON body rather than the PHP array. Bumping the
+        // version rather than reusing v1 keeps this rollout from reading legacy
+        // array entries as compressed strings.
         $cacheKey = implode(':', [
-            'market-klines-v1',
+            'market-klines-v2',
             $exchange,
             $category,
             $symbol,
@@ -365,8 +375,8 @@ class MarketDataController extends Controller
             $fresh ? 'fresh' : 'cached',
         ]);
 
-        if (!$fresh && ($cached = Cache::get($cacheKey))) {
-            return response()->json($cached);
+        if (!$fresh && is_string($cached = Cache::get($cacheKey)) && $cached !== '') {
+            return $this->cachedKlineResponse($cached, $request);
         }
 
         try {
@@ -564,11 +574,21 @@ class MarketDataController extends Controller
                 'upstream_pages' => $usedRequests,
             ];
 
-            if (!$fresh) {
-                Cache::put($cacheKey, $payload, now()->addSeconds($this->klineCacheSeconds($interval, $end !== null)));
+            $json = json_encode($payload);
+            $compressed = $json === false ? false : gzencode($json, self::KLINE_CACHE_COMPRESSION_LEVEL);
+
+            if ($compressed === false) {
+                // json_encode/gzencode failing is not a reason to fail the
+                // request — fall back to the uncompressed path and let the
+                // CompressResponse middleware handle the wire encoding.
+                return response()->json($payload);
             }
 
-            return response()->json($payload);
+            if (!$fresh) {
+                Cache::put($cacheKey, $compressed, now()->addSeconds($this->klineCacheSeconds($interval, $end !== null)));
+            }
+
+            return $this->cachedKlineResponse($compressed, $request);
         } catch (ExchangeRateLimitedException $e) {
             return response()->json([
                 'success' => false,
@@ -1289,6 +1309,50 @@ class MarketDataController extends Controller
         }
 
         return $minutes[$interval] ?? $interval;
+    }
+
+    /**
+     * Serve an already-gzipped kline body.
+     *
+     * Kline payloads are cached compressed (see klines()), so the common warm
+     * path hands the stored bytes straight to the client and skips both the
+     * json_encode and the gzencode entirely — measured at ~25ms and ~7.5ms
+     * respectively on a 5000-candle payload, on every single cache hit before
+     * this. Setting Content-Encoding here also makes CompressResponse skip the
+     * response rather than compressing it a second time.
+     *
+     * A client that did not advertise gzip (curl without --compressed, an
+     * older HTTP client) gets the body inflated back; this is the rare path,
+     * since browsers always send Accept-Encoding.
+     */
+    private function cachedKlineResponse(string $compressed, Request $request)
+    {
+        $acceptsGzip = str_contains(
+            strtolower($request->headers->get('Accept-Encoding', '')),
+            'gzip'
+        );
+
+        if ($acceptsGzip) {
+            return response($compressed, 200, [
+                'Content-Type' => 'application/json',
+                'Content-Encoding' => 'gzip',
+                'Vary' => 'Accept-Encoding',
+            ]);
+        }
+
+        $json = gzdecode($compressed);
+
+        if ($json === false) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cached market data could not be read. Please try again.',
+            ], 500);
+        }
+
+        return response($json, 200, [
+            'Content-Type' => 'application/json',
+            'Vary' => 'Accept-Encoding',
+        ]);
     }
 
     private function klineCacheSeconds(string $interval, bool $isHistorical): int

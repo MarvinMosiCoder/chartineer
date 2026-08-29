@@ -38,6 +38,11 @@ export default function TraderNavbar() {
     const [showNotifications, setShowNotifications] = useState(false);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [notifications, setNotifications] = useState([]);
+    // Backtest fills/closes are written far faster than account messages, so
+    // they get their own tab rather than sharing one list that a single Replay
+    // session could flood. `category` comes from the feed endpoint.
+    const [notificationTab, setNotificationTab] = useState('system');
+    const [unreadByTab, setUnreadByTab] = useState({ system: 0, trade: 0 });
     const [alertToast, setAlertToast] = useState(null);
     const alertSoundEnabledRef = useRef(true);
     const [activeSymbol, setActiveSymbol] = useState(() => {
@@ -75,6 +80,10 @@ export default function TraderNavbar() {
                 const { data } = await axios.get('/notifications/feed');
                 if (stopped) return;
                 setUnreadNotifications(Number(data.unread_notifications) || 0);
+                setUnreadByTab({
+                    system: Number(data.unread_system) || 0,
+                    trade: Number(data.unread_trades) || 0,
+                });
                 setNotifications(data.notifications ?? []);
                 alertSoundEnabledRef.current = data.alert_sound_enabled !== false;
                 // Same toast path also carries Cross liquidation notices, so a background-monitor
@@ -199,6 +208,13 @@ export default function TraderNavbar() {
         return `${Number.isFinite(amount) ? amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '---'} ${currency}`;
     };
 
+    // Rows without a `category` are treated as system: that is every
+    // notification written before this feature existed, and anything a future
+    // producer adds without opting into a tab.
+    const visibleNotifications = notifications.filter(
+        (item) => (item.category ?? 'system') === notificationTab
+    );
+
     const logout = () => {
         setShowLogoutModal(false);
         router.post('/logout');
@@ -212,8 +228,8 @@ export default function TraderNavbar() {
             </button>
 
             <Link href="/workspace" className="flex shrink-0 items-center gap-2 pr-3 sm:pr-5">
-                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md bg-[#2dd4bf]">
-                    {logo ? <img src={logo} alt={appName} className="h-full w-full object-contain p-1" /> : <BarChart3 size={17} className="text-white" />}
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md">
+                    {logo ? <img src={logo} alt={appName} className="h-full w-full object-contain" /> : <BarChart3 size={22} className="text-[#2dd4bf]" />}
                 </div>
                 <div className="hidden sm:block">
                     <div className="text-sm font-bold leading-none"><AppNameWordmark name={appName} /></div>
@@ -247,8 +263,40 @@ export default function TraderNavbar() {
                                 <button type="button" onClick={() => setShowNotifications(false)} className="rounded-md p-2 text-[#787b86] hover:bg-white/10 hover:text-current" aria-label="Close notifications"><X size={16} /></button>
                             </div>
 
+                            <div className={`flex border-b ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`} role="tablist">
+                                {[
+                                    { key: 'system', label: 'System' },
+                                    { key: 'trade', label: 'Trades' },
+                                ].map((tab) => {
+                                    const isActive = notificationTab === tab.key;
+                                    const unread = unreadByTab[tab.key] || 0;
+
+                                    return (
+                                        <button
+                                            key={tab.key}
+                                            type="button"
+                                            role="tab"
+                                            aria-selected={isActive}
+                                            onClick={() => setNotificationTab(tab.key)}
+                                            className={`flex flex-1 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors ${
+                                                isActive
+                                                    ? 'border-[#2dd4bf] text-[#2dd4bf]'
+                                                    : `border-transparent text-[#787b86] ${isDark ? 'hover:text-white' : 'hover:text-slate-700'}`
+                                            }`}
+                                        >
+                                            {tab.label}
+                                            {unread > 0 && (
+                                                <span className="flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                                                    {unread > 99 ? '99+' : unread}
+                                                </span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
                             <div className="max-h-[min(72vh,480px)] overflow-y-auto">
-                                {notifications.length ? notifications.map((item) => {
+                                {visibleNotifications.length ? visibleNotifications.map((item) => {
                                     const rowWrapClass = `group flex w-full items-start gap-1 border-b pl-4 pr-2 transition last:border-0 ${isDark ? 'border-[#2a2e39] hover:bg-white/5' : 'border-slate-200 hover:bg-slate-50'} ${item.is_read ? 'opacity-70' : 'bg-[#2dd4bf]/5'}`;
                                     const rowContent = <>
                                         <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-400"><Bell size={14} /></span>
@@ -275,7 +323,7 @@ export default function TraderNavbar() {
                                             </button>
                                         </div>
                                     );
-                                }) : <div className="p-8 text-center text-xs text-[#787b86]">No notifications yet.</div>}
+                                }) : <div className="p-8 text-center text-xs text-[#787b86]">{notificationTab === 'trade' ? 'No trade activity yet.' : 'No notifications yet.'}</div>}
                             </div>
 
                             <Link href="/notifications/view-all-notifications" onClick={() => setShowNotifications(false)} className={`block border-t px-4 py-3 text-center text-xs font-semibold text-[#5eead4] hover:bg-white/5 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>

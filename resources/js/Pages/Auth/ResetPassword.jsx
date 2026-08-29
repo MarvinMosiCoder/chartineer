@@ -67,9 +67,9 @@ const ResetPassword = () => {
                     Back to home
                 </Link>
                 <div className="flex items-center gap-3">
-                    <div className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-md border ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-gray-300 bg-white'}`}>
+                    <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md">
                         {logo ? (
-                            <img src={logo} className="h-full w-full object-contain p-1" alt={`${appName} logo`} />
+                            <img src={logo} className="h-full w-full object-contain" alt={`${appName} logo`} />
                         ) : (
                             <span className={`text-xs font-bold ${isDark ? 'text-gray-200' : 'text-slate-800'}`}>BT</span>
                         )}

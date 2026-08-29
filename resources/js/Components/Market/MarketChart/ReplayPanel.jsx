@@ -29,14 +29,12 @@ import {
   EyeOff,
   Flag,
   FileText,
-  Gauge,
   GitCommitHorizontal,
   GitFork,
   GripVertical,
   Highlighter,
   Italic,
   LayoutGrid,
-  LocateFixed,
   LoaderCircle,
   Lock,
   MapPin,
@@ -52,9 +50,7 @@ import {
   MoveVertical,
   PaintBucket,
   Palette,
-  Pause,
   Pencil,
-  Play,
   Quote,
   Radical,
   Repeat,
@@ -69,8 +65,6 @@ import {
   Shuffle,
   Sigma,
   Signpost,
-  SkipBack,
-  SkipForward,
   Slash,
   Spline,
   Split,
@@ -2026,18 +2020,11 @@ function AdvancedTpSlModal({
   );
 }
 
+// Replay's own state and handlers are no longer part of this component's
+// contract — those props moved with the controls to ReplayControlBar.jsx.
+// What remains here is the drawing/tool rail and its flyouts.
 export default function ReplayPanel({
   marketCategory,
-  replayMode,
-  replayAccessStatus = 'idle',
-  replayAccessError = '',
-  liveConnectionStatus = 'polling',
-  isPlaying,
-  followReplay,
-  isReplayPricePickActive,
-  playbackSpeed,
-  replayIndex,
-  candleCount,
   tool,
   drawingColor,
   drawings,
@@ -2045,14 +2032,6 @@ export default function ReplayPanel({
   selectedDrawingId,
   selectedDrawing,
   toolSettings,
-  onStepBackward,
-  onTogglePlay,
-  onStepForward,
-  onResetReplay,
-  onFollowReplay,
-  onToggleReplayPricePick,
-  onRetryReplayAccess,
-  onPlaybackSpeedChange,
   onToolChange,
   onReadyToolChange,
   onDrawingColorChange,
@@ -2566,18 +2545,10 @@ export default function ReplayPanel({
         }`}
         style={getPanelStyle(chartTheme)}
       >
-        {(fullscreenDrawingOnly || groupedWorkspaceRail) && (
-          <div className="flex w-12 items-center justify-center">
-            <RailButton
-              icon={Play}
-              active={activeGroup === 'replay' || replayMode || isPlaying}
-              disabled={replayAccessStatus === 'checking-access'}
-              title={replayMode ? 'Replay Controls' : 'Start Replay'}
-              onClick={() => toggleGroup('replay')}
-              chartTheme={chartTheme}
-            />
-          </div>
-        )}
+        {/* The Replay rail button and its flyout were removed: entering and
+            leaving Replay is the chart header's toggle, and the controls now
+            live in ReplayControlBar.jsx, floating over the bottom of the
+            canvas whenever Replay is active. */}
         {(fullscreenDrawingOnly || groupedWorkspaceRail) ? TOOL_GROUPS.map((group, index) => (
           <ToolGroupRailItem
             key={group.name}
@@ -2592,14 +2563,6 @@ export default function ReplayPanel({
           />
         )) : (
           <>
-            <RailButton
-              icon={Play}
-              active={activeGroup === 'replay' || replayMode || isPlaying}
-              disabled={replayAccessStatus === 'checking-access'}
-              title={replayMode ? 'Replay Controls' : 'Start Replay'}
-              onClick={() => toggleGroup('replay')}
-              chartTheme={chartTheme}
-            />
             <RailButton
               icon={ActiveToolIcon}
               active={activeGroup === 'tools' || Boolean(tool)}
@@ -2717,109 +2680,6 @@ export default function ReplayPanel({
           </div>
         ) : null
       ))}
-
-      {activeGroup === 'replay' && (
-        <div className="pointer-events-auto">
-          <Flyout title="Replay" icon={Play} onClose={() => setActiveGroup(null)} chartTheme={chartTheme}>
-            {!replayMode && (
-              <ControlButton
-                icon={replayAccessStatus === 'checking-access' ? LoaderCircle : Crosshair}
-                onClick={onToggleReplayPricePick}
-                disabled={replayAccessStatus === 'checking-access'}
-                variant={isReplayPricePickActive ? 'warning' : 'primary'}
-                className="w-full"
-                chartTheme={chartTheme}
-              >
-                {replayAccessStatus === 'checking-access'
-                  ? 'Checking replay access…'
-                  : isReplayPricePickActive
-                    ? 'Click a candle to start'
-                    : 'Start Replay'}
-              </ControlButton>
-            )}
-
-            {replayAccessError && (
-              <div className="rounded-md border border-red-500/40 bg-red-500/10 p-2 text-[11px] text-red-400">
-                <div>{replayAccessError}</div>
-                <button type="button" onClick={onRetryReplayAccess} className="mt-1 font-semibold underline">
-                  Try again
-                </button>
-              </div>
-            )}
-
-            <div className="grid grid-cols-3 gap-2">
-              <ControlButton icon={SkipBack} onClick={onStepBackward} disabled={replayAccessStatus === 'checking-access'} className="px-0" title="Back" chartTheme={chartTheme}>
-                <span className="sr-only">Back</span>
-              </ControlButton>
-              <ControlButton
-                icon={isPlaying ? Pause : Play}
-                onClick={onTogglePlay}
-                disabled={replayAccessStatus === 'checking-access'}
-                variant="primary"
-                chartTheme={chartTheme}
-              >
-                {isPlaying ? 'Pause' : 'Play'}
-              </ControlButton>
-              <ControlButton icon={SkipForward} onClick={onStepForward} disabled={replayAccessStatus === 'checking-access'} className="px-0" title="Forward" chartTheme={chartTheme}>
-                <span className="sr-only">Forward</span>
-              </ControlButton>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <ControlButton icon={RotateCcw} onClick={onResetReplay} variant="danger" chartTheme={chartTheme}>
-                {replayMode ? 'Reset' : 'Go Latest'}
-              </ControlButton>
-              <ControlButton
-                icon={LocateFixed}
-                onClick={onFollowReplay}
-                active={followReplay}
-                variant={followReplay ? 'success' : 'neutral'}
-                chartTheme={chartTheme}
-              >
-                {replayMode && followReplay ? 'Following' : 'Follow'}
-              </ControlButton>
-            </div>
-
-            <ControlButton
-              icon={Crosshair}
-              onClick={onToggleReplayPricePick}
-              disabled={replayAccessStatus === 'checking-access'}
-              active={isReplayPricePickActive}
-              variant={isReplayPricePickActive ? 'warning' : 'neutral'}
-              className="w-full"
-              chartTheme={chartTheme}
-            >
-              {isReplayPricePickActive ? 'Pick Price' : 'Set Replay Price'}
-            </ControlButton>
-
-            <div className={`flex h-8 items-center justify-center rounded-md border px-2 text-xs ${isDarkTheme ? 'border-gray-700 bg-black-table-color text-gray-300' : 'border-slate-300 text-slate-600'}`}>
-              {replayMode
-                ? `Candle ${Math.min(replayIndex + 1, candleCount)} / ${candleCount}`
-                : `Live candles ${candleCount}`}
-            </div>
-
-            <div className={`space-y-2 border-t pt-3 ${sectionBorderClass}`}>
-              <div className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide ${labelTextClass}`}>
-                <Gauge size={13} />
-                <span>Speed</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {PLAYBACK_SPEEDS.map((speed) => (
-                  <ControlButton
-                    key={speed.value}
-                    onClick={() => onPlaybackSpeedChange(speed.value)}
-                    active={playbackSpeed === speed.value}
-                    className="h-7 px-2 text-[11px]"
-                    chartTheme={chartTheme}
-                  >
-                    {speed.label}
-                  </ControlButton>
-                ))}
-              </div>
-            </div>
-          </Flyout>
-        </div>
-      )}
 
       {!fullscreenDrawingOnly && !groupedWorkspaceRail && activeGroup === 'tools' && (
         <div className="pointer-events-auto" data-chart-ui="tools-flyout">

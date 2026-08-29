@@ -53,9 +53,9 @@ export default function AdminLogin() {
                     Back to home
                 </Link>
                 <div className="flex items-center gap-3">
-                    <div className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-md border ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-gray-300 bg-white'}`}>
+                    <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md">
                         {logo ? (
-                            <img src={logo} className="h-full w-full object-contain p-1" alt={`${appName} logo`} />
+                            <img src={logo} className="h-full w-full object-contain" alt={`${appName} logo`} />
                         ) : (
                             <span className={`text-xs font-bold ${isDark ? 'text-gray-200' : 'text-slate-800'}`}>BT</span>
                         )}
@@ -67,8 +67,8 @@ export default function AdminLogin() {
             <main className="mx-auto flex min-h-[calc(100vh-84px)] max-w-md items-center justify-center py-8">
                 <section className={`w-full animate-fadeInUp rounded-xl border p-6 shadow-2xl sm:p-8 ${isDark ? 'border-[#2a2e39] bg-[#131722] shadow-teal-950/10' : 'border-slate-200 bg-white shadow-slate-200/60'}`} style={{ animationDelay: '80ms' }}>
                     <div className="mb-6 text-center">
-                        <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-[#5eead4]/30 bg-[#2dd4bf]/10 shadow-[0_0_30px_rgba(45,212,191,.18)]">
-                            {logo ? <img src={logo} alt="" className="h-full w-full object-contain p-2" /> : <ShieldCheck className="h-7 w-7 text-[#5eead4]" />}
+                        <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl">
+                            {logo ? <img src={logo} alt="" className="h-full w-full object-contain" /> : <ShieldCheck className="h-7 w-7 text-[#5eead4]" />}
                         </div>
                         <h1 className={`mt-4 font-poppins text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-950'}`}>Administrator sign in</h1>
                         <p className={`mt-2 text-sm leading-6 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Authorized {appName} staff accounts only</p>

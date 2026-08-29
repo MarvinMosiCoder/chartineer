@@ -11,6 +11,7 @@ use App\Models\MarketBacktestSession;
 use App\Models\MarketBacktestRiskSetting;
 use App\Models\MarketBacktestSnapshot;
 use App\Models\MarketBacktestTrade;
+use App\Services\BacktestTradeNotificationService;
 use App\Services\CrossLiquidationService;
 use App\Services\CrossMarginService;
 use App\Services\CrossMarkService;
@@ -36,7 +37,8 @@ class MarketBacktestController extends Controller
         private MarketBacktestAdvancedAnalyticsService $advancedAnalyticsService,
         private CrossMarginService $crossMarginService,
         private CrossMarkService $crossMarkService,
-        private CrossLiquidationService $crossLiquidationService
+        private CrossLiquidationService $crossLiquidationService,
+        private BacktestTradeNotificationService $tradeNotifications
     ) {
     }
 
@@ -723,7 +725,7 @@ class MarketBacktestController extends Controller
                 return ['account' => $account->fresh(), 'riskGuardrails' => $riskEvaluation];
             }
 
-            MarketBacktestTrade::query()->create([
+            $openTrade = MarketBacktestTrade::query()->create([
                 'market_backtest_account_id' => $account->id,
                 'market_backtest_session_id' => $session?->id,
                 'market_backtest_position_id' => $position->id,
@@ -736,6 +738,8 @@ class MarketBacktestController extends Controller
                 'fee' => $sizing['entryFee'],
                 'executed_at_time' => $validated['executed_at_time'] ?? null,
             ]);
+
+            $this->tradeNotifications->recordFill($account, $position, $openTrade);
 
             $account->update([
                 'cash_balance' => round((float) $account->cash_balance - $sizing['requiredCash'], 8),
@@ -965,7 +969,7 @@ class MarketBacktestController extends Controller
                 'status' => 'open',
             ]);
 
-            MarketBacktestTrade::query()->create([
+            $triggerTrade = MarketBacktestTrade::query()->create([
                 'market_backtest_account_id' => $account->id,
                 'market_backtest_session_id' => $position->market_backtest_session_id,
                 'market_backtest_position_id' => $position->id,
@@ -978,6 +982,11 @@ class MarketBacktestController extends Controller
                 'fee' => $sizing['entryFee'],
                 'executed_at_time' => $validated['executed_at_time'] ?? null,
             ]);
+
+            // A pending order reaching its trigger price — the fill that
+            // openPosition() deliberately did not record when the order was
+            // merely placed.
+            $this->tradeNotifications->recordFill($account, $position, $triggerTrade);
 
             $account->update([
                 'cash_balance' => round((float) $account->cash_balance - $sizing['requiredCash'], 8),
@@ -1068,7 +1077,7 @@ class MarketBacktestController extends Controller
                 'take_profit' => $isPartial ? null : $position->take_profit,
             ]);
 
-            MarketBacktestTrade::query()->create([
+            $closeTrade = MarketBacktestTrade::query()->create([
                 'market_backtest_account_id' => $account->id,
                 'market_backtest_session_id' => $position->market_backtest_session_id,
                 'market_backtest_position_id' => $position->id,
@@ -1082,6 +1091,18 @@ class MarketBacktestController extends Controller
                 'pnl' => $netPnl,
                 'executed_at_time' => $validated['executed_at_time'] ?? null,
             ]);
+
+            // Every close path reaches here — manual, the client-detected SL/TP
+            // branch, and processPositionCandle()'s server-side managed
+            // triggers (liquidation, trailing stop, break-even, partial TP) —
+            // so this single call covers all of them.
+            $this->tradeNotifications->recordClose(
+                $account,
+                $position,
+                $closeTrade,
+                $validated['close_reason'] ?? 'manual',
+                $isPartial
+            );
 
             $account->update([
                 'cash_balance' => round((float) $account->cash_balance + $marginPortion + $grossPnl - $exitFee, 8),

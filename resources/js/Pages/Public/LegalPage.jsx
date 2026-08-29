@@ -43,8 +43,8 @@ export default function LegalPage({ title, description, effectiveDate, icon = 'p
                         Back to home
                     </Link>
                     <Link href="/" className="flex items-center gap-2">
-                        <div className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-md border ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-gray-300 bg-white'}`}>
-                            {applogo ? <img src={applogo} className="h-full w-full object-contain p-1" alt={`${appName} logo`} /> : <span className="text-xs font-bold">BT</span>}
+                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md">
+                            {applogo ? <img src={applogo} className="h-full w-full object-contain" alt={`${appName} logo`} /> : <span className="text-xs font-bold">BT</span>}
                         </div>
                         <span className="font-poppins text-sm font-bold"><AppNameWordmark name={appName} /></span>
                     </Link>

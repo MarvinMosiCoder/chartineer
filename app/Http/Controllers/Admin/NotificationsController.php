@@ -5,6 +5,7 @@ use App\Helpers\CommonHelpers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\AdmModels\AdmNotifications;
+use App\Services\BacktestTradeNotificationService;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Announcement;
@@ -74,12 +75,48 @@ class NotificationsController extends Controller{
     public function getLatestNotif()
     {
         $user = Auth::user();
-        $notifications = $user->notifications()->whereNull('dismissed_at')->orderBy('created_at','DESC')->limit(20)->get();
-        $unread_notifications = Auth::user()->notifications()->whereNull('dismissed_at')->where('is_read', 0)->orderBy('created_at','DESC')->count();
+        $tradeTypes = BacktestTradeNotificationService::TRADE_SOURCE_TYPES;
+
+        // Fetched per category rather than as one list: backtest trade
+        // notifications can be written far faster than system messages, so a
+        // single "latest 20" would let one Replay session push every account
+        // message out of the panel entirely.
+        // NOT IN never matches a NULL source_type (SQL evaluates NULL NOT IN
+        // (...) as NULL, not true), and every notification written before this
+        // feature existed has a NULL source_type — so the null case must be
+        // spelled out or the entire legacy feed disappears.
+        $isSystem = fn ($query) => $query->whereNotIn('source_type', $tradeTypes)->orWhereNull('source_type');
+
+        $systemNotifications = $user->notifications()->whereNull('dismissed_at')
+            ->where($isSystem)
+            ->orderBy('created_at', 'DESC')->limit(20)->get();
+        $tradeNotifications = $user->notifications()->whereNull('dismissed_at')
+            ->whereIn('source_type', $tradeTypes)
+            ->orderBy('created_at', 'DESC')->limit(20)->get();
+
+        $withCategory = fn ($items, string $category) => $items->map(function ($item) use ($category) {
+            $item->category = $category;
+
+            return $item;
+        });
+
+        $unreadSystem = $user->notifications()->whereNull('dismissed_at')->where('is_read', 0)
+            ->where($isSystem)->count();
+        $unreadTrades = $user->notifications()->whereNull('dismissed_at')->where('is_read', 0)
+            ->whereIn('source_type', $tradeTypes)->count();
         $unreadAnnouncements = Announcement::where('status', 'ACTIVE')->whereDoesntHave('admUsers', fn ($query) => $query->where('adm_user_id', $user->id))->count();
-        return response()->json(['notifications'=> $notifications,
-                            'unread_notifications' => $unread_notifications + $unreadAnnouncements,
-                            'alert_sound_enabled' => (bool) $user->alert_sound_enabled]);
+
+        return response()->json([
+            // `notifications` stays the combined list so any consumer that has
+            // not adopted the tabs keeps working unchanged.
+            'notifications' => $withCategory($systemNotifications, 'system')
+                ->concat($withCategory($tradeNotifications, 'trade'))
+                ->sortByDesc('created_at')->values(),
+            'unread_notifications' => $unreadSystem + $unreadTrades + $unreadAnnouncements,
+            'unread_system' => $unreadSystem + $unreadAnnouncements,
+            'unread_trades' => $unreadTrades,
+            'alert_sound_enabled' => (bool) $user->alert_sound_enabled,
+        ]);
     }
 
     public function viewNotification($id){
@@ -94,13 +131,20 @@ class NotificationsController extends Controller{
         $data['page_title'] = 'View All Notification';
         $user = $request->user();
         $readAnnouncementIds = $user->announcements()->pluck('announcements.id');
+        // `source_type` stays the literal 'notification'/'announcement'
+        // discriminator the read/dismiss endpoints expect — `category` is a
+        // separate axis (which tab the row belongs to) and must not be folded
+        // into it.
+        $tradeTypes = BacktestTradeNotificationService::TRADE_SOURCE_TYPES;
         $notifications = AdmNotifications::where('adm_user_id', $user->id)->latest()->get()->map(fn ($item) => [
             'key' => 'notification:'.$item->id, 'id' => $item->id, 'source_type' => 'notification',
+            'category' => in_array($item->source_type, $tradeTypes, true) ? 'trade' : 'system',
             'type' => $item->type, 'content' => $item->content, 'is_read' => (bool) $item->is_read,
             'created_at' => $item->created_at, 'metadata' => $item->metadata, 'url' => $item->url,
         ]);
         $announcements = Announcement::where('status', 'ACTIVE')->latest()->get()->map(fn ($item) => [
             'key' => 'announcement:'.$item->id, 'id' => $item->id, 'source_type' => 'announcement',
+            'category' => 'system',
             'type' => 'announcement', 'content' => $item->title.' — '.$item->message,
             'is_read' => $readAnnouncementIds->contains($item->id), 'created_at' => $item->created_at, 'metadata' => null,
         ]);

@@ -19,9 +19,9 @@ const LoginLoaderOverlay = ({ isDark, applogo }) => {
                 <div className="pointer-events-none absolute -left-16 -top-16 h-36 w-36 rounded-full bg-[#2dd4bf]/20 blur-3xl" />
                 <div className="pointer-events-none absolute -bottom-16 -right-16 h-36 w-36 rounded-full bg-emerald-400/10 blur-3xl" />
 
-                <div className="relative mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-[#5eead4]/30 bg-[#2dd4bf]/10 shadow-[0_0_30px_rgba(45,212,191,.18)]">
+                <div className="relative mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl">
                     {applogo ? (
-                        <img src={applogo} className="h-full w-full object-contain p-2" alt="" />
+                        <img src={applogo} className="h-full w-full object-contain" alt="" />
                     ) : (
                         <span className="font-poppins text-sm font-bold text-[#5eead4]">BT</span>
                     )}
@@ -143,9 +143,9 @@ const LoginPage = () => {
                         Back to home
                     </Link>
                     <div className="flex items-center gap-3">
-                        <div className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-md ${isDark ? 'bg-black-table-color' : 'bg-white'}`}>
+                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md">
                             {applogo ? (
-                                <img src={applogo} className="h-full w-full object-contain p-1" alt={`${appName} logo`} />
+                                <img src={applogo} className="h-full w-full object-contain" alt={`${appName} logo`} />
                             ) : (
                                 <span className={`text-xs font-bold ${isDark ? 'text-gray-200' : 'text-slate-800'}`}>BT</span>
                             )}

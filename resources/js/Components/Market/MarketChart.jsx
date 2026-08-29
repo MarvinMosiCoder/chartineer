@@ -23,6 +23,7 @@ import { DEFAULT_TIMEFRAME_FAVORITES } from './MarketChart/TimeframeSelector';
 import ChartSettingsModal from './MarketChart/ChartSettingsModal';
 import ChartStage from './MarketChart/ChartStage';
 import ReplayPanel from './MarketChart/ReplayPanel';
+import ReplayControlBar from './MarketChart/ReplayControlBar';
 import PositionsPanel from './MarketChart/PositionsPanel';
 import SubscriptionModal from './MarketChart/SubscriptionModal';
 import IndicatorSettingsPanel, { IndicatorClickTargets, IndicatorContextMenu } from './MarketChart/IndicatorSettingsPanel';
@@ -676,15 +677,21 @@ function buildFillToastMessage(position) {
   const modeLabel = getMarginModeLabel(position);
   const quantity = formatToastQuantity(position?.quantity);
   const price = formatOverlayPrice(position?.entryPrice);
-  const verb = position?.status === 'pending' ? 'order placed' : 'filled';
-  return { type: 'success', message: `${symbol} ${sideLabel} ${verb} · ${modeLabel} · ${quantity} @ ${price}` };
+  const isPending = position?.status === 'pending';
+  return {
+    type: { type: 'success', title: isPending ? 'Order placed' : 'Order filled' },
+    message: `${symbol} ${sideLabel} · ${modeLabel} · ${quantity} @ ${price}`,
+  };
 }
 
 function buildCancelToastMessage(position) {
   const symbol = position?.symbol ?? '';
   const sideLabel = getPositionSideLabel(position);
   const modeLabel = getMarginModeLabel(position);
-  return { type: 'success', message: `${symbol} ${sideLabel} order cancelled · ${modeLabel}` };
+  return {
+    type: { type: 'success', title: 'Order cancelled' },
+    message: `${symbol} ${sideLabel} · ${modeLabel}`,
+  };
 }
 
 // `position` is the pre-close snapshot looked up by the caller before the close request fires.
@@ -705,21 +712,47 @@ function buildCloseToastMessage(closedTrade, position) {
     ? ` (${pnlPercent >= 0 ? '+' : '-'}${Math.abs(pnlPercent).toFixed(1)}%)`
     : '';
 
+  // None of these are application errors — they are the risk system doing its
+  // job — so none use the 'error' variant, which is reserved for genuine
+  // failures. A losing outcome gets 'warning' (amber) instead of the red ✗ and
+  // "Error" heading that made a routine stop loss read as something broken.
+  // Each also passes an explicit title so the heading names the event rather
+  // than the severity.
   switch (closedTrade.reason) {
     case 'take_profit':
-      return { type: 'success', message: `${symbol} closed — Take Profit hit · ${modeLabel} · ${sign}${pnlText}${pnlPercentText}` };
+      return {
+        type: { type: 'success', title: 'Take Profit hit' },
+        message: `${symbol} closed · ${modeLabel} · ${sign}${pnlText}${pnlPercentText}`,
+      };
     case 'partial_take_profit': {
       const percent = Number(position?.partialTakeProfitPercent);
       const percentText = Number.isFinite(percent) ? `${percent}% ` : '';
-      return { type: 'success', message: `${symbol} partial take-profit · ${percentText}closed · ${modeLabel} · ${sign}${pnlText}` };
+      return {
+        type: { type: 'success', title: 'Partial Take Profit' },
+        message: `${symbol} · ${percentText}closed · ${modeLabel} · ${sign}${pnlText}`,
+      };
     }
     case 'stop_loss':
-      return { type: 'error', message: `${symbol} closed — Stop Loss hit · ${modeLabel} · ${sign}${pnlText}${pnlPercentText}` };
+      return {
+        type: { type: 'warning', title: 'Stop Loss hit' },
+        message: `${symbol} closed · ${modeLabel} · ${sign}${pnlText}${pnlPercentText}`,
+      };
     case 'liquidation':
-      return { type: 'error', message: `${symbol} liquidated · ${modeLabel} · ${sign}${pnlText}` };
+      // Still 'warning', not 'error': severe, but it is a real trading outcome
+      // rather than a malfunction. The title carries the weight.
+      return {
+        type: { type: 'warning', title: 'Position liquidated' },
+        message: `${symbol} · ${modeLabel} · ${sign}${pnlText}`,
+      };
     case 'manual':
     default:
-      return { type: safeNetPnl >= 0 ? 'success' : 'error', message: `${symbol} closed · ${modeLabel} · ${sign}${pnlText}` };
+      return {
+        type: {
+          type: safeNetPnl >= 0 ? 'success' : 'warning',
+          title: safeNetPnl >= 0 ? 'Position closed' : 'Closed at a loss',
+        },
+        message: `${symbol} · ${modeLabel} · ${sign}${pnlText}`,
+      };
   }
 }
 
@@ -3331,17 +3364,36 @@ export default function MarketReplayChart({
     const macdHistogramSeries = chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false, base: 0, visible: false }, 3);
 
     const handleVisibleRangeChange = () => {
-      if (overlayRenderFrameRef.current) {
-        cancelAnimationFrame(overlayRenderFrameRef.current);
-        overlayRenderFrameRef.current = null;
+      // lightweight-charts fires this on every pointer move of a drag — several
+      // times per frame. This used to cancel the pending overlay frame and then
+      // force its own synchronous flushSync render for each one, so a single
+      // drag ran N full renders per frame of a component with seven overlay
+      // memos keyed on overlayRenderVersion (drawings, trade markers, legend,
+      // pane geometry). Coalescing into one animation frame collapses that to
+      // at most one render per frame, which is all a 60Hz display can show
+      // anyway, while the flushSync inside the frame keeps the commit
+      // synchronous so the overlay still lands in the same paint as the candles
+      // it annotates — the property the original microtask was protecting.
+      //
+      // Sharing overlayRenderFrameRef with scheduleOverlayRender is deliberate:
+      // if a frame is already pending, the version bump it performs serves this
+      // event too, so the two paths never render the same frame twice.
+      //
+      // The animation frame also keeps flushSync out of React's own
+      // render/commit stack — lightweight-charts can fire this synchronously
+      // from inside it (the initial visible-range set during the chart-creation
+      // effect, doubly so under StrictMode), which is what the previous
+      // queueMicrotask was avoiding.
+      // During a held drag the dedicated per-frame loop (stepViewportDragOverlay)
+      // is already flushing every frame, so scheduling a second flush here would
+      // just render the same frame twice — same short-circuit, and same reason,
+      // as handleViewportInteraction's below.
+      if (!isViewportDraggingRef.current && overlayRenderFrameRef.current == null) {
+        overlayRenderFrameRef.current = requestAnimationFrame(() => {
+          overlayRenderFrameRef.current = null;
+          flushSync(() => setOverlayRenderVersion((version) => version + 1));
+        });
       }
-      // lightweight-charts can fire this synchronously from inside React's own render/commit
-      // (e.g. the initial visible-range set during the chart-creation effect, doubly so under
-      // StrictMode). Deferring to a microtask moves the flushSync outside that call stack —
-      // it still runs before the next paint, so the overlay stays lag-free during pan/zoom.
-      queueMicrotask(() => {
-        flushSync(() => setOverlayRenderVersion((version) => version + 1));
-      });
       if (isProgrammaticRangeChangeRef.current) return;
       setFollowReplay(false);
     };
@@ -5613,6 +5665,13 @@ export default function MarketReplayChart({
     setIsReplayPricePickActive(false);
   };
 
+  // Shared by the left rail's Replay surface and the in-chart ReplayControlBar
+  // so the access check can never drift between the two entry points.
+  const handleToggleReplayPricePick = async () => {
+    if (!await requireReplayAccess({ showProgress: true })) return;
+    setIsReplayPricePickActive((prev) => !prev);
+  };
+
   const handleCreatePriceAlert = useCallback((presetPrice = null) => {
     if (replayMode) {
       setAlertNotice('Price alerts are available for live markets only, not Replay/backtest.');
@@ -7447,6 +7506,30 @@ export default function MarketReplayChart({
             </div>
           )}
 
+          {/* Floats over the bottom of the canvas rather than taking a row, so
+              entering/leaving Replay never resizes the chart. Only rendered in
+              Replay — the chart header owns entering and exiting. */}
+          <ReplayControlBar
+            replayMode={replayMode}
+            isPlaying={isPlaying}
+            replayIndex={replayIndex}
+            candleCount={allCandles.length}
+            playbackSpeed={playbackSpeed}
+            followReplay={followReplay}
+            isReplayPricePickActive={isReplayPricePickActive}
+            replayAccessStatus={replayAccessStatus}
+            replayAccessError={replayAccessError}
+            onTogglePlay={togglePlay}
+            onStepBackward={stepBackward}
+            onStepForward={stepForward}
+            onResetReplay={resetReplay}
+            onFollowReplay={handleFollowReplay}
+            onToggleReplayPricePick={handleToggleReplayPricePick}
+            onRetryReplayAccess={() => requireReplayAccess({ showProgress: true })}
+            onPlaybackSpeedChange={setPlaybackSpeed}
+            chartTheme={chartTheme}
+          />
+
           <ReplayPanel
             className={isFullscreen ? 'fixed bottom-7 left-0 right-0 top-12 z-[70]' : 'absolute -left-[52px] bottom-7 right-0 top-0 z-50'}
             fullscreenDrawingOnly={isFullscreen}
@@ -7454,16 +7537,6 @@ export default function MarketReplayChart({
             marketCategory={marketCategory}
             fullscreenEntryPanelOpen={isFullscreenEntryPanelOpen}
             onFullscreenEntryPanelOpenChange={setIsFullscreenEntryPanelOpen}
-            replayMode={replayMode}
-            replayAccessStatus={replayAccessStatus}
-            replayAccessError={replayAccessError}
-            liveConnectionStatus={liveConnectionStatus}
-            isPlaying={isPlaying}
-            followReplay={followReplay}
-            isReplayPricePickActive={isReplayPricePickActive}
-            playbackSpeed={playbackSpeed}
-            replayIndex={replayIndex}
-            candleCount={allCandles.length}
             tool={tool}
             drawingColor={drawingColor}
             drawings={drawings}
@@ -7477,17 +7550,6 @@ export default function MarketReplayChart({
             backtestAccount={backtestAccount}
             backtestError={backtestError}
             isBacktestLoading={isBacktestLoading}
-            onStepBackward={stepBackward}
-            onTogglePlay={togglePlay}
-            onStepForward={stepForward}
-            onResetReplay={resetReplay}
-            onFollowReplay={handleFollowReplay}
-            onToggleReplayPricePick={async () => {
-              if (!await requireReplayAccess({ showProgress: true })) return;
-              setIsReplayPricePickActive((prev) => !prev);
-            }}
-            onRetryReplayAccess={() => requireReplayAccess({ showProgress: true })}
-            onPlaybackSpeedChange={setPlaybackSpeed}
             onToolChange={handleToolChange}
             onReadyToolChange={handleReadyToolChange}
             onDrawingColorChange={handleDrawingColorChange}

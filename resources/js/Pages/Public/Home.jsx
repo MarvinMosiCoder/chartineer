@@ -331,9 +331,9 @@ export default function Home() {
             >
                 <div className="mx-auto flex max-w-7xl items-center gap-3">
                     <Link href="/" className="flex min-w-0 flex-1 items-center gap-3">
-                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-gray-300 bg-white'}`}>
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md">
                             {applogo ? (
-                                <img src={applogo} className="h-full w-full object-contain p-1" alt={`${appName} logo`} />
+                                <img src={applogo} className="h-full w-full object-contain" alt={`${appName} logo`} />
                             ) : (
                                 <span className={`text-sm font-bold ${isDark ? 'text-gray-200' : 'text-slate-800'}`}>BT</span>
                             )}

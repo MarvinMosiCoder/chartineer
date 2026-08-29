@@ -17,6 +17,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('mysql:backup')->daily()->at('06:00');
         $schedule->command('payments:reconcile-paymongo --limit=50')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('subscriptions:send-renewal-reminders')->dailyAt('09:00')->withoutOverlapping();
+        $schedule->command('notifications:prune-trades')->dailyAt('04:00')->withoutOverlapping();
     }
 
     /**

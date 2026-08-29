@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, X, XCircle } from "lucide-react";
 import { useTheme } from "../../Context/ThemeContext";
 import CapitalizeFirstLetter from "../../Utilities/CapitalizeFirstLetter";
 
@@ -12,7 +12,20 @@ import CapitalizeFirstLetter from "../../Utilities/CapitalizeFirstLetter";
 // own `message` already went back to "" by the time that transition starts.
 const TOAST_TRANSITION_MS = 220;
 
-const DissapearingToast = ({ type, message, onDismiss }) => {
+// Visual variants. 'warning' exists because "an operation failed" and "a
+// normal outcome that lost money" are different things, and the toast used to
+// conflate them: a stop loss hitting is the risk system working exactly as
+// intended, but it rendered with a red ✗ under the heading "Error", which
+// reads as an application fault. Callers that want to say "this went badly for
+// your balance, but nothing is broken" use 'warning'; 'error' stays reserved
+// for genuine failures.
+const VARIANTS = {
+    success: { icon: CheckCircle2, badgeClass: "bg-emerald-500/15 text-emerald-500" },
+    warning: { icon: AlertTriangle, badgeClass: "bg-amber-500/15 text-amber-500" },
+    error: { icon: XCircle, badgeClass: "bg-red-500/15 text-red-500" },
+};
+
+const DissapearingToast = ({ type, title, message, onDismiss }) => {
     const { theme } = useTheme();
     const isDark = theme === "bg-skin-black";
     const [visible, setVisible] = useState(false);
@@ -25,22 +38,27 @@ const DissapearingToast = ({ type, message, onDismiss }) => {
                 clearTimeout(clearTimeoutRef.current);
                 clearTimeoutRef.current = null;
             }
-            setDisplayed({ type, message });
+            setDisplayed({ type, title, message });
             const raf = requestAnimationFrame(() => setVisible(true));
             return () => cancelAnimationFrame(raf);
         }
 
         setVisible(false);
         clearTimeoutRef.current = setTimeout(() => {
-            setDisplayed({ type: "", message: "" });
+            setDisplayed({ type: "", title: "", message: "" });
             clearTimeoutRef.current = null;
         }, TOAST_TRANSITION_MS);
         return () => clearTimeout(clearTimeoutRef.current);
-    }, [message, type]);
+    }, [message, title, type]);
 
     if (!displayed.message) return null;
 
-    const isSuccess = displayed.type === "success";
+    // Unknown types keep the old fallback: anything that isn't 'success' or
+    // 'warning' renders as an error, which is what every pre-existing caller
+    // relied on.
+    const variant = VARIANTS[displayed.type] ?? VARIANTS.error;
+    const VariantIcon = variant.icon;
+    const heading = displayed.title || CapitalizeFirstLetter(displayed.type || "error");
 
     // Portaled to document.body — same reasoning as this app's other
     // floating overlays (useConfirm()'s modal, watchlist modals): a plain
@@ -64,14 +82,12 @@ const DissapearingToast = ({ type, message, onDismiss }) => {
                 }`}
             >
                 <span
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                        isSuccess ? "bg-emerald-500/15 text-emerald-500" : "bg-red-500/15 text-red-500"
-                    }`}
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${variant.badgeClass}`}
                 >
-                    {isSuccess ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+                    <VariantIcon size={18} />
                 </span>
                 <div className="min-w-0 flex-1 pt-0.5">
-                    <p className="text-[13px] font-bold">{CapitalizeFirstLetter(displayed.type || (isSuccess ? "success" : "error"))}</p>
+                    <p className="text-[13px] font-bold">{heading}</p>
                     <p className={`mt-0.5 break-words text-[13px] leading-5 ${isDark ? "text-[#b2b5be]" : "text-slate-600"}`}>{displayed.message}</p>
                 </div>
                 <button
