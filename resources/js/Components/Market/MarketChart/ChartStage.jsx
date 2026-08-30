@@ -11,6 +11,8 @@ import {
   isPositionDrawing,
   MULTI_POINT_PATTERN_LABELS,
   normalizeVisibleRect,
+  orderBadgeGroupRightEdge,
+  orderLevelButtonRects,
 } from './utils';
 
 function formatSignedNumber(value, digits = 2) {
@@ -576,9 +578,10 @@ function BacktestOrderOverlay({ renderedBacktestOrders = [], overlaySize, chartT
     >
       {renderedBacktestOrders.map((item) => {
         const badgeY = Math.min(Math.max(item.y - badgeHeight / 2, 4), Math.max(overlaySize.height - badgeHeight - 2, 4));
-        const groupRightEdge = item.canCancel
-          ? Math.max(overlaySize.width - priceScaleGap - 34, 8)
-          : Math.max(overlaySize.width - priceScaleGap - 8, 8);
+        // Both the lane reservation and the button rects come from utils so this
+        // renderer and MarketChart's hitTestBacktestOrder cannot drift apart.
+        const addLevelButtons = orderLevelButtonRects(item, overlaySize.width, overlaySize.height);
+        const groupRightEdge = orderBadgeGroupRightEdge(overlaySize.width, item.canCancel, addLevelButtons.length);
 
         const hasPnl = Boolean(item.pnlText);
         const pnlWidth = hasPnl
@@ -596,10 +599,7 @@ function BacktestOrderOverlay({ renderedBacktestOrders = [], overlaySize, chartT
         const shouldCompressText = estimatedTextWidth > availableTextWidth;
 
         return (
-          // A ghost is an unset level. It is drawn faint and finely dotted so it
-          // never reads as protection the trader actually has, while keeping the
-          // right-edge handle below that says it can be dragged into one.
-          <g key={item.id} opacity={item.isGhost ? 0.45 : undefined}>
+          <g key={item.id}>
             <line
               x1={0}
               y1={item.y}
@@ -607,7 +607,7 @@ function BacktestOrderOverlay({ renderedBacktestOrders = [], overlaySize, chartT
               y2={item.y}
               stroke={item.color}
               strokeWidth={0.5}
-              strokeDasharray={item.isGhost ? '2,4' : item.dashed ? '7,5' : undefined}
+              strokeDasharray={item.dashed ? '7,5' : undefined}
               opacity="0.95"
             />
             <rect
@@ -632,6 +632,33 @@ function BacktestOrderOverlay({ renderedBacktestOrders = [], overlaySize, chartT
             >
               {item.label}
             </text>
+            {addLevelButtons.map((button) => {
+              const accent = button.kind === 'tp' ? '#22c55e' : '#ef4444';
+              return (
+                <g key={`${item.id}:add:${button.kind}`}>
+                  <rect
+                    x={button.x}
+                    y={button.y}
+                    width={button.width}
+                    height={button.height}
+                    rx={3}
+                    fill={badgeFill}
+                    stroke={accent}
+                    strokeWidth="1"
+                  />
+                  <text
+                    x={button.x + button.width / 2}
+                    y={button.y + button.height / 2 + 3.5}
+                    textAnchor="middle"
+                    fill={accent}
+                    fontSize="9"
+                    fontWeight="700"
+                  >
+                    {button.kind.toUpperCase()}
+                  </text>
+                </g>
+              );
+            })}
             {hasPnl && (
               <>
                 <rect
@@ -1648,7 +1675,7 @@ export default function ChartStage({
   currentPriceCoordinate,
   isSpacePressed,
   isReplayPricePickActive,
-  isHoveringBacktestOrderCancel,
+  isHoveringBacktestOrderButton,
   isHoveringBacktestOrderLine,
   tool,
   chartTheme,
@@ -1719,7 +1746,7 @@ export default function ChartStage({
           ? 'grabbing'
           : isSpacePressed
             ? 'grab'
-          : isHoveringBacktestOrderCancel
+          : isHoveringBacktestOrderButton
             ? 'pointer'
           : isHoveringBacktestOrderLine
             ? 'ns-resize'

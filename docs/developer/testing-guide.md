@@ -33,6 +33,7 @@ Current automated coverage includes PayMongo client/signature/route behavior and
 - Duplicate clicks, concurrent tabs, delayed/out-of-order requests.
 - Empty data, invalid input, timeout, upstream failure, throttling.
 - Dark/light theme and desktop/mobile layout.
+- Spotlight tours (`WorkspaceTour.jsx`): step through every step at a wide, a mid, and a phone viewport — the tooltip must stay fully on screen and must not cover the element it highlights whenever there is room elsewhere.
 - Cleanup after navigation/unmount.
 
 ## Documentation validation
@@ -61,6 +62,7 @@ After documentation changes:
 - Confirm right-axis prices omit trailing `.00` and thousands separators while retaining meaningful fractional precision.
 - Right-click the chart and verify Clear Tools is disabled with no drawings, confirms before clearing drawings, and remains undoable.
 - Switch markets while a live update arrives and confirm the skeleton remains until the full history response.
+- Stub `/api/klines` to fail (502 `No candle data returned`) and confirm the chart retries three times behind the skeleton, then — with no cached candles — shows a muted "No chart data loaded" + Try again on an empty chart rather than red error text; with cached candles on screen, confirm the chart stays visible and only the "Showing saved candles" chip appears. Fail only the first request and confirm the chart recovers with no message at all.
 - Disconnect each exchange WebSocket and confirm one coalesced 10-second REST fallback refresh serves concurrent charts, hidden tabs stop polling, and visibility resumes immediately.
 - Mock exchange 429/418 responses and verify `Retry-After`, shared cooldown, stale success, bounded pagination, one compatible fallback, and recovery without a request storm.
 - Verify BingX Spot uses its Spot socket, MEXC Spot protobuf candles decode, and unsupported MEXC timeframes are absent and rejected server-side.
@@ -70,7 +72,7 @@ After documentation changes:
 - Change only the timeframe and confirm the current chart stays visible beneath a light text-free, blur-free blocking shield while header controls remain available; then change the symbol and confirm the full loading skeleton still appears.
 - Create drawings and buy/sell executions on 5m, switch through 1h and back, and confirm drawings, markers, Price Range handles, and long/short right-axis guides remain available.
 - Reprice an open simulated entry and verify quantity is fixed while margin, fee, cash, opening trade, and PnL inputs update atomically; verify invalid risk and insufficient cash roll back.
-- On a position with no stop or target, confirm faint `SET SL`/`SET TP` ghost lines appear, a click on one writes nothing, a drag past a few pixels commits a real level, and dragging either across the entry clamps just short of it instead of returning a 422; confirm no ghost is drawn when the entry line is off-pane or the offset would collide with it.
+- On a position with no stop or target, confirm `TP`/`SL` pills render on its entry-line badge (only the missing one, when just one is missing); clicking either creates a real, immediately draggable level a short distance from the entry on the correct side, and the pill then disappears. Dragging either across the entry clamps just short of it instead of returning a 422. With the entry line near the top or bottom of the pane, the buttons stay on-screen and the level is still accepted.
 - In fullscreen, open Enter Position and verify the visible chart remains interactive, the right price scale is unobstructed on desktop, and the responsive sheet remains non-modal.
 - Verify the bottom Market Feed details, live timezone clock, valid profile-timezone persistence, and invalid-timezone rejection.
 - Return from Replay to Live and confirm the last Replay price guide remains visible immediately without changing timeframe, live candles resume, and saved horizontal-line drawings remain intact.

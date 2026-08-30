@@ -3,24 +3,44 @@ import { usePage } from '@inertiajs/react';
 import axios from 'axios';
 import { Megaphone, X } from 'lucide-react';
 import { useTheme } from '../../Context/ThemeContext';
+import { useAnnouncementGate } from '../../Context/AnnouncementGateContext';
 
 export default function AnnouncementGate() {
     const { auth } = usePage().props;
     const { theme } = useTheme();
+    const { markAnnouncementsResolved } = useAnnouncementGate();
     const isDark = theme === 'bg-skin-black';
     const [announcements, setAnnouncements] = useState([]);
     const [index, setIndex] = useState(0);
     const [dismissed, setDismissed] = useState(false);
     const [loading, setLoading] = useState(false);
     const [fetched, setFetched] = useState(false);
+    // `fetched` flips synchronously when the request goes out, so it cannot stand
+    // in for "the request came back" — the spotlight tours wait on this instead.
+    const [settled, setSettled] = useState(false);
 
     useEffect(() => {
-        if (!auth?.announcement || fetched) return;
+        if (!auth?.announcement) {
+            setSettled(true);
+            return;
+        }
+        if (fetched) return;
         setFetched(true);
         axios.get('/unread-announcement')
             .then(({ data }) => setAnnouncements(data?.unreadAnnouncements ?? []))
-            .catch(() => {});
+            .catch(() => {})
+            .finally(() => setSettled(true));
     }, [auth?.announcement, fetched]);
+
+    const hasUnreadToShow = !dismissed && index < announcements.length;
+
+    // Release whatever this modal is holding back (currently the page spotlight
+    // tours) once it is genuinely done — every announcement acknowledged, closed
+    // via the X, nothing unread, or the lookup failed. A failed lookup must still
+    // release, or a network blip would suppress the tour for the whole session.
+    useEffect(() => {
+        if (settled && !hasUnreadToShow) markAnnouncementsResolved();
+    }, [settled, hasUnreadToShow, markAnnouncementsResolved]);
 
     if (dismissed || !announcements.length || index >= announcements.length) {
         return null;

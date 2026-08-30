@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 
 import {
   clampRiskPrice,
-  GHOST_LINE_MIN_GAP_PX,
-  GHOST_LINE_OFFSET_PX,
-  ghostLineY,
+  ORDER_LEVEL_BUTTON_GAP,
+  ORDER_LEVEL_BUTTON_HEIGHT,
+  ORDER_LEVEL_BUTTON_WIDTH,
+  orderBadgeGroupRightEdge,
+  orderLevelButtonRects,
   RISK_CLAMP_EPSILON,
 } from '../../resources/js/Components/Market/MarketChart/utils.js';
 
@@ -62,51 +64,54 @@ test('passes the price through when there is no usable entry to clamp against', 
   assert.equal(clampRiskPrice('sl', 'long', 0, 130), 130);
 });
 
-// --- ghostLineY -----------------------------------------------------------
+// --- add-level button geometry -------------------------------------------
+//
+// These replace the old ghostLineY suite: unset SL/TP levels are no longer
+// free-floating ghost lines but buttons on the entry line's badge. The geometry
+// is worth pinning because it is computed twice — ChartStage draws from it and
+// MarketChart hit-tests from it — and a button the two disagree about looks
+// clickable while doing nothing.
 
-test('places a ghost on the correct side of the entry for each side and kind', () => {
-  const entryY = 300;
+const WIDTH = 900;
 
-  // Screen y grows downward: a long's target sits above its entry, so lower y.
-  assert.equal(ghostLineY(entryY, 'tp', 'long', PANE), entryY - GHOST_LINE_OFFSET_PX);
-  assert.equal(ghostLineY(entryY, 'sl', 'long', PANE), entryY + GHOST_LINE_OFFSET_PX);
-  assert.equal(ghostLineY(entryY, 'tp', 'short', PANE), entryY + GHOST_LINE_OFFSET_PX);
-  assert.equal(ghostLineY(entryY, 'sl', 'short', PANE), entryY - GHOST_LINE_OFFSET_PX);
+test('reserves a lane so the buttons never overlap the price badge group', () => {
+  const withNone = orderBadgeGroupRightEdge(WIDTH, false, 0);
+  const withTwo = orderBadgeGroupRightEdge(WIDTH, false, 2);
+
+  assert.equal(withNone - withTwo, 2 * (ORDER_LEVEL_BUTTON_WIDTH + ORDER_LEVEL_BUTTON_GAP));
 });
 
-test('keeps a ghost inside the pane when the entry sits near an edge', () => {
-  const nearTop = ghostLineY(30, 'tp', 'long', PANE);
-  const nearBottom = ghostLineY(PANE - 30, 'sl', 'long', PANE);
-
-  assert.ok(nearTop >= 0 && nearTop <= PANE, 'ghost escaped the top of the pane');
-  assert.ok(nearBottom >= 0 && nearBottom <= PANE, 'ghost escaped the bottom of the pane');
+test('leaves extra room for the cancel x when the line can be cancelled', () => {
+  assert.ok(orderBadgeGroupRightEdge(WIDTH, true, 0) < orderBadgeGroupRightEdge(WIDTH, false, 0));
 });
 
-test('gives up rather than stacking a ghost on top of the entry line', () => {
-  // An entry pinned to the very top leaves no room above it for a long's TP:
-  // the clamp would drop the ghost within a few pixels of the entry, where it
-  // is neither grabbable nor tellable apart from it.
-  assert.equal(ghostLineY(10, 'tp', 'long', PANE), null);
-  assert.equal(ghostLineY(PANE - 10, 'sl', 'long', PANE), null);
+test('lays the buttons out left to right in the order given, without overlapping', () => {
+  const rects = orderLevelButtonRects({ y: 300, canCancel: false, addLevels: ['tp', 'sl'] }, WIDTH, 600);
+
+  assert.deepEqual(rects.map((rect) => rect.kind), ['tp', 'sl']);
+  assert.equal(rects[1].x - rects[0].x, ORDER_LEVEL_BUTTON_WIDTH + ORDER_LEVEL_BUTTON_GAP);
+  assert.ok(rects[0].x + rects[0].width <= rects[1].x, 'buttons overlap');
 });
 
-test('the pane-edge clamp never returns a ghost closer than the minimum gap', () => {
-  for (let entryY = 0; entryY <= PANE; entryY += 5) {
-    for (const kind of ['sl', 'tp']) {
-      for (const side of ['long', 'short']) {
-        const y = ghostLineY(entryY, kind, side, PANE);
-        if (y === null) continue;
-        assert.ok(
-          Math.abs(y - entryY) >= GHOST_LINE_MIN_GAP_PX,
-          `ghost at entryY=${entryY} ${side} ${kind} landed ${Math.abs(y - entryY)}px from the entry`
-        );
-      }
-    }
+test('centres the buttons on the line and clamps them inside the pane', () => {
+  const [middle] = orderLevelButtonRects({ y: 300, addLevels: ['sl'] }, WIDTH, 600);
+  assert.equal(middle.y, 300 - ORDER_LEVEL_BUTTON_HEIGHT / 2);
+
+  // A line at or past an edge must still produce a button the pointer can reach.
+  for (const y of [-40, 0, 4, 596, 600, 900]) {
+    const [rect] = orderLevelButtonRects({ y, addLevels: ['sl'] }, WIDTH, 600);
+    assert.ok(rect.y >= 0, `button escaped the top at y=${y}`);
+    assert.ok(rect.y + rect.height <= 600, `button escaped the bottom at y=${y}`);
   }
 });
 
-test('returns null for input it cannot place', () => {
-  assert.equal(ghostLineY(null, 'sl', 'long', PANE), null);
-  assert.equal(ghostLineY(300, 'entry', 'long', PANE), null);
-  assert.equal(ghostLineY(300, 'sl', 'long', 0), null);
+test('emits nothing when the position is missing no levels', () => {
+  assert.deepEqual(orderLevelButtonRects({ y: 300, addLevels: null }, WIDTH, 600), []);
+  assert.deepEqual(orderLevelButtonRects({ y: 300, addLevels: [] }, WIDTH, 600), []);
+  assert.deepEqual(orderLevelButtonRects({ y: 300 }, WIDTH, 600), []);
+});
+
+test('keeps the buttons on-screen on a very narrow chart', () => {
+  const rects = orderLevelButtonRects({ y: 100, canCancel: true, addLevels: ['tp', 'sl'] }, 140, 400);
+  rects.forEach((rect) => assert.ok(rect.x >= 0, 'button pushed off the left edge'));
 });

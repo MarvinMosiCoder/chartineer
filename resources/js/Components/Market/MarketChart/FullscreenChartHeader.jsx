@@ -86,10 +86,14 @@ export default function FullscreenChartHeader({
       </div>
 
       <div className="min-w-0 flex-1 overflow-visible px-1.5">
+        {/* `shadow-none` was dropped from this className: it never took effect
+            (Tailwind emits `.shadow-xl` after `.shadow-none`, so ChartHeader's base
+            class won regardless of order here), and that base no longer sets a
+            shadow at all. */}
         <ChartHeader
           {...chartHeaderProps}
           compact
-          className="h-10 flex-nowrap border-0 bg-transparent p-0 shadow-none"
+          className="h-10 flex-nowrap border-0 bg-transparent p-0"
         />
       </div>
 

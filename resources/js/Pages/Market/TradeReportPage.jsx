@@ -10,6 +10,7 @@ import ImportedTrades from '../../Components/Market/ImportedTrades';
 import ContentPanel from '../../Components/Table/ContentPanel';
 import WorkspaceTour from '../../Components/Market/WorkspaceTour';
 import { useTheme } from '../../Context/ThemeContext';
+import { useAnnouncementGate } from '../../Context/AnnouncementGateContext';
 
 const TOUR_STEPS = [
     { selector: '[data-tour="journal-risk"]', title: 'Cap your risk', description: 'Turn on daily-loss, trade-count, concurrent-position, or loss-streak limits before you start a session. Warning mode just flags a breach; enforced mode blocks the new entry.' },
@@ -28,6 +29,10 @@ const TradeReportPage = () => {
     const [tourStep, setTourStep] = useState(() => (
         new URLSearchParams(window.location.search).get('tour') === '1' || !auth?.user?.journal_tour_completed_at ? 0 : -1
     ));
+    // The unread-announcement modal (AnnouncementGate, mounted in layout.jsx) owns
+    // the screen first on login; this tour holds at its current step until it is done.
+    const { announcementsPending } = useAnnouncementGate();
+    const showTour = tourStep >= 0 && !announcementsPending;
 
     const finishTour = () => {
         setTourStep(-1);
@@ -37,7 +42,7 @@ const TradeReportPage = () => {
     return (
         <>
             <Head title="Trade Report" />
-            {tourStep >= 0 && (
+            {showTour && (
                 <WorkspaceTour step={tourStep} steps={TOUR_STEPS} onStep={setTourStep} onFinish={finishTour} dark={isDark} />
             )}
             <div className="mb-1 flex items-center justify-end">

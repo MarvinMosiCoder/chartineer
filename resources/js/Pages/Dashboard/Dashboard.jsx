@@ -105,12 +105,21 @@ const Dashboard = ({ userMetrics = {}, subscriptionMetrics = {}, subscriptionSta
             <Head title={workspaceMode ? "Workspace Chart" : "Dashboard"} />
             {workspaceMode || !isSuperAdmin ? (
                 <WatchlistProvider userId={auth?.user?.id}>
-                    {/* Cancels AppContent's horizontal `p-2 sm:p-3` for this page only,
-                        so the chart runs edge to edge. Done here rather than by dropping
-                        that padding in AppContent, which would also un-pad every other
-                        trader page (journal, feedback, subscription) that wants it. */}
-                    <div className="-mx-2 space-y-2 sm:-mx-3">
-                        <div className={`flex items-center justify-between border-b px-3 pb-2 ${isDark ? 'border-[#2a2e39]' : 'border-slate-200'}`}>
+                    {/* Cancels AppContent's `p-2 sm:p-3` horizontally *and* on top for this
+                        page only, so the chart runs edge to edge and the workspace band sits
+                        flush under the navbar with no gap above it. Done here rather than by
+                        dropping that padding in AppContent, which would also un-pad every
+                        other trader page (journal, feedback, subscription) that wants it. */}
+                    <div className="-mx-2 -mt-2 space-y-1 sm:-mx-3 sm:-mt-3">
+                        {/* Paints its own surface rather than letting the page background
+                            show through, so the heading reads as a band instead of floating
+                            on nothing. `py-2` (not the old `pb-2`) now that the background
+                            makes the missing top padding visible.
+                            The dark value is CHART_THEMES.dark.panel (#151617) from
+                            MarketChart.jsx, NOT the app shell's #131722, so the band reads as
+                            one surface with the chart below it — keep the two in sync. Light
+                            needs no equivalent: the chart's light panel is #ffffff already. */}
+                        <div className={`flex items-center justify-between border-b px-3 py-2 ${isDark ? 'border-[#2a2e39] bg-[#151617]' : 'border-slate-200 bg-white'}`}>
                             <div>
                                 <h1 className={`text-sm font-bold ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>Trading workspace</h1>
                                 <p className="text-[10px] uppercase tracking-[0.16em] text-[#787b86]">Analyze · Replay · Execute · Review</p>

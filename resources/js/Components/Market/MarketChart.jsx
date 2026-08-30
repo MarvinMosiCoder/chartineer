@@ -26,10 +26,11 @@ import ReplayPanel from './MarketChart/ReplayPanel';
 import ReplayControlBar from './MarketChart/ReplayControlBar';
 import PositionsPanel from './MarketChart/PositionsPanel';
 import SubscriptionModal from './MarketChart/SubscriptionModal';
-import IndicatorSettingsPanel, { IndicatorClickTargets, IndicatorContextMenu } from './MarketChart/IndicatorSettingsPanel';
+import IndicatorSettingsPanel, { IndicatorClickTargets, IndicatorContextMenu, defaultEmaLines, normalizeEmaLines } from './MarketChart/IndicatorSettingsPanel';
 import { createLiveCandleStream } from './MarketChart/liveCandleStream';
 import FullscreenChartHeader from './MarketChart/FullscreenChartHeader';
 import WorkspaceTour from './WorkspaceTour';
+import { useAnnouncementGate } from '../../Context/AnnouncementGateContext';
 import { useAnchoredTooltip, AnchoredTooltipPortal } from '../Tooltip/AnchoredTooltip';
 import {
   CHART_HEIGHT,
@@ -53,8 +54,7 @@ import {
   clampRiskPrice,
   CYCLE_TOOL_TYPES,
   distanceToSegment,
-  GHOST_DRAG_THRESHOLD_PX,
-  ghostLineY,
+  orderLevelButtonRects,
   estimateDrawingLogicalFromTime,
   estimateLogicalFromTime,
   estimateTimeFromLogical,
@@ -172,13 +172,21 @@ const CHART_THEMES = {
     background: '#ffffff',
     panel: '#ffffff',
     panelControl: '#f8fafc',
-    text: '#334155',
+    // Near-black rather than slate-700. This is `layout.textColor`, i.e. the right
+    // price scale and bottom time axis, rendered at 9-10px where a mid-gray washes
+    // out against the white panel. Dark theme keeps its lighter `#d1d4dc` for the
+    // same contrast reason in the other direction.
+    text: '#0f172a',
     grid: 'rgba(100, 116, 139, 0.08)',
     border: '#cbd5e1',
     overlay: 'rgba(255, 255, 255, 0.76)',
     selectedReplayPriceMarker: '#363a45',
   },
 };
+
+// Screen distance from the entry line at which a TP/SL added from the entry-line
+// buttons is placed. See addBacktestPositionLevel for why this is pixels, not percent.
+const ADDED_LEVEL_OFFSET_PX = 64;
 
 function resolveChartTheme(adminTheme) {
   return adminTheme === 'bg-skin-black' ? CHART_THEMES.dark : CHART_THEMES.light;
@@ -193,6 +201,16 @@ function ChartDotsLoader({ isDark }) {
     </div>
   );
 }
+
+// Slow phones and slow upstreams are the common candle-fetch failure here, not
+// markets that genuinely have no data: `/api/klines` answers 502 "No candle data
+// returned" when its own upstream call times out, and a dropped mobile connection
+// surfaces as a bare fetch TypeError. Those get retried behind the loading
+// skeleton (see fetchCandles); a 401/403/404/422 is a real answer and is not
+// retried.
+const TRANSIENT_CANDLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const CANDLE_FETCH_ATTEMPTS = 3;
+const CANDLE_RETRY_DELAYS_MS = [900, 2400];
 
 function ChartSkeletonLoader({ isDark }) {
   const candles = [
@@ -774,18 +792,6 @@ function formatFeedAge(seconds) {
   return remainder ? `${minutes}m ${remainder}s ago` : `${minutes}m ago`;
 }
 
-function formatLocalFeedTime(timestamp) {
-  if (!Number.isFinite(Number(timestamp))) return 'Waiting for first update';
-  return new Date(Number(timestamp)).toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
-
 function ChartBottomBar({
   chartTheme,
   visibleLiveStatus,
@@ -793,7 +799,6 @@ function ChartBottomBar({
   liveFeedInfo,
   isLiveFeedDelayed,
   liveFeedAgeSeconds,
-  latestCandleStartedAt,
   exchange,
   marketCategory,
   timezone,
@@ -877,11 +882,8 @@ function ChartBottomBar({
           </div>
           <dl className="space-y-1.5">
             <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Internet</dt><dd className="text-right font-semibold">{browserOnline ? 'Online' : 'Offline'}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Feed</dt><dd className="text-right font-semibold">{liveFeedInfo.source === 'websocket' ? 'WebSocket' : liveFeedInfo.source === 'rest' ? 'REST fallback' : 'Waiting for first update'}</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Market</dt><dd className="text-right font-semibold">{exchange.toUpperCase()} · {marketCategory === 'spot' ? 'Spot' : 'Futures'}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Last update</dt><dd className="max-w-[165px] text-right font-semibold">{formatLocalFeedTime(liveFeedInfo.receivedAt)}</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Chart delay</dt><dd className={`text-right font-semibold ${isLiveFeedDelayed ? 'text-amber-500' : ''}`}>{formatFeedAge(liveFeedAgeSeconds)}</dd></div>
-            <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Candle started</dt><dd className="max-w-[165px] text-right font-semibold">{formatLocalFeedTime(latestCandleStartedAt)}</dd></div>
           </dl>
         </div>
       </div>
@@ -1100,7 +1102,12 @@ export default function MarketReplayChart({
   const candleSeriesRef = useRef(null);
   const volumeSeriesRef = useRef(null);
   const smaSeriesRef = useRef(null);
-  const emaSeriesRef = useRef(null);
+  // EMA is the one indicator with a variable number of series, so it gets a Map keyed by
+  // line id instead of a single ref. `emaSeriesChartRef` records which chart instance the
+  // Map's series belong to: a chart teardown disposes its series with it, so a stale Map
+  // pointing at a previous chart must be dropped wholesale rather than reused.
+  const emaSeriesMapRef = useRef(new Map());
+  const emaSeriesChartRef = useRef(null);
   const rsiSeriesRef = useRef(null);
   const macdSeriesRef = useRef(null);
   const macdSignalSeriesRef = useRef(null);
@@ -1204,8 +1211,15 @@ export default function MarketReplayChart({
       : DEFAULT_CANDLE_SIZE;
   });
   const [indicators, setIndicators] = useState(() => {
-    try { return { volume: true, volumeVisible: true, volumeSize: 20, sma: false, smaVisible: true, smaPeriod: 20, smaColor: '#2dd4bf', smaLineWidth: 2, ema: false, emaVisible: true, emaPeriod: 20, emaColor: '#f59e0b', emaLineWidth: 2, rsi: false, rsiVisible: true, rsiPeriod: 14, rsiSize: 25, rsiColor: '#a855f7', rsiLineWidth: 2, macd: false, macdVisible: true, macdFastPeriod: 12, macdSlowPeriod: 26, macdSignalPeriod: 9, macdSize: 25, macdColor: '#2dd4bf', macdSignalColor: '#f59e0b', macdUpColor: '#26a69a', macdDownColor: '#ef5350', macdLineWidth: 2, ...JSON.parse(localStorage.getItem(indicatorStorageKey) || '{}') }; }
-    catch { return { volume: true, volumeVisible: true, volumeSize: 20, sma: false, smaVisible: true, smaPeriod: 20, smaColor: '#2dd4bf', smaLineWidth: 2, ema: false, emaVisible: true, emaPeriod: 20, emaColor: '#f59e0b', emaLineWidth: 2, rsi: false, rsiVisible: true, rsiPeriod: 14, rsiSize: 25, rsiColor: '#a855f7', rsiLineWidth: 2, macd: false, macdVisible: true, macdFastPeriod: 12, macdSlowPeriod: 26, macdSignalPeriod: 9, macdSize: 25, macdColor: '#2dd4bf', macdSignalColor: '#f59e0b', macdUpColor: '#26a69a', macdDownColor: '#ef5350', macdLineWidth: 2 }; }
+    const base = { volume: true, volumeVisible: true, volumeSize: 20, sma: false, smaVisible: true, smaPeriod: 20, smaColor: '#2dd4bf', smaLineWidth: 2, ema: false, emaVisible: true, emaLines: defaultEmaLines(), rsi: false, rsiVisible: true, rsiPeriod: 14, rsiSize: 25, rsiColor: '#a855f7', rsiLineWidth: 2, macd: false, macdVisible: true, macdFastPeriod: 12, macdSlowPeriod: 26, macdSignalPeriod: 9, macdSize: 25, macdColor: '#2dd4bf', macdSignalColor: '#f59e0b', macdUpColor: '#26a69a', macdDownColor: '#ef5350', macdLineWidth: 2 };
+    let stored = {};
+    try { stored = JSON.parse(localStorage.getItem(indicatorStorageKey) || '{}') || {}; } catch { stored = {}; }
+    // `emaLines` is resolved separately rather than by plain spread: `base` always carries
+    // the 9/20/50/200 default, so a browser holding the pre-multi-line scalar shape
+    // (`emaPeriod`/`emaColor`/`emaLineWidth`, no `emaLines` key) would have its own EMA
+    // silently replaced by that default. normalizeEmaLines() reads the stored object, not
+    // the merged one, so it can tell "never had a list" from "has an empty list".
+    return { ...base, ...stored, emaLines: normalizeEmaLines(stored) };
   });
   const [selectedIndicator, setSelectedIndicator] = useState(null);
   const [expandedIndicator, setExpandedIndicator] = useState(null);
@@ -1226,6 +1240,7 @@ export default function MarketReplayChart({
   const [hoveredLegendCandle, setHoveredLegendCandle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [candleReloadNonce, setCandleReloadNonce] = useState(0);
   const [showTimeframeLoadingHint, setShowTimeframeLoadingHint] = useState(false);
 
   const [replayMode, setReplayMode] = useState(false);
@@ -1306,6 +1321,11 @@ export default function MarketReplayChart({
   }, [timezone]);
   const replayAccessAllowedRef = useRef(false);
   const [tourStep, setTourStep] = useState(() => new URLSearchParams(window.location.search).get('tour') === '1' || !tourCompleted ? 0 : -1);
+  // On a first login both this tour and the unread-announcement modal want the
+  // screen. The modal wins; the tour holds at its current step (not cancelled —
+  // it appears on the exact step it was on) until AnnouncementGate is done.
+  const { announcementsPending } = useAnnouncementGate();
+  const showTour = tourStep >= 0 && !announcementsPending;
   const tourSteps = [
     {selector:'[data-tour="market"]',title:'Choose your market',description:'Select a symbol and choose Spot or Futures.'},
     {selector:'[data-tour="timeframe"]',title:'Set the timeframe',description:'Choose the candle interval for your analysis.'},
@@ -1356,7 +1376,7 @@ export default function MarketReplayChart({
   const [tempDrawing, setTempDrawing] = useState(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState(null);
   const [hoveredPositionDrawingId, setHoveredPositionDrawingId] = useState(null);
-  const [isHoveringBacktestOrderCancel, setIsHoveringBacktestOrderCancel] = useState(false);
+  const [isHoveringBacktestOrderButton, setIsHoveringBacktestOrderButton] = useState(false);
   const [isHoveringBacktestOrderLine, setIsHoveringBacktestOrderLine] = useState(false);
   const [toolSettings, setToolSettings] = useState({});
   const [backtestAccount, setBacktestAccount] = useState(null);
@@ -1458,10 +1478,6 @@ export default function MarketReplayChart({
     return () => window.clearTimeout(timerId);
   }, [isTimeframeLoading]);
 
-  const latestCandleStartedAt = useMemo(() => {
-    const candleTime = Number(visibleCandles.at(-1)?.time);
-    return Number.isFinite(candleTime) ? candleTime * 1000 : null;
-  }, [visibleCandles]);
   const liveFeedAgeSeconds = liveFeedInfo.receivedAt
     ? Math.max(0, Math.floor((feedStatusClock - liveFeedInfo.receivedAt) / 1000))
     : null;
@@ -3090,42 +3106,27 @@ export default function MarketReplayChart({
         // ticket instead of posting. Dropping it here is what sent the literal id
         // 'draft' to the API and surfaced Laravel's raw route-model-binding error.
         cancelDraft: Boolean(options.cancelDraft),
+        // Which levels this position is still missing, rendered as buttons on the
+        // entry badge. Only ever set on an entry line; every other line ignores it.
+        addLevels: options.addLevels ?? null,
         label: options.label ?? `${sideLabel} ${kindLabel} ${formatOverlayPrice(value)}`,
         pnlText,
         pnlPositive,
       };
     };
     /**
-     * A placeholder for a level the position does not have yet. Unlike every
-     * other order line it has no price at all — only a screen position derived
-     * from the entry line — because until it is dragged there is no value to
-     * show, and showing one would read as protection the trader never set.
+     * Which risk levels a position is still missing, in the order they render on its
+     * entry line. Replaces the old free-floating `SET SL` / `SET TP` ghost lines: those
+     * sat at a fixed 80px screen offset with no visual tie to the position they belonged
+     * to, so on a busy chart with several unprotected positions they read as loose lines
+     * far away from anything. The affordance is now attached to the entry badge itself,
+     * and clicking one creates a real, immediately draggable level.
      */
-    const buildGhostLine = (position, kind, entryY) => {
-      const y = ghostLineY(entryY, kind, position.side, mainPaneHeight);
-      if (y == null) return null;
-
-      const entryPrice = getPositiveNumber(position.entryPrice);
-      if (entryPrice == null) return null;
-
-      return {
-        id: `ghost:${position.id}:${kind}`,
-        positionId: position.id,
-        status: position.status,
-        side: position.side,
-        kind,
-        price: null,
-        entryPrice,
-        y,
-        isGhost: true,
-        dashed: true,
-        color: kind === 'tp' ? '#22c55e' : '#ef4444',
-        isDraft: false,
-        canCancel: false,
-        label: kind === 'tp' ? 'SET TP' : 'SET SL',
-        pnlText: null,
-        pnlPositive: null,
-      };
+    const buildEntryAddLevels = (position) => {
+      const missing = [];
+      if (getPositiveNumber(position.takeProfit) == null) missing.push('tp');
+      if (getPositiveNumber(position.stopLoss) == null) missing.push('sl');
+      return missing.length ? missing : null;
     };
 
     const draftEntryPrice = getPositiveNumber(
@@ -3133,20 +3134,12 @@ export default function MarketReplayChart({
         ? backtestOrderDraft?.entryPrice
         : backtestOrderDraft?.effectiveEntryPrice
     );
-    const draftStopLoss = getPositiveNumber(backtestOrderDraft?.stopLoss) ?? (
-      draftEntryPrice
-        ? backtestOrderDraft?.side === 'short'
-          ? draftEntryPrice * 1.01
-          : draftEntryPrice * 0.99
-        : null
-    );
-    const draftTakeProfit = getPositiveNumber(backtestOrderDraft?.takeProfit) ?? (
-      draftEntryPrice
-        ? backtestOrderDraft?.side === 'short'
-          ? draftEntryPrice * 0.99
-          : draftEntryPrice * 1.01
-        : null
-    );
+    // No ±1% fallback here either. This is the *preview* of what will be submitted, and
+    // the ticket stopped inventing blank levels (see ReplayPanel's plannedStopLoss), so
+    // drawing a line the order will not actually carry would make the preview lie. An
+    // unset level draws nothing and puts a button on the draft's entry line instead.
+    const draftStopLoss = getPositiveNumber(backtestOrderDraft?.stopLoss);
+    const draftTakeProfit = getPositiveNumber(backtestOrderDraft?.takeProfit);
     const draftProfit = formatOverlayPnl(backtestOrderDraft?.estimatedProfit);
     const draftLoss = formatOverlayPnl(backtestOrderDraft?.estimatedLoss);
 
@@ -3167,6 +3160,10 @@ export default function MarketReplayChart({
                 canCancel: true,
                 cancelDraft: true,
                 dashed: true,
+                addLevels: [
+                  draftTakeProfit == null ? 'tp' : null,
+                  draftStopLoss == null ? 'sl' : null,
+                ].filter(Boolean),
                 label: `${marketCategory === 'spot' ? 'BUY' : (backtestOrderDraft.side === 'short' ? 'SHORT' : 'LONG')} ${backtestOrderDraft.isPendingOrder ? 'ORDER' : 'ENTRY'} ${formatOverlayPrice(draftEntryPrice)}`,
               }
             ),
@@ -3210,16 +3207,18 @@ export default function MarketReplayChart({
         .filter((position) => position.symbol === symbol)
         .flatMap((position) => {
           const pendingPosition = { ...position, status: 'pending' };
-          const entry = buildLine(pendingPosition, 'entry', position.entryPrice, { dashed: true, canCancel: true });
+          // A level the order does not have becomes a button on the entry line rather
+          // than a line of its own; see buildEntryAddLevels.
+          const entry = buildLine(pendingPosition, 'entry', position.entryPrice, {
+            dashed: true,
+            canCancel: true,
+            addLevels: buildEntryAddLevels(position),
+          });
 
-          // A level the order does not have falls back to a ghost, so there is
-          // always something on the chart to drag.
           return [
             entry,
-            buildLine(pendingPosition, 'sl', position.stopLoss, { dashed: true })
-              ?? buildGhostLine(pendingPosition, 'sl', entry?.y),
-            buildLine(pendingPosition, 'tp', position.takeProfit, { dashed: true })
-              ?? buildGhostLine(pendingPosition, 'tp', entry?.y),
+            buildLine(pendingPosition, 'sl', position.stopLoss, { dashed: true }),
+            buildLine(pendingPosition, 'tp', position.takeProfit, { dashed: true }),
           ];
         }),
       ...(backtestAccount?.openPositions ?? [])
@@ -3252,6 +3251,7 @@ export default function MarketReplayChart({
             dashed: false,
             color: livePnl == null ? '#f59e0b' : livePnl >= 0 ? '#22c55e' : '#ef4444',
             label: `${sideLabel} OPEN ${formatOverlayPrice(position.entryPrice)}${livePnlLabel}`,
+            addLevels: buildEntryAddLevels(position),
           });
 
           return [
@@ -3259,11 +3259,11 @@ export default function MarketReplayChart({
             buildLine(openPosition, 'sl', position.stopLoss, {
               dashed: false,
               label: `${sideLabel} ${slPrefix}SL ${formatOverlayPrice(position.stopLoss)}`,
-            }) ?? buildGhostLine(openPosition, 'sl', entry?.y),
+            }),
             buildLine(openPosition, 'tp', position.takeProfit, {
               dashed: false,
               label: `${sideLabel} TP ${formatOverlayPrice(position.takeProfit)}${tpSuffix}`,
-            }) ?? buildGhostLine(openPosition, 'tp', entry?.y),
+            }),
           ];
         }),
     ].filter(Boolean);
@@ -3467,13 +3467,23 @@ export default function MarketReplayChart({
         return { ...item, action: 'cancel' };
       }
 
+      // Checked before the line/handle test below for the same reason cancel is:
+      // the buttons sit on the entry line, so every pixel of them also satisfies
+      // `nearLine`, and a drag would otherwise swallow the click.
+      const addLevelHit = orderLevelButtonRects(item, overlaySize.width, overlaySize.height)
+        .find((button) => x >= button.x && x <= button.x + button.width
+          && y >= button.y - 2 && y <= button.y + button.height + 2);
+      if (addLevelHit) {
+        return { ...item, action: 'add-level', addLevelKind: addLevelHit.kind };
+      }
+
       if (nearLine || nearHandle) {
         return item;
       }
     }
 
     return null;
-  }, [overlaySize.width, renderedBacktestOrders]);
+  }, [overlaySize.height, overlaySize.width, renderedBacktestOrders]);
 
   const hitTestResizeHandle = useCallback((x, y) => {
     if (!selectedDrawingIdRef.current) return null;
@@ -3583,6 +3593,65 @@ export default function MarketReplayChart({
     }
   }, [executionPrice, loadBacktestAccount]);
 
+  /**
+   * Clicking a TP / SL button on a position's entry line creates that level and leaves
+   * it draggable like any other. The new level starts a fixed distance away **on
+   * screen**, not a percentage of entry: a percentage lands off-pane when zoomed in and
+   * sits on top of the entry line when zoomed out, and the entire point of this control
+   * is that the level appears next to the position, visible and immediately grabbable.
+   *
+   * Committed straight away rather than staged: the button is the deliberate action, so
+   * there is no stray-click risk of the kind the old drag-to-commit ghost guarded against.
+   */
+  const addBacktestPositionLevel = useCallback((item) => {
+    const series = candleSeriesRef.current;
+    const kind = item?.addLevelKind;
+    if (!series || (kind !== 'sl' && kind !== 'tp')) return;
+
+    const entryY = Number(item?.y);
+    if (!Number.isFinite(entryY)) return;
+
+    // Screen y grows downward, so a long's take-profit is the smaller y.
+    const mustBeAbove = item.side === 'short' ? kind === 'sl' : kind === 'tp';
+    const targetY = entryY + (mustBeAbove ? -ADDED_LEVEL_OFFSET_PX : ADDED_LEVEL_OFFSET_PX);
+    const rawPrice = Number(series.coordinateToPrice(targetY));
+
+    // The pre-submit draft writes into the Enter Position ticket, not the server: there
+    // is no position to PUT against yet. `orderLineDraftPatch` is the same channel a
+    // draft-line drag already uses, so the ticket fills that side's price field, forces
+    // it back to Price mode, and ticks TP / SL — no second mechanism for the same job.
+    // Deliberately unclamped, matching the existing rule that draft lines are validated
+    // by the ticket rather than by clampRiskPrice.
+    if (item.isDraft) {
+      if (!Number.isFinite(rawPrice) || rawPrice <= 0) return;
+      const value = String(Number(rawPrice.toFixed(8)));
+      setBacktestOrderDraft((currentDraft) => (currentDraft
+        ? { ...currentDraft, ...(kind === 'sl' ? { stopLoss: value } : { takeProfit: value }) }
+        : currentDraft));
+      setOrderLineDraftPatch({ kind, value, version: Date.now() });
+      return;
+    }
+
+    const entryPrice = getPositiveNumber(item?.entryPrice);
+    if (!item?.positionId || entryPrice == null) return;
+
+    // clampRiskPrice keeps it on the side of entry the server accepts, so a position
+    // near the top or bottom of the pane can never produce a level the API rejects.
+    const price = clampRiskPrice(
+      kind,
+      item.side,
+      entryPrice,
+      Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : entryPrice,
+    );
+    if (!Number.isFinite(price) || price <= 0) return;
+
+    updateLocalBacktestPositionLine(
+      item.positionId,
+      kind === 'sl' ? { stopLoss: price } : { takeProfit: price },
+    );
+    handleUpdateBacktestPositionRisk({ positionId: item.positionId, kind, price });
+  }, [handleUpdateBacktestPositionRisk, updateLocalBacktestPositionLine]);
+
   // Unlike handleUpdateBacktestPositionRisk above (the chart-line-drag path), this is driven
   // by PositionsPanel's TP/SL modal, which shows its own inline error banner and needs the
   // raw rejection to do that — so, deliberately, no setBacktestError/loadBacktestAccount
@@ -3665,11 +3734,10 @@ export default function MarketReplayChart({
       lastValueVisible: false,
       priceLineVisible: false,
     }, 1);
-    const smaSeries = chart.addSeries(LineSeries, { color: '#2dd4bf', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: false });
-    const emaSeries = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: false });
-    const rsiSeries = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, visible: false }, 2);
-    const macdSeries = chart.addSeries(LineSeries, { color: '#2dd4bf', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, visible: false }, 3);
-    const macdSignalSeries = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: false }, 3);
+    const smaSeries = chart.addSeries(LineSeries, { crosshairMarkerVisible: false, color: '#2dd4bf', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: false });
+    const rsiSeries = chart.addSeries(LineSeries, { crosshairMarkerVisible: false, color: '#a855f7', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, visible: false }, 2);
+    const macdSeries = chart.addSeries(LineSeries, { crosshairMarkerVisible: false, color: '#2dd4bf', lineWidth: 2, priceLineVisible: false, lastValueVisible: true, visible: false }, 3);
+    const macdSignalSeries = chart.addSeries(LineSeries, { crosshairMarkerVisible: false, color: '#f59e0b', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, visible: false }, 3);
     const macdHistogramSeries = chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false, base: 0, visible: false }, 3);
 
     const handleVisibleRangeChange = () => {
@@ -3731,7 +3799,7 @@ export default function MarketReplayChart({
             ? 'macd'
           : hoveredSeries === smaSeriesRef.current
             ? 'sma'
-            : hoveredSeries === emaSeriesRef.current
+            : [...emaSeriesMapRef.current.values()].includes(hoveredSeries)
               ? 'ema'
               : hoveredSeries === rsiSeriesRef.current
                 ? 'rsi'
@@ -3781,7 +3849,9 @@ export default function MarketReplayChart({
 
           const candidates = [
             { type: 'sma', series: smaSeriesRef.current, pane: 0 },
-            { type: 'ema', series: emaSeriesRef.current, pane: 0 },
+            // Every EMA line is its own series but they all resolve to the one 'ema'
+            // indicator key, so clicking any of them expands the same legend pill.
+            ...[...emaSeriesMapRef.current.values()].map((series) => ({ type: 'ema', series, pane: 0 })),
             { type: 'rsi', series: rsiSeriesRef.current, pane: rsiPane },
             { type: 'macd', series: macdSeriesRef.current, pane: macdPane },
             { type: 'macd', series: macdSignalSeriesRef.current, pane: macdPane },
@@ -3857,7 +3927,6 @@ export default function MarketReplayChart({
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
     smaSeriesRef.current = smaSeries;
-    emaSeriesRef.current = emaSeries;
     rsiSeriesRef.current = rsiSeries;
     macdSeriesRef.current = macdSeries;
     macdSignalSeriesRef.current = macdSignalSeries;
@@ -3894,7 +3963,7 @@ export default function MarketReplayChart({
         macdSignalSeriesRef.current,
         macdHistogramSeriesRef.current,
         smaSeriesRef.current,
-        emaSeriesRef.current,
+        ...emaSeriesMapRef.current.values(),
       ];
 
       for (const candidate of candidates) {
@@ -4148,7 +4217,8 @@ export default function MarketReplayChart({
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
       smaSeriesRef.current = null;
-      emaSeriesRef.current = null;
+      emaSeriesMapRef.current = new Map();
+      emaSeriesChartRef.current = null;
       rsiSeriesRef.current = null;
       macdSeriesRef.current = null;
       macdSignalSeriesRef.current = null;
@@ -4193,13 +4263,47 @@ export default function MarketReplayChart({
 
   useEffect(() => {
     try { localStorage.setItem(indicatorStorageKey, JSON.stringify(indicators)); } catch {}
-    const volume = volumeSeriesRef.current; const sma = smaSeriesRef.current; const ema = emaSeriesRef.current; const rsi = rsiSeriesRef.current;
+    const volume = volumeSeriesRef.current; const sma = smaSeriesRef.current; const rsi = rsiSeriesRef.current;
     const macd = macdSeriesRef.current; const macdSignal = macdSignalSeriesRef.current; const macdHistogram = macdHistogramSeriesRef.current;
     const indicatorsGloballyHidden = Boolean(hiddenLayers.indicators);
     const isVolumeVisible = indicators.volume && indicators.volumeVisible !== false && !indicatorsGloballyHidden;
     volume?.applyOptions({ visible: isVolumeVisible });
     sma?.applyOptions({ visible: indicators.sma && indicators.smaVisible !== false && !indicatorsGloballyHidden, color: indicators.smaColor ?? '#2dd4bf', lineWidth: Number(indicators.smaLineWidth) || 2 });
-    ema?.applyOptions({ visible: indicators.ema && indicators.emaVisible !== false && !indicatorsGloballyHidden, color: indicators.emaColor ?? '#f59e0b', lineWidth: Number(indicators.emaLineWidth) || 2 });
+    // EMA's series are created and destroyed here rather than at chart-creation time,
+    // because their count follows `indicators.emaLines`. This runs before the setData
+    // effect below (effect order follows source order), so a line added in this pass
+    // always has its series in place by the time data is pushed into it.
+    const chartForEma = chartRef.current;
+    if (chartForEma) {
+      if (emaSeriesChartRef.current !== chartForEma) {
+        // A previous chart was torn down: its series went with it, so start clean
+        // instead of calling removeSeries() on handles belonging to a dead chart.
+        emaSeriesMapRef.current = new Map();
+        emaSeriesChartRef.current = chartForEma;
+      }
+      // Removing the EMA indicator entirely drops its series rather than leaving up to
+      // MAX_EMA_LINES invisible ones attached to the chart; re-enabling recreates them
+      // on the next run of this same effect, and the setData effect below refills them.
+      const emaLines = indicators.ema ? normalizeEmaLines(indicators) : [];
+      const wantedIds = new Set(emaLines.map((line) => line.id));
+      emaSeriesMapRef.current.forEach((series, id) => {
+        if (wantedIds.has(id)) return;
+        try { chartForEma.removeSeries(series); } catch { /* already disposed */ }
+        emaSeriesMapRef.current.delete(id);
+      });
+      emaLines.forEach((line) => {
+        let series = emaSeriesMapRef.current.get(line.id);
+        if (!series) {
+          series = chartForEma.addSeries(LineSeries, { crosshairMarkerVisible: false, priceLineVisible: false, lastValueVisible: false, visible: false });
+          emaSeriesMapRef.current.set(line.id, series);
+        }
+        series.applyOptions({
+          visible: indicators.ema && indicators.emaVisible !== false && line.visible !== false && !indicatorsGloballyHidden,
+          color: line.color,
+          lineWidth: Number(line.width) || 2,
+        });
+      });
+    }
     const isRsiVisible = indicators.rsi && indicators.rsiVisible !== false && !indicatorsGloballyHidden;
     const isMacdVisible = indicators.macd && indicators.macdVisible !== false && !indicatorsGloballyHidden;
     rsi?.applyOptions({ visible: isRsiVisible, color: indicators.rsiColor ?? '#a855f7', lineWidth: Number(indicators.rsiLineWidth) || 2 });
@@ -4273,7 +4377,12 @@ export default function MarketReplayChart({
 
   useEffect(() => {
     smaSeriesRef.current?.setData(indicators.sma ? movingAverage(visibleCandles, Number(indicators.smaPeriod) || 20) : []);
-    emaSeriesRef.current?.setData(indicators.ema ? exponentialMovingAverage(visibleCandles, Number(indicators.emaPeriod) || 20) : []);
+    const emaLinesForData = normalizeEmaLines(indicators);
+    emaLinesForData.forEach((line) => {
+      emaSeriesMapRef.current.get(line.id)?.setData(
+        indicators.ema ? exponentialMovingAverage(visibleCandles, Number(line.period) || 20) : [],
+      );
+    });
     rsiSeriesRef.current?.setData(indicators.rsi ? relativeStrengthIndex(visibleCandles, Number(indicators.rsiPeriod) || 14) : []);
     const macdFastPeriod = Math.max(2, Number(indicators.macdFastPeriod) || 12);
     const macdSlowPeriod = Math.max(macdFastPeriod + 1, Number(indicators.macdSlowPeriod) || 26);
@@ -4986,6 +5095,13 @@ export default function MarketReplayChart({
         return;
       }
 
+      if (backtestOrderHit?.action === 'add-level') {
+        event.preventDefault();
+        event.stopPropagation();
+        addBacktestPositionLevel(backtestOrderHit);
+        return;
+      }
+
       if (backtestOrderHit) {
         const coords = getChartCoordinates(x, y);
         if (!coords) return;
@@ -5001,7 +5117,6 @@ export default function MarketReplayChart({
           price: backtestOrderHit.price,
           entryPrice: backtestOrderHit.entryPrice ?? null,
           isDraft: backtestOrderHit.isDraft,
-          isGhost: Boolean(backtestOrderHit.isGhost),
           startY: y,
           moved: false,
         };
@@ -5248,7 +5363,12 @@ export default function MarketReplayChart({
       setHoveredPositionDrawingId(isPositionDrawing(hoveredDrawing) ? hoveredDrawingId : null);
 
       const backtestOrderHoverHit = isInsideChart ? hitTestBacktestOrder(x, y) : null;
-      setIsHoveringBacktestOrderCancel(backtestOrderHoverHit?.action === 'cancel');
+      // Any clickable control sitting on an order line takes the pointer cursor —
+      // the cancel x, and now the entry line's TP/SL add buttons. Renamed from
+      // ...OrderCancel once it stopped being about one control.
+      setIsHoveringBacktestOrderButton(
+        backtestOrderHoverHit?.action === 'cancel' || backtestOrderHoverHit?.action === 'add-level',
+      );
       // Cancel wins: hitTestBacktestOrder returns the cancel action before it
       // considers a line hit, so the x keeps its pointer cursor.
       setIsHoveringBacktestOrderLine(Boolean(backtestOrderHoverHit) && !backtestOrderHoverHit.action);
@@ -5402,14 +5522,6 @@ export default function MarketReplayChart({
 
         const current = dragBacktestOrderRef.current;
 
-        // A ghost is a placeholder until it is actually dragged. Below the
-        // threshold this is a click, which must leave it a ghost and write
-        // nothing — locally or to the server. Real lines keep updating on any
-        // movement, as they always have.
-        if (current.isGhost && !current.moved && Math.abs(y - current.startY) < GHOST_DRAG_THRESHOLD_PX) {
-          return;
-        }
-
         event.preventDefault();
         event.stopPropagation();
 
@@ -5490,10 +5602,7 @@ export default function MarketReplayChart({
         const dragState = dragBacktestOrderRef.current;
         dragBacktestOrderRef.current = null;
         restoreChartMouseInteractions();
-        // A ghost that was never dragged is still a ghost: nothing was written
-        // locally, so there is nothing to persist and nothing to roll back.
-        const wasClickedNotDragged = dragState.isGhost && !dragState.moved;
-        if (!dragState.isDraft && !wasClickedNotDragged) {
+        if (!dragState.isDraft) {
           handleUpdateBacktestPositionRisk(dragState);
         }
       }
@@ -5579,7 +5688,7 @@ export default function MarketReplayChart({
       window.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [appendDrawing, getChartCoordinates, getDefaultPositionStop, getToolSettingsForType, handleFinishPathDrawing, handleUpdateBacktestPositionRisk, hitTestBacktestOrder, hitTestDrawing, hitTestResizeHandle, saveDrawings, updateLocalBacktestPositionLine]);
+  }, [addBacktestPositionLevel, appendDrawing, getChartCoordinates, getDefaultPositionStop, getToolSettingsForType, handleFinishPathDrawing, handleUpdateBacktestPositionRisk, hitTestBacktestOrder, hitTestDrawing, hitTestResizeHandle, saveDrawings, updateLocalBacktestPositionLine]);
 
   useEffect(() => {
     async function fetchKlines() {
@@ -5701,7 +5810,24 @@ export default function MarketReplayChart({
           writePersistedCandleCache(preferenceUserId, cacheKey, candles);
         };
 
-        const fetchCandles = async (requestParams, signal = controller.signal, attempt = 0) => {
+        const fetchCandles = async (requestParams, signal = controller.signal, attempt = 0, maxAttempts = CANDLE_FETCH_ATTEMPTS) => {
+          const retryOrThrow = async (failure) => {
+            if (attempt >= maxAttempts - 1 || signal?.aborted) throw failure;
+            // Retry-After reports the full remaining window of a per-minute
+            // limiter (up to ~60s) — waiting that long blocks the chart with a
+            // silent spinner and usually loses the race to the 30s failsafe
+            // below anyway, which then shows a generic "taking too long"
+            // message instead of the accurate rate-limit one. Cap the wait
+            // short: a real reset within a few seconds still gets a retry,
+            // otherwise fail fast so the honest message reaches the user in
+            // seconds, not up to a minute.
+            const waitMs = failure?.status === 429
+              ? Math.min(Number(failure.retryAfterSeconds) || 3, 3) * 1000
+              : CANDLE_RETRY_DELAYS_MS[Math.min(attempt, CANDLE_RETRY_DELAYS_MS.length - 1)];
+            await new Promise((resolve) => setTimeout(resolve, waitMs));
+            return fetchCandles(requestParams, signal, attempt + 1, maxAttempts);
+          };
+
           const fetchOptions = {
             headers: { Accept: 'application/json' },
           };
@@ -5710,20 +5836,15 @@ export default function MarketReplayChart({
             fetchOptions.signal = signal;
           }
 
-          const response = await fetch(`/api/klines?${requestParams.toString()}`, fetchOptions);
+          let response;
 
-          if (response.status === 429 && attempt === 0) {
-            // Retry-After reports the full remaining window of a per-minute
-            // limiter (up to ~60s) — waiting that long blocks the chart with a
-            // silent spinner and usually loses the race to the 30s failsafe
-            // below anyway, which then shows a generic "taking too long"
-            // message instead of the accurate rate-limit one from the catch
-            // block. Cap the wait short: a real reset within a few seconds
-            // still gets one retry, otherwise fail fast so the honest message
-            // reaches the user in seconds, not up to a minute.
-            const retryAfterSeconds = Math.min(Number(response.headers.get('Retry-After')) || 3, 3);
-            await new Promise((resolve) => setTimeout(resolve, retryAfterSeconds * 1000));
-            return fetchCandles(requestParams, signal, attempt + 1);
+          try {
+            response = await fetch(`/api/klines?${requestParams.toString()}`, fetchOptions);
+          } catch (networkError) {
+            if (networkError?.name === 'AbortError') throw networkError;
+            // fetch only rejects for network-level failures (offline, DNS, a
+            // connection dropped mid-flight) — exactly the case worth retrying.
+            return retryOrThrow(new Error('Could not reach the market data service. Check your connection and try again.'));
           }
 
           const result = await response.json().catch(() => null);
@@ -5731,17 +5852,22 @@ export default function MarketReplayChart({
           if (!response.ok) {
             const httpError = new Error(result?.message || `HTTP ${response.status}`);
             httpError.status = response.status;
+            httpError.retryAfterSeconds = Number(response.headers.get('Retry-After'));
+            if (TRANSIENT_CANDLE_STATUSES.has(response.status)) return retryOrThrow(httpError);
             throw httpError;
           }
 
           if (!result?.success) {
-            throw new Error(result?.message || 'Failed to fetch candles');
+            return retryOrThrow(new Error(result?.message || 'Failed to fetch candles'));
           }
 
           const normalizedCandles = normalizeApiCandles(result.candles);
 
           if (normalizedCandles.length < 2) {
-            throw new Error('Not enough candle history is available for this market yet.');
+            // A market really can be this new, but a half-delivered upstream page
+            // looks identical from here — so this retries too rather than calling
+            // it immediately on the first thin response.
+            return retryOrThrow(new Error('Not enough candle history is available for this market yet.'));
           }
 
           return normalizedCandles;
@@ -5908,7 +6034,7 @@ export default function MarketReplayChart({
 
             const prefetchController = new AbortController();
             const runPrefetch = () => {
-              fetchCandles(prefetchParams, prefetchController.signal)
+              fetchCandles(prefetchParams, prefetchController.signal, 0, 1)
                 .then((prefetchedCandles) => {
                   rememberCandles(prefetchCacheKey, prefetchedCandles);
                 })
@@ -5963,7 +6089,14 @@ export default function MarketReplayChart({
       timeframePrefetchCancelRef.current?.();
       timeframePrefetchCancelRef.current = null;
     };
-  }, [exchange, marketCategory, symbol, timeframe, getDrawingTimes, preferenceUserId, replayAccessAllowed, replayProgressKey, replayProgressLoadedKey, savedReplayProgress]);
+  }, [exchange, marketCategory, symbol, timeframe, getDrawingTimes, preferenceUserId, replayAccessAllowed, replayProgressKey, replayProgressLoadedKey, savedReplayProgress, candleReloadNonce]);
+
+  // The status overlay's "Try again": bumping the nonce re-runs the candle effect
+  // above with every other input unchanged. Deliberately does not clear `error` or
+  // raise `loading` itself — the effect does both, and only along the path that
+  // actually refetches, so a retry that hits one of the effect's early returns
+  // leaves the message and the button on screen instead of blanking the chart.
+  const retryCandleFetch = () => setCandleReloadNonce((nonce) => nonce + 1);
 
   const startReplayMode = (startIndex = Math.max(0, Math.floor(allCandles.length * 0.3))) => {
     const nextIndex = Math.min(Math.max(0, startIndex), Math.max(0, allCandles.length - 1));
@@ -7493,7 +7626,7 @@ export default function MarketReplayChart({
         </div>
       </div>
     )}
-    {tourStep >= 0 && <WorkspaceTour step={tourStep} steps={tourSteps} onStep={setTourStep} onFinish={finishTour} dark={chartTheme.mode==='dark'}/>}
+    {showTour && <WorkspaceTour step={tourStep} steps={tourSteps} onStep={setTourStep} onFinish={finishTour} dark={chartTheme.mode==='dark'}/>}
     <ChartSettingsModal
       open={isChartSettingsOpen}
       onClose={() => setIsChartSettingsOpen(false)}
@@ -7632,7 +7765,7 @@ export default function MarketReplayChart({
             currentPriceCoordinate={currentPriceCoordinate}
             isSpacePressed={isSpacePressed}
             isReplayPricePickActive={isReplayPricePickActive}
-            isHoveringBacktestOrderCancel={isHoveringBacktestOrderCancel}
+            isHoveringBacktestOrderButton={isHoveringBacktestOrderButton}
             isHoveringBacktestOrderLine={isHoveringBacktestOrderLine}
             tool={tool}
             chartTheme={chartTheme}
@@ -7662,7 +7795,6 @@ export default function MarketReplayChart({
             liveFeedInfo={liveFeedInfo}
             isLiveFeedDelayed={isLiveFeedDelayed}
             liveFeedAgeSeconds={liveFeedAgeSeconds}
-            latestCandleStartedAt={latestCandleStartedAt}
             exchange={exchange}
             marketCategory={marketCategory}
             timezone={timezone}
@@ -7686,7 +7818,7 @@ export default function MarketReplayChart({
             showExchange={chartDisplay.statusLine.exchange}
             showOhlc={chartDisplay.statusLine.ohlc}
             showChange={chartDisplay.statusLine.change}
-            isActive={isLegendActive || tourSteps[tourStep]?.selector === '[data-tour="appearance"]'}
+            isActive={isLegendActive || (showTour && tourSteps[tourStep]?.selector === '[data-tour="appearance"]')}
             onOpenSettings={() => setIsChartSettingsOpen(true)}
           />
 
@@ -7830,11 +7962,8 @@ export default function MarketReplayChart({
               </div>
               <dl className="space-y-1.5">
                 <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Internet</dt><dd className="text-right font-semibold">{browserOnline ? 'Online' : 'Offline'}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Feed</dt><dd className="text-right font-semibold">{liveFeedInfo.source === 'websocket' ? 'WebSocket' : liveFeedInfo.source === 'rest' ? 'REST fallback' : 'Waiting for first update'}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Market</dt><dd className="text-right font-semibold">{exchange.toUpperCase()} · {marketCategory === 'spot' ? 'Spot' : 'Futures'}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Last update</dt><dd className="max-w-[165px] text-right font-semibold">{formatLocalFeedTime(liveFeedInfo.receivedAt)}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Chart delay</dt><dd className={`text-right font-semibold ${isLiveFeedDelayed ? 'text-amber-500' : ''}`}>{formatFeedAge(liveFeedAgeSeconds)}</dd></div>
-                <div className="flex justify-between gap-4"><dt className="text-[#787b86]">Candle started</dt><dd className="max-w-[165px] text-right font-semibold">{formatLocalFeedTime(latestCandleStartedAt)}</dd></div>
               </dl>
               <p className="mt-2 border-t border-current/10 pt-2 text-[10px] leading-4 text-[#787b86]">Delay is the time since BacktradeLab received a valid candle, not network latency.</p>
             </div>
@@ -7893,21 +8022,57 @@ export default function MarketReplayChart({
           )}
           <AnchoredTooltipPortal pos={setAlertTooltip.pos} label={chartOrderAction ? `Set alert at ${formatOverlayPrice(chartOrderAction.price)}` : ''} isDark={chartTheme.mode === 'dark'} />
 
-          {(loading || error) && (
+          {/* A failed refresh on top of candles we already have (the persisted cache
+              rehydrates the chart on load, then revalidation fails on a bad
+              connection) used to raise the same full-screen status panel, hiding a
+              perfectly usable chart behind "No chart data loaded". Say it in a chip
+              instead and leave the chart alone — the blocking panel below is only
+              for having nothing to draw at all. */}
+          {error && allCandles.length > 0 && (
+            <div
+              data-chart-ui="chart-stale-notice"
+              className={`absolute left-1/2 top-10 z-20 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 rounded-full border px-3 py-1 text-[11px] shadow-sm ${
+                chartTheme.mode === 'dark' ? 'border-[#2a2e39] bg-[#131722] text-[#787b86]' : 'border-slate-200 bg-white text-slate-500'
+              }`}
+            >
+              <span>Showing saved candles — could not refresh</span>
+              <button type="button" onClick={retryCandleFetch} className="font-semibold text-[#2dd4bf] hover:underline">
+                Retry
+              </button>
+            </div>
+          )}
+
+          {(loading || (error && !allCandles.length)) && (
             <div
               data-chart-ui="chart-status"
-              className={`pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-lg text-sm font-medium backdrop-blur-[1px] ${
-                loading
-                  ? chartTheme.mode === 'dark'
-                    ? 'text-white'
-                    : 'text-slate-700'
-                  : 'text-red-400'
-              }`}
+              className={`absolute inset-0 z-20 flex items-center justify-center rounded-lg text-sm font-medium backdrop-blur-[1px] ${
+                loading ? 'pointer-events-none' : ''
+              } ${chartTheme.mode === 'dark' ? 'text-white' : 'text-slate-700'}`}
               style={{ backgroundColor: chartTheme.overlay }}
             >
               {loading ? (
                 <ChartSkeletonLoader isDark={chartTheme.mode === 'dark'} />
-              ) : error}
+              ) : (
+                // Deliberately not red-alarm styling: by the time this renders,
+                // fetchCandles has already retried a slow or empty upstream, so
+                // what is left to say is "there is nothing to draw yet" over an
+                // empty chart, with the way to try again — not an error thrown
+                // at someone whose connection is simply slow.
+                <div className="flex max-w-[260px] flex-col items-center gap-2 px-4 text-center">
+                  <p className="text-sm font-semibold">No chart data loaded</p>
+                  <p className="text-xs font-normal text-[#787b86]">{error}</p>
+                  <button
+                    type="button"
+                    onClick={retryCandleFetch}
+                    className={`mt-1 inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold ${
+                      chartTheme.mode === 'dark' ? 'border-[#2a2e39] hover:bg-white/5' : 'border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    <RotateCcw size={13} />
+                    Try again
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

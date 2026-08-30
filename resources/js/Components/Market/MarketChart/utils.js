@@ -288,22 +288,53 @@ export function estimateDrawingLogicalFromTime(candles, time, intervalSeconds = 
   return estimateLogicalFromTime(candles, numericTime);
 }
 
-// How far an unset SL/TP placeholder sits from its entry line, in pixels. This
-// is deliberately a screen distance and not a percentage of the entry price: a
-// percentage overlaps the entry line when zoomed out and lands off-pane when
-// zoomed in, and a ghost that cannot be grabbed is worse than no ghost at all.
-export const GHOST_LINE_OFFSET_PX = 80;
+/**
+ * Geometry for the "add this level" buttons that sit on a position's entry line
+ * (`[LONG OPEN 7.056][TP][SL]`), replacing the free-floating SET SL / SET TP ghost
+ * lines that used to hang 80px away with nothing tying them to the position.
+ *
+ * This lives here, shared, because the badge group is *drawn* by ChartStage's
+ * BacktestOrderOverlay but *hit-tested* in MarketChart — two files that previously
+ * agreed on the cancel hotspot only by both hardcoding the same magic numbers. A
+ * button the renderer and the hit test disagree about is a button that looks
+ * clickable and is not, so both call this.
+ */
+export const ORDER_LEVEL_BUTTON_WIDTH = 26;
+export const ORDER_LEVEL_BUTTON_HEIGHT = 18;
+export const ORDER_LEVEL_BUTTON_GAP = 4;
+const ORDER_BADGE_PRICE_SCALE_GAP = 96;
+const ORDER_BADGE_CANCEL_LANE = 34;
 
-// Closer than this to the entry line and the ghost is neither grabbable nor
-// distinguishable from it, so none is drawn.
-export const GHOST_LINE_MIN_GAP_PX = 20;
+/** Right edge of the price/PnL badge group, after reserving the add-level lane. */
+export function orderBadgeGroupRightEdge(overlayWidth, canCancel, addLevelCount = 0) {
+  const base = Math.max(
+    Number(overlayWidth) - ORDER_BADGE_PRICE_SCALE_GAP - (canCancel ? ORDER_BADGE_CANCEL_LANE : 8),
+    8,
+  );
+  const lane = addLevelCount * (ORDER_LEVEL_BUTTON_WIDTH + ORDER_LEVEL_BUTTON_GAP);
+  return Math.max(base - lane, 8);
+}
 
-const GHOST_LINE_PANE_MARGIN_PX = 8;
+export function orderLevelButtonRects(item, overlayWidth, overlayHeight) {
+  const levels = Array.isArray(item?.addLevels) ? item.addLevels : [];
+  if (!levels.length) return [];
 
-// A ghost commits only on a real drag. Pointer travel below this is treated as
-// a click and leaves the ghost untouched, so neither a stray click nor a hand
-// tremor can create a stop loss on a live position.
-export const GHOST_DRAG_THRESHOLD_PX = 3;
+  const right = orderBadgeGroupRightEdge(overlayWidth, item.canCancel, levels.length);
+  // Clamped exactly like the price badge's own y, so a line near the top or bottom
+  // of the pane keeps its buttons attached to the badge instead of drifting off it.
+  const top = Math.min(
+    Math.max(Number(item.y) - ORDER_LEVEL_BUTTON_HEIGHT / 2, 4),
+    Math.max(Number(overlayHeight) - ORDER_LEVEL_BUTTON_HEIGHT - 2, 4),
+  );
+
+  return levels.map((kind, index) => ({
+    kind,
+    x: right + ORDER_LEVEL_BUTTON_GAP + index * (ORDER_LEVEL_BUTTON_WIDTH + ORDER_LEVEL_BUTTON_GAP),
+    y: top,
+    width: ORDER_LEVEL_BUTTON_WIDTH,
+    height: ORDER_LEVEL_BUTTON_HEIGHT,
+  }));
+}
 
 // `updatePositionRisk` rejects a level that merely equals the entry price
 // (`$stopLoss >= $entryPrice`), so a clamp has to land strictly inside it.
@@ -330,42 +361,6 @@ export function clampRiskPrice(kind, side, entryPrice, price) {
   return mustBeBelow
     ? Math.min(value, entry * (1 - RISK_CLAMP_EPSILON))
     : Math.max(value, entry * (1 + RISK_CLAMP_EPSILON));
-}
-
-/**
- * Screen y for an unset SL/TP placeholder, or null when there is nowhere
- * sensible to put one. Unlike a real order line this is derived from the entry
- * line's position rather than from a price, because a ghost has no price until
- * it is dragged.
- *
- * Returns null rather than an off-pane coordinate so the caller can simply not
- * emit the ghost.
- */
-export function ghostLineY(entryY, kind, side, overlayHeight) {
-  if (kind !== 'sl' && kind !== 'tp') return null;
-
-  // Explicit, because Number(null) is 0: priceToCoordinate returns null for an
-  // entry it cannot place, and coercing that to the top of the pane would put a
-  // ghost on a chart whose entry line is not even drawn.
-  if (entryY == null) return null;
-
-  const anchor = Number(entryY);
-  const height = Number(overlayHeight);
-
-  if (!Number.isFinite(anchor) || !Number.isFinite(height) || height <= 0) return null;
-
-  // Screen y grows downward, so "above the entry price" is the smaller y.
-  const mustBeAbove = side === 'short' ? kind === 'sl' : kind === 'tp';
-  const raw = anchor + (mustBeAbove ? -GHOST_LINE_OFFSET_PX : GHOST_LINE_OFFSET_PX);
-
-  const clamped = Math.min(
-    Math.max(raw, GHOST_LINE_PANE_MARGIN_PX),
-    height - GHOST_LINE_PANE_MARGIN_PX
-  );
-
-  if (Math.abs(clamped - anchor) < GHOST_LINE_MIN_GAP_PX) return null;
-
-  return clamped;
 }
 
 function offsetPoint(point, deltaTime, deltaPrice, deltaLogical) {

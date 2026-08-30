@@ -305,8 +305,15 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
   if (compact) {
     const compactFieldClass = `h-8 rounded-md border px-2 text-xs outline-none ${isDark ? 'border-gray-700 bg-black-table-color/95 text-white' : 'border-gray-200 bg-white/95 text-gray-800'}`;
 
+    // The root below carries no shadow on purpose. It used to set `shadow-xl`, which
+    // the sole caller (FullscreenChartHeader) tried to cancel by passing `shadow-none`
+    // in `className` — but Tailwind resolves same-specificity conflicts by stylesheet
+    // order, not by order within the class attribute, and `.shadow-xl` is emitted after
+    // `.shadow-none`, so the base always won. The result was a heavy drop shadow under
+    // the chart header, obvious in light theme and invisible in dark. Don't re-add a
+    // shadow utility here expecting a caller to override it; change it here instead.
     return (
-      <div className={`flex max-w-full flex-wrap items-center gap-2 rounded-md border p-2 shadow-xl backdrop-blur ${className}`} style={panelStyle}>
+      <div className={`flex max-w-full flex-wrap items-center gap-2 rounded-md border p-2 backdrop-blur ${className}`} style={panelStyle}>
         {confirmElement}
         <button data-chart-ui="mobile-menu" type="button" onClick={() => setIsMobileMenuOpen((open) => !open)} className={`${compactFieldClass} flex items-center gap-2 font-semibold lg:hidden`} aria-expanded={isMobileMenuOpen} aria-label="Menu">
           <Menu size={15} />

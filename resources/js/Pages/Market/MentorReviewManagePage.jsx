@@ -6,6 +6,7 @@ import ShareLinkManager from '../../Components/Market/ShareLinkManager';
 import ContentPanel from '../../Components/Table/ContentPanel';
 import WorkspaceTour from '../../Components/Market/WorkspaceTour';
 import { useTheme } from '../../Context/ThemeContext';
+import { useAnnouncementGate } from '../../Context/AnnouncementGateContext';
 
 const TOUR_STEPS = [
     { selector: '[data-tour="mentor-intro"]', title: 'Share trades without an account', description: 'Generate a read-only public link so a mentor or coach can review your trades — no login required on their end, and you can revoke access at any time.' },
@@ -21,6 +22,10 @@ const MentorReviewManagePage = () => {
     const [tourStep, setTourStep] = useState(() => (
         new URLSearchParams(window.location.search).get('tour') === '1' || !auth?.user?.mentor_tour_completed_at ? 0 : -1
     ));
+    // The unread-announcement modal (AnnouncementGate, mounted in layout.jsx) owns
+    // the screen first on login; this tour holds at its current step until it is done.
+    const { announcementsPending } = useAnnouncementGate();
+    const showTour = tourStep >= 0 && !announcementsPending;
 
     const finishTour = () => {
         setTourStep(-1);
@@ -30,7 +35,7 @@ const MentorReviewManagePage = () => {
     return (
         <>
             <Head title="Mentor Review" />
-            {tourStep >= 0 && (
+            {showTour && (
                 <WorkspaceTour step={tourStep} steps={TOUR_STEPS} onStep={setTourStep} onFinish={finishTour} dark={isDark} />
             )}
             <div className="mb-1 flex items-center justify-end">

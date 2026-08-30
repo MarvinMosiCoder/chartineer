@@ -6,6 +6,7 @@ import TrainingChallengeCatalog from '../../Components/Market/TrainingChallengeC
 import ContentPanel from '../../Components/Table/ContentPanel';
 import WorkspaceTour from '../../Components/Market/WorkspaceTour';
 import { useTheme } from '../../Context/ThemeContext';
+import { useAnnouncementGate } from '../../Context/AnnouncementGateContext';
 
 const TOUR_STEPS = [
     { selector: '[data-tour="training-intro"]', title: 'Structured practice', description: 'Each challenge sets required trades, a max risk per trade, and sometimes a required playbook or loss-streak limit. Progress is scored automatically from your closed trades once you start an attempt — no manual tracking needed.' },
@@ -19,6 +20,10 @@ const TrainingChallengesPage = () => {
     const [tourStep, setTourStep] = useState(() => (
         new URLSearchParams(window.location.search).get('tour') === '1' || !auth?.user?.training_tour_completed_at ? 0 : -1
     ));
+    // The unread-announcement modal (AnnouncementGate, mounted in layout.jsx) owns
+    // the screen first on login; this tour holds at its current step until it is done.
+    const { announcementsPending } = useAnnouncementGate();
+    const showTour = tourStep >= 0 && !announcementsPending;
 
     const finishTour = () => {
         setTourStep(-1);
@@ -28,7 +33,7 @@ const TrainingChallengesPage = () => {
     return (
         <>
             <Head title="Training Challenges" />
-            {tourStep >= 0 && (
+            {showTour && (
                 <WorkspaceTour step={tourStep} steps={TOUR_STEPS} onStep={setTourStep} onFinish={finishTour} dark={isDark} />
             )}
             <div className="mb-1 flex items-center justify-end">

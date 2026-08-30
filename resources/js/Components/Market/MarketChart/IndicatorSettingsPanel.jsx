@@ -4,15 +4,100 @@ import { Eye, EyeOff, MoreHorizontal, Settings2, Trash2, X } from 'lucide-react'
 const INDICATOR_META = {
   volume: { label: 'Volume', sizeKey: 'volumeSize' },
   sma: { label: 'SMA', periodKey: 'smaPeriod', colorKey: 'smaColor', widthKey: 'smaLineWidth' },
-  ema: { label: 'EMA', periodKey: 'emaPeriod', colorKey: 'emaColor', widthKey: 'emaLineWidth' },
+  // EMA deliberately has no periodKey/colorKey/widthKey: unlike every other indicator
+  // here it is not one line but a list of them (`indicators.emaLines`), so the generic
+  // single-value Inputs/Style rows are replaced by a per-line editor. Anything reading
+  // `meta.periodKey` to build a label or a draft needs an explicit EMA branch.
+  ema: { label: 'EMA', linesKey: 'emaLines' },
   rsi: { label: 'RSI', periodKey: 'rsiPeriod', colorKey: 'rsiColor', widthKey: 'rsiLineWidth', sizeKey: 'rsiSize' },
   macd: { label: 'MACD', widthKey: 'macdLineWidth', sizeKey: 'macdSize' },
 };
 
+export const MIN_INDICATOR_PERIOD = 2;
+export const MAX_INDICATOR_PERIOD = 500;
+export const MAX_EMA_LINES = 12;
+
+// Cycled by position when a line is added, so a fresh set of EMAs is readable without
+// the user having to pick four colors by hand. Not a semantic palette — these are one
+// series among several, exactly the case the rebrand notes in trading-chart.md say to
+// leave alone rather than collapse onto the brand accent.
+export const EMA_LINE_COLORS = ['#f59e0b', '#2dd4bf', '#a855f7', '#3b82f6', '#ef4444', '#ec4899', '#84cc16', '#06b6d4'];
+const DEFAULT_EMA_PERIODS = [9, 20, 50, 200];
+
+const clampPeriod = (value, fallback = 20) => Math.min(
+  MAX_INDICATOR_PERIOD,
+  Math.max(MIN_INDICATOR_PERIOD, Math.round(Number(value)) || fallback),
+);
+
+let emaLineSequence = 0;
+export function createEmaLine(period = 20, index = 0) {
+  emaLineSequence += 1;
+  return {
+    id: `ema-${Date.now().toString(36)}-${emaLineSequence.toString(36)}`,
+    period: clampPeriod(period),
+    color: EMA_LINE_COLORS[index % EMA_LINE_COLORS.length],
+    width: 2,
+    visible: true,
+  };
+}
+
+/**
+ * Ids here are **deterministic** (`ema-default-9`, ...), unlike `createEmaLine`'s
+ * time-seeded ones. `normalizeEmaLines()` falls back to this set, and it is called from
+ * effects that run on every `indicators` change — with random ids, each call would look
+ * like "four different lines" and the sync effect would tear down and rebuild four series
+ * on every render, forever. Deterministic ids make the fallback idempotent.
+ */
+export function defaultEmaLines() {
+  return DEFAULT_EMA_PERIODS.map((period, index) => ({
+    ...createEmaLine(period, index),
+    id: `ema-default-${period}`,
+  }));
+}
+
+/**
+ * The one place that decides what `indicators.emaLines` means, shared by the chart and
+ * this panel so a malformed or legacy value can never be interpreted two different ways.
+ *
+ * An **array** is authoritative even when empty — an empty list means "the user deleted
+ * every EMA line", which must not silently resurrect anything. Only the *absence* of the
+ * key triggers the one-time migration from the pre-multi-line scalar shape
+ * (`emaPeriod`/`emaColor`/`emaLineWidth`), which is what every browser that used this
+ * chart before EMA became multi-line still has sitting in localStorage.
+ */
+export function normalizeEmaLines(indicators) {
+  const raw = indicators?.emaLines;
+
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((line) => line && Number.isFinite(Number(line.period)))
+      .slice(0, MAX_EMA_LINES)
+      .map((line, index) => ({
+        id: String(line.id || `ema-${index}`),
+        period: clampPeriod(line.period),
+        color: line.color || EMA_LINE_COLORS[index % EMA_LINE_COLORS.length],
+        width: Number(line.width) || 2,
+        visible: line.visible !== false,
+      }));
+  }
+
+  if (Number.isFinite(Number(indicators?.emaPeriod))) {
+    return [{
+      id: 'ema-migrated',
+      period: clampPeriod(indicators.emaPeriod),
+      color: indicators.emaColor || EMA_LINE_COLORS[0],
+      width: Number(indicators.emaLineWidth) || 2,
+      visible: indicators.emaVisible !== false,
+    }];
+  }
+
+  return defaultEmaLines();
+}
+
 const INDICATOR_DEFAULTS = {
   volume: { volumeSize: 20 },
   sma: { smaPeriod: 20, smaColor: '#2962ff', smaLineWidth: 2 },
-  ema: { emaPeriod: 20, emaColor: '#f59e0b', emaLineWidth: 2 },
+  ema: {},
   rsi: { rsiPeriod: 14, rsiColor: '#a855f7', rsiLineWidth: 2, rsiSize: 25 },
   macd: { macdFastPeriod: 12, macdSlowPeriod: 26, macdSignalPeriod: 9, macdColor: '#2962ff', macdSignalColor: '#f59e0b', macdUpColor: '#26a69a', macdDownColor: '#ef5350', macdLineWidth: 2, macdSize: 25 },
 };
@@ -25,6 +110,14 @@ function buildDraft(key, indicators) {
 
   if (key === 'macd') {
     MACD_FIELDS.forEach((field) => { draft[field] = indicators[field]; });
+    return draft;
+  }
+
+  if (key === 'ema') {
+    // Cloned per line, not shared by reference: the draft is the local source of truth
+    // until Ok, and mutating a line in place would edit the live chart mid-dialog and
+    // leave Cancel with nothing to roll back to.
+    draft.emaLines = normalizeEmaLines(indicators).map((line) => ({ ...line }));
     return draft;
   }
 
@@ -100,11 +193,20 @@ export function IndicatorClickTargets({ indicators, paneTops, expandedIndicator,
         <div data-chart-ui className="pointer-events-auto absolute left-16 top-12 z-[54] flex flex-wrap gap-1">
           {mainIndicators.map((key) => {
             const meta = INDICATOR_META[key];
+            // EMA is a list, so its pill names every configured period at once
+            // ("EMA 9, 20, 50, 200") the same way MACD's already names its three —
+            // one pill for the group rather than one per line, since every legend
+            // action (hide/settings/remove) applies to the whole EMA indicator.
+            const emaLines = key === 'ema' ? normalizeEmaLines(indicators) : null;
             return (
               <IndicatorLegendRow
                 key={key}
-                label={`${meta.label}${meta.periodKey ? ` ${indicators[meta.periodKey]}` : ''}`}
-                dotColor={meta.colorKey ? indicators[meta.colorKey] : '#787b86'}
+                label={emaLines
+                  ? `${meta.label}${emaLines.length ? ` ${emaLines.map((line) => line.period).join(', ')}` : ''}`
+                  : `${meta.label}${meta.periodKey ? ` ${indicators[meta.periodKey]}` : ''}`}
+                dotColor={emaLines
+                  ? (emaLines.find((line) => line.visible)?.color ?? emaLines[0]?.color ?? '#787b86')
+                  : (meta.colorKey ? indicators[meta.colorKey] : '#787b86')}
                 isVisible={indicators[`${key}Visible`] !== false}
                 isExpanded={expandedIndicator === key}
                 rowClass={rowClass}
@@ -204,6 +306,15 @@ export default function IndicatorSettingsPanel({ indicators, selectedIndicator, 
 
   const update = (patch) => setDraft((current) => ({ ...current, ...patch }));
 
+  const emaLines = Array.isArray(draft.emaLines) ? draft.emaLines : [];
+  const updateEmaLine = (id, patch) => update({ emaLines: emaLines.map((line) => (line.id === id ? { ...line, ...patch } : line)) });
+  const removeEmaLine = (id) => update({ emaLines: emaLines.filter((line) => line.id !== id) });
+  const addEmaLine = () => {
+    if (emaLines.length >= MAX_EMA_LINES) return;
+    update({ emaLines: [...emaLines, createEmaLine(20, emaLines.length)] });
+  };
+  const emaRowClass = `flex items-center gap-2 rounded border p-2 ${fieldClass}`;
+
   const updateMacdPeriod = (key, value, fallback) => {
     const requested = Math.min(200, Math.max(2, Number(value) || fallback));
     if (key === 'macdFastPeriod') {
@@ -217,7 +328,9 @@ export default function IndicatorSettingsPanel({ indicators, selectedIndicator, 
     update({ [key]: requested });
   };
 
-  const applyDefaults = () => update(INDICATOR_DEFAULTS[selectedIndicator]);
+  const applyDefaults = () => update(
+    selectedIndicator === 'ema' ? { emaLines: defaultEmaLines() } : INDICATOR_DEFAULTS[selectedIndicator],
+  );
 
   const commit = () => {
     onChange((current) => ({ ...current, ...draft }));
@@ -270,6 +383,53 @@ export default function IndicatorSettingsPanel({ indicators, selectedIndicator, 
                     </label>
                   ))}
                 </div>
+              ) : selectedIndicator === 'ema' ? (
+                <>
+                  <p className={`text-[10px] font-semibold uppercase tracking-wide ${muted}`}>
+                    Lengths ({emaLines.length}/{MAX_EMA_LINES})
+                  </p>
+                  {emaLines.length === 0 && (
+                    <p className={`text-xs ${muted}`}>No EMA lines. Add one below.</p>
+                  )}
+                  {emaLines.map((line, index) => (
+                    <div key={line.id} className={emaRowClass}>
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: line.color }} />
+                      <input
+                        type="number"
+                        min={MIN_INDICATOR_PERIOD}
+                        max={MAX_INDICATOR_PERIOD}
+                        value={line.period}
+                        onChange={(event) => updateEmaLine(line.id, { period: clampPeriod(event.target.value, line.period) })}
+                        aria-label={`EMA line ${index + 1} length`}
+                        className={`h-8 w-full min-w-0 rounded border px-2 text-xs outline-none focus:border-[#2dd4bf] ${fieldClass}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateEmaLine(line.id, { visible: line.visible === false })}
+                        aria-label={line.visible === false ? `Show EMA ${line.period}` : `Hide EMA ${line.period}`}
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-200'} ${line.visible === false ? muted : ''}`}
+                      >
+                        {line.visible === false ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeEmaLine(line.id)}
+                        aria-label={`Remove EMA ${line.period}`}
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded text-red-500 ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-200'}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addEmaLine}
+                    disabled={emaLines.length >= MAX_EMA_LINES}
+                    className="h-9 rounded-md border border-dashed border-[#2dd4bf] px-3 text-xs font-semibold text-[#2dd4bf] transition hover:bg-[#2dd4bf]/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    + Add EMA
+                  </button>
+                </>
               ) : meta.periodKey ? (
                 <label className={`grid gap-1 text-[10px] font-semibold uppercase tracking-wide ${muted}`}>
                   Length
@@ -301,6 +461,29 @@ export default function IndicatorSettingsPanel({ indicators, selectedIndicator, 
                   <input type="color" value={draft[key]} onChange={(event) => update({ [key]: event.target.value })} className="h-8 w-12 cursor-pointer rounded border-0 bg-transparent" />
                 </label>
               ))}
+
+              {selectedIndicator === 'ema' && (emaLines.length === 0 ? (
+                <p className={`text-xs ${muted}`}>No EMA lines to style. Add one on the Inputs tab.</p>
+              ) : emaLines.map((line) => (
+                <div key={line.id} className={emaRowClass}>
+                  <span className={`w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wide ${muted}`}>EMA {line.period}</span>
+                  <input
+                    type="color"
+                    value={line.color}
+                    onChange={(event) => updateEmaLine(line.id, { color: event.target.value })}
+                    aria-label={`EMA ${line.period} line color`}
+                    className="h-8 w-12 shrink-0 cursor-pointer rounded border-0 bg-transparent"
+                  />
+                  <select
+                    value={line.width}
+                    onChange={(event) => updateEmaLine(line.id, { width: Number(event.target.value) })}
+                    aria-label={`EMA ${line.period} line width`}
+                    className={`h-8 w-full min-w-0 rounded border px-2 text-xs outline-none focus:border-[#2dd4bf] ${fieldClass}`}
+                  >
+                    {[1, 2, 3, 4].map((width) => <option key={width} value={width}>{width}px</option>)}
+                  </select>
+                </div>
+              )))}
 
               {meta.colorKey && (
                 <label className={`flex items-center justify-between gap-3 text-[10px] font-semibold uppercase tracking-wide ${muted}`}>

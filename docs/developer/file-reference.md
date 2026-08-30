@@ -49,5 +49,6 @@ Use this index to find the feature owner of a source file. Detailed behavior bel
 
 Shared authentication/profile/market/subscription/feedback/admin routes are covered by their guides. Notification/filter/export and database-generated controller routes are legacy admin infrastructure covered by [Roles and menus](roles-privileges-menus.md), [Announcements](announcements.md), [Admin API generator](admin-api-generator.md), or [System settings](system-settings.md). `routes/channels.php` and `routes/console.php` are framework/operations entry points; document new channel or scheduled-command behavior in the owning feature guide.
 - `resources/js/Components/Market/WorkspaceTour.jsx`: reusable accessible spotlight tour.
+- `resources/js/Context/AnnouncementGateContext.jsx`: holds every spotlight tour back until the unread-announcement modal is done — see [Announcements](announcements.md).
 - `resources/js/Components/Feedback/FeedbackChat.jsx`: customer/admin support conversation with visible-tab polling.
 - `app/Models/UserFeedbackMessage.php`: threaded payment/subscription support message.

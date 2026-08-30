@@ -19,6 +19,7 @@ import {
   ChartSpline,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   ChartNoAxesCombined,
   Circle,
   CircleDashed,
@@ -144,7 +145,9 @@ function getPanelStyle(chartTheme) {
 
 function RailButton({ icon: Icon, active, disabled, title, onClick, chartTheme, dataChartUi }) {
   const isDark = chartTheme?.mode !== 'light';
-  const inactiveTextClass = isDark ? 'text-[#b2b5be]' : 'text-slate-500';
+  // Light theme uses a near-black rather than a mid-gray: these are 18px line icons
+  // on a white panel, where slate-500 read as disabled rather than merely inactive.
+  const inactiveTextClass = isDark ? 'text-[#b2b5be]' : 'text-slate-700';
   const hoverClass = isDark ? 'hover:bg-white/10 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900';
   const { anchorRef, pos, show, hide } = useAnchoredTooltip();
 
@@ -195,8 +198,14 @@ function ToolGroupRailItem({ group, tool, toolSettings, handleToolChange, toggle
             onFocus={chevronTooltip.show}
             onBlur={chevronTooltip.hide}
             aria-label={`Choose ${group.name} tool`}
-            className={`pointer-events-auto flex h-9 w-3 items-center justify-center rounded-sm text-[#787b86] opacity-40 transition-opacity duration-150 hover:opacity-100 group-hover:opacity-100 ${
-              isDarkTheme ? 'hover:bg-white/10 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
+            // Light theme dims this with a solid color, not opacity: 40% of #787b86
+            // over a white panel computes to roughly #c9cacd, which is close enough
+            // to invisible that the chevron stopped reading as a control at all.
+            // Dark keeps the opacity — over #151617 it lands in a usable mid-gray.
+            className={`pointer-events-auto flex h-9 w-3 items-center justify-center rounded-sm transition duration-150 group-hover:opacity-100 ${
+              isDarkTheme
+                ? 'text-[#787b86] opacity-40 hover:bg-white/10 hover:text-white hover:opacity-100'
+                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
             }`}
           ><ChevronRight size={9}/></button>
           <AnchoredTooltipPortal pos={chevronTooltip.pos} label={`Choose ${group.name} tool`} isDark={isDarkTheme} />
@@ -1420,6 +1429,63 @@ function formatMoney(value, digits = 2) {
   });
 }
 
+// The Order/Trigger price steppers need a tick and `/api/klines` publishes no tick
+// size per market, so scale one off the price itself — roughly the last digit an
+// exchange would quote at that magnitude.
+function priceStepFor(price) {
+  const value = Number(price);
+  if (!Number.isFinite(value) || value <= 0) return 0.01;
+  if (value >= 10000) return 1;
+  if (value >= 1000) return 0.1;
+  if (value >= 100) return 0.01;
+  if (value >= 1) return 0.001;
+  if (value >= 0.01) return 0.00001;
+  return 0.0000001;
+}
+
+function priceDecimalsFor(price) {
+  return Math.max(0, Math.round(-Math.log10(priceStepFor(price))));
+}
+
+function roundPriceForDisplay(value, reference) {
+  return Number(Number(value).toFixed(priceDecimalsFor(reference)));
+}
+
+// Limit and Trigger entries both fill the moment a candle touches their level (the
+// pending-fill check in MarketChart.jsx tests the candle's range against
+// entry_price and nothing else), so what actually separates the two tabs is which
+// side of the last price they are allowed to sit on: a limit entry rests on the
+// passive side (buy below / sell above), a trigger entry fires from the aggressive
+// side (buy above / sell below). Catching the wrong side is the point — a "resting
+// bid" typed above the market is not a bid at all, it fills on the next candle.
+function getEntryPriceSideError(orderType, side, price, lastPrice) {
+  if (orderType !== 'limit' && orderType !== 'trigger') return null;
+  if (price == null || lastPrice == null) return null;
+  const isBuy = side !== 'short';
+  const mustRestBelow = orderType === 'limit' ? isBuy : !isBuy;
+  if (mustRestBelow && price > lastPrice) {
+    return orderType === 'limit'
+      ? 'A limit buy rests below the last price — use Trigger to enter above it.'
+      : 'A trigger sell fires below the last price — use Limit to sell above it.';
+  }
+  if (!mustRestBelow && price < lastPrice) {
+    return orderType === 'limit'
+      ? 'A limit sell rests above the last price — use Trigger to enter below it.'
+      : 'A trigger buy fires above the last price — use Limit to buy below it.';
+  }
+  return null;
+}
+
+// Which pending tab a level implies. Used when the price arrives from the chart
+// (right-click "Trigger Position", or dragging the draft entry line) instead of
+// being typed here, so a chart-placed order lands on the tab that matches it
+// rather than always on Limit and immediately failing the check above.
+function pendingOrderTypeForPrice(side, price, lastPrice) {
+  if (price == null || lastPrice == null) return 'limit';
+  const isBuy = side !== 'short';
+  return (isBuy ? price > lastPrice : price < lastPrice) ? 'trigger' : 'limit';
+}
+
 function playbookSelectStyles(isDark) {
   return {
     control: (base, state) => ({
@@ -2289,11 +2355,25 @@ export default function ReplayPanel({
     } catch {}
   }, [phpRate, phpRateStorageKey]);
 
+  // Read from effects that must not re-run when the price ticks or the side flips.
+  const executionPriceRef = useRef(executionPrice);
+  executionPriceRef.current = executionPrice;
+  const orderSideRef = useRef(orderSide);
+  orderSideRef.current = orderSide;
+  const pendingTypeForPrice = (price) => pendingOrderTypeForPrice(
+    orderSideRef.current,
+    getPositiveNumber(price),
+    getPositiveNumber(executionPriceRef.current)
+  );
+
   useEffect(() => {
     if (!orderLineDraftPatch) return;
 
     if (orderLineDraftPatch.kind === 'entry') {
       setOrderEntryPrice(orderLineDraftPatch.value);
+      // Dragging the entry line is a request for a level, which a market order has
+      // no room for — move to whichever pending tab that level belongs on.
+      setOrderType((current) => (current === 'market' ? pendingTypeForPrice(orderLineDraftPatch.value) : current));
     }
 
     if (orderLineDraftPatch.kind === 'sl') {
@@ -2313,7 +2393,7 @@ export default function ReplayPanel({
     const requestedPrice = getPositiveNumber(orderEntryRequest?.price);
     if (!orderEntryRequest?.id || requestedPrice == null) return;
 
-    setOrderType('limit');
+    setOrderType(pendingTypeForPrice(requestedPrice));
     setOrderEntryPrice(String(Number(requestedPrice.toFixed(8))));
     setShowOrderDraft(true);
     setActiveGroup('backtest');
@@ -2331,6 +2411,13 @@ export default function ReplayPanel({
     setTpSlEnabled(false);
     onBacktestOrderDraftChange?.(null);
   }, [onBacktestOrderDraftChange, orderDraftClearRequest]);
+
+  // Market fills at the live price, so a level typed on Limit/Trigger must not ride
+  // along into a market order — it used to be submitted as the entry price, filling
+  // at a price the market may never have traded.
+  useEffect(() => {
+    if (orderType === 'market') setOrderEntryPrice('');
+  }, [orderType]);
 
   const toggleGroup = (group) => {
     if (activeGroup === 'backtest') {
@@ -2417,6 +2504,17 @@ export default function ReplayPanel({
   const canTrade = currentExecutionPrice != null && !isBacktestLoading;
   const hasCustomEntryPrice = customEntryPrice != null;
   const isPendingOrder = orderType === 'limit' || orderType === 'trigger' || orderType === 'conditional';
+  const entryPriceSideError = getEntryPriceSideError(orderType, orderSide, customEntryPrice, currentExecutionPrice);
+  const stepEntryPrice = (direction) => {
+    const base = customEntryPrice ?? currentExecutionPrice;
+    if (base == null) return;
+    const step = priceStepFor(base);
+    setOrderEntryPrice(String(roundPriceForDisplay(Math.max(step, base + (direction * step)), base)));
+  };
+  const fillLastPrice = () => {
+    if (currentExecutionPrice == null) return;
+    setOrderEntryPrice(String(roundPriceForDisplay(currentExecutionPrice, currentExecutionPrice)));
+  };
   const effectiveEntryPrice = hasCustomEntryPrice ? customEntryPrice : currentExecutionPrice;
   const quoteNotional = displayToQuoteAmount(orderNotional, displayCurrency, normalizedPhpRate);
   const leverageValue = Number(orderLeverage);
@@ -2428,27 +2526,23 @@ export default function ReplayPanel({
   const plannedTakeProfitPnlPrice = orderTakeProfitMode === 'pnl'
     ? estimatePriceFromPnlPercent(orderSide, effectiveEntryPrice, leverageValue, orderTakeProfitPnl, false)
     : null;
+  // A blank price field means "no level", not "pick one for me".
+  //
+  // These used to fall back to entry * 0.99 / 1.01 whenever the box was checked and the
+  // field left empty, which silently opened the position with a stop and a target the
+  // trader never chose — and at a full 1% away, which on an intraday chart plots as two
+  // lines nowhere near the entry they belong to. That is the same "invented level"
+  // problem already fixed once for the *unchecked* case; leaving it in place for the
+  // checked-but-blank case just moved it one checkbox over.
+  //
+  // Submitting nothing is what makes this compose with the entry line's TP/SL buttons
+  // (see backtesting-and-orders.md): no level means the button renders, and clicking it
+  // puts the level right beside the entry where it can be dragged into place.
   const plannedStopLoss = !tpSlEnabled ? null : (
-    orderStopLossMode === 'pnl'
-      ? plannedStopLossPnlPrice
-      : getPositiveNumber(orderStopLoss) ?? (
-          effectiveEntryPrice != null
-            ? orderSide === 'short'
-              ? effectiveEntryPrice * 1.01
-              : effectiveEntryPrice * 0.99
-            : null
-        )
+    orderStopLossMode === 'pnl' ? plannedStopLossPnlPrice : getPositiveNumber(orderStopLoss)
   );
   const plannedTakeProfit = !tpSlEnabled ? null : (
-    orderTakeProfitMode === 'pnl'
-      ? plannedTakeProfitPnlPrice
-      : getPositiveNumber(orderTakeProfit) ?? (
-          effectiveEntryPrice != null
-            ? orderSide === 'short'
-              ? effectiveEntryPrice * 0.99
-              : effectiveEntryPrice * 1.01
-            : null
-        )
+    orderTakeProfitMode === 'pnl' ? plannedTakeProfitPnlPrice : getPositiveNumber(orderTakeProfit)
   );
   const orderPlan = getOrderPlan({
     side: orderSide,
@@ -2473,6 +2567,7 @@ export default function ReplayPanel({
     orderPlan.requiredCash <= affordabilityCeiling + 0.00000001 &&
     !crossMarksIncomplete &&
     (!isPendingOrder || hasCustomEntryPrice) &&
+    !entryPriceSideError &&
     (orderPlan?.isStopValid ?? true) &&
     (orderPlan?.isTargetValid ?? true) &&
     (!selectedPlaybook || checklistAnswers.length === selectedPlaybook.checklist.length) &&
@@ -3229,18 +3324,81 @@ export default function ReplayPanel({
                 </div>
               )}
               <div className="grid grid-cols-1 gap-2">
-                <label className="block">
-                  <span className={`mb-1 block text-[10px] uppercase tracking-wide ${mutedTextClass}`}>
-                    {isPendingOrder ? 'Price' : 'Entry'}
-                  </span>
-                  <input
-                    value={orderEntryPrice}
-                    onChange={(event) => setOrderEntryPrice(event.target.value)}
-                    inputMode="decimal"
-                    className={`h-8 w-full rounded border px-2 text-xs outline-none ${fieldClass}`}
-                    placeholder={isPendingOrder ? 'Required' : formatMoney(executionPrice)}
-                  />
-                </label>
+                {orderType === 'market' ? (
+                  // A market order has no price of its own to set. The ticket used to
+                  // show the same editable box for every tab, so a level typed here was
+                  // submitted as the entry price and the fill happened at a price the
+                  // market may never have traded.
+                  <div className="block">
+                    <span className={`mb-1 block text-[10px] uppercase tracking-wide ${mutedTextClass}`}>Price</span>
+                    <div className={`flex h-8 w-full items-center justify-between rounded border px-2 text-xs ${fieldClass}`}>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${canTrade ? 'bg-emerald-400' : 'bg-gray-500'}`} />
+                        <span className="truncate">
+                          {currentExecutionPrice != null ? formatMoney(currentExecutionPrice, priceDecimalsFor(currentExecutionPrice)) : '---'}
+                        </span>
+                      </span>
+                      <span className={`shrink-0 ${mutedTextClass}`}>{quoteCurrency}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="block">
+                    <span className={`mb-1 block text-[10px] uppercase tracking-wide ${mutedTextClass}`}>
+                      {orderType === 'trigger' ? 'Trigger Price' : 'Order Price'}
+                    </span>
+                    <div className="flex items-stretch gap-1">
+                      <div className="relative min-w-0 flex-1">
+                        <input
+                          value={orderEntryPrice}
+                          onChange={(event) => setOrderEntryPrice(event.target.value)}
+                          inputMode="decimal"
+                          className={`h-8 w-full rounded border pl-2 pr-11 text-xs outline-none ${
+                            entryPriceSideError ? invalidFieldClass : fieldClass
+                          }`}
+                          placeholder={currentExecutionPrice != null ? formatMoney(currentExecutionPrice, priceDecimalsFor(currentExecutionPrice)) : 'Required'}
+                        />
+                        <button
+                          type="button"
+                          onClick={fillLastPrice}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-[#5eead4] hover:underline"
+                        >
+                          Last
+                        </button>
+                      </div>
+                      <div className={`flex w-6 shrink-0 flex-col overflow-hidden rounded border ${isDarkTheme ? 'border-gray-700' : 'border-slate-300'}`}>
+                        <button
+                          type="button"
+                          aria-label="Increase price"
+                          onClick={() => stepEntryPrice(1)}
+                          className={`flex flex-1 items-center justify-center ${
+                            isDarkTheme ? 'bg-black-table-color text-gray-300 hover:bg-skin-black-light' : 'bg-white text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <ChevronUp size={11} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Decrease price"
+                          onClick={() => stepEntryPrice(-1)}
+                          className={`flex flex-1 items-center justify-center ${
+                            isDarkTheme ? 'bg-black-table-color text-gray-300 hover:bg-skin-black-light' : 'bg-white text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <ChevronDown size={11} />
+                        </button>
+                      </div>
+                    </div>
+                    {entryPriceSideError ? (
+                      <span className="mt-1 block text-[10px] text-amber-400">{entryPriceSideError}</span>
+                    ) : (
+                      <span className={`mt-1 block text-[10px] ${mutedTextClass}`}>
+                        {orderType === 'trigger'
+                          ? 'Fills at market the moment price touches this level.'
+                          : 'Rests until price comes back to this level.'}
+                      </span>
+                    )}
+                  </label>
+                )}
               </div>
               <div className={`grid grid-cols-3 gap-2 text-[11px] ${labelTextClass}`}>
                 <span>Risk {orderPlan?.riskAmount ? formatAccountMoney(orderPlan.riskAmount) : '---'}</span>
