@@ -381,6 +381,38 @@ function getLineLabelPosition(drawing) {
   };
 }
 
+/** Rough on-screen width of a label, in px. SVG gives no cheap way to measure text
+ *  before paint, so this approximation is shared by everything that needs to reason
+ *  about a label's footprint rather than each site inventing its own constant. */
+function estimateLabelWidth(labelText) {
+  return Math.min(Math.max(labelText.length * 6 + 10, 24), 160);
+}
+
+/**
+ * Labels are positioned at their drawing's anchor with no clamping, so a drawing
+ * whose anchor has scrolled past the pane still renders its label — the overlay
+ * then slices it mid-glyph, leaving the tail of the word plus its dark halo stroke
+ * smeared against the chart edge (a row of "OS" fragments from "BOS" levels, which
+ * reads as corruption rather than as a label that scrolled away). Render a label
+ * only while it fits entirely inside the pane, so it disappears cleanly instead.
+ * Width is unknown until the overlay has been measured; treat that as visible so
+ * nothing flickers out on the first paint.
+ */
+function isLabelFullyVisible(position, labelText, overlayWidth) {
+  if (!position || !labelText) return false;
+  if (!Number.isFinite(overlayWidth) || overlayWidth <= 0) return true;
+
+  const width = estimateLabelWidth(labelText);
+  const left =
+    position.textAnchor === 'start'
+      ? position.x
+      : position.textAnchor === 'end'
+        ? position.x - width
+        : position.x - width / 2;
+
+  return left >= 0 && left + width <= overlayWidth;
+}
+
 function getLineLabelGapSegments(start, end, labelText, drawing) {
   if (
     !labelText ||
@@ -395,7 +427,7 @@ function getLineLabelGapSegments(start, end, labelText, drawing) {
   const length = Math.hypot(dx, dy);
   if (!Number.isFinite(length) || length < 12) return null;
 
-  const textWidth = Math.min(Math.max(labelText.length * 6 + 10, 24), 160);
+  const textWidth = estimateLabelWidth(labelText);
   const halfGap = Math.min(textWidth / 2, Math.max(length / 2 - 3, 0));
   if (halfGap <= 0) return null;
 
@@ -824,11 +856,15 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
     );
   }
 
+  // The drawing SVG stops 88px short of the overlay to clear the price scale, so
+  // this — not `overlaySize.width` — is the edge a label actually gets clipped at.
+  const drawingPaneWidth = Math.max(overlaySize.width - 88, 0);
+
   return (
     <div className="pointer-events-none absolute left-0 top-0 z-10 overflow-hidden" style={{ width: '100%', height: overlaySize.height }}>
       <svg
         className="pointer-events-none absolute inset-0"
-        width={Math.max(overlaySize.width - 88, 0)}
+        width={drawingPaneWidth}
         height={overlaySize.height}
         style={{ width: 'calc(100% - 88px)', height: '100%' }}
       >
@@ -908,7 +944,8 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
                     </text>
                   );
                 })}
-                {labelText && !d.id.startsWith('temp-') && labelPosition && (
+                {labelText && !d.id.startsWith('temp-') && labelPosition
+                  && isLabelFullyVisible(labelPosition, labelText, drawingPaneWidth) && (
                   <text
                     x={labelPosition.x}
                     y={labelPosition.y}
@@ -1007,7 +1044,8 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
                       )}
                     </g>
                   ))}
-                  {labelText && !d.id.startsWith('temp-') && (
+                  {labelText && !d.id.startsWith('temp-')
+                    && isLabelFullyVisible(labelPosition, labelText, drawingPaneWidth) && (
                     <text
                       x={labelPosition.x}
                       y={labelPosition.y}
@@ -1239,7 +1277,8 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
                     {getToolLabel(d)}
                   </text>
                 )}
-                {labelText && !d.id.startsWith('temp-') && (
+                {labelText && !d.id.startsWith('temp-')
+                  && isLabelFullyVisible(labelPosition, labelText, drawingPaneWidth) && (
                   <text
                     x={labelPosition.x}
                     y={labelPosition.y}
@@ -1454,7 +1493,8 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
                   );
                 })()}
                 {d.type !== 'rect' && d.type !== 'circle' && !d.id.startsWith('temp-') && <text x={rect.left + 8} y={rect.top + 18} fill="#ffffff" fontSize="12" fontWeight="700" paintOrder="stroke" stroke="rgba(15,23,42,.95)" strokeWidth="4">{getRangeLabel(d)}</text>}
-                {labelText && !d.id.startsWith('temp-') && (
+                {labelText && !d.id.startsWith('temp-')
+                  && isLabelFullyVisible(labelPosition, labelText, drawingPaneWidth) && (
                   <text
                     x={labelPosition.x}
                     y={labelPosition.y}

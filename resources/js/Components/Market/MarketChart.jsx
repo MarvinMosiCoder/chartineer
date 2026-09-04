@@ -4643,6 +4643,18 @@ export default function MarketReplayChart({
 
     const viewportKey = `${exchange}:${marketCategory}:${symbol}:${timeframe}`;
     if (viewportInitializedKeyRef.current === viewportKey) return;
+    // `allCandles` can briefly hold a 1-2 bar series that is not this market's
+    // history at all: the REST price poller appends its latest candle through
+    // `setAllCandles` (see `refreshLatest`), and on a cold load it answers well
+    // before the real history request does. Framing on that and stamping the key
+    // below would fit the time scale to two bars and then lock every later
+    // re-fit out, leaving the loaded history rendered at an absurd zoom with the
+    // candles off-screen — the chart reads as broken until the user switches
+    // timeframe, which takes a different, explicit setVisibleLogicalRange path.
+    // `historyReadyKeyRef` is stamped by `applyCandles` (cache hit or network)
+    // and uses this exact key format, so it is the signal that `allCandles`
+    // actually holds this market+timeframe's history.
+    if (historyReadyKeyRef.current !== viewportKey) return;
     viewportInitializedKeyRef.current = viewportKey;
 
     isProgrammaticRangeChangeRef.current = true;
