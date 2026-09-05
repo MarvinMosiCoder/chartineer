@@ -83,7 +83,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react';
-import { DRAWING_COLORS, DRAWING_WIDTHS, PLAYBACK_SPEEDS, TEXT_SIZES } from './constants';
+import { DRAWING_COLORS, DRAWING_WIDTHS, formatStrokeWidthLabel, PLAYBACK_SPEEDS, TEXT_SIZES } from './constants';
 import { subscribeToChange } from '../../../utils/crossTabSync';
 
 const controlBaseClass =
@@ -690,7 +690,7 @@ function DrawingSettingsDialog({
               <label className="flex items-center justify-between gap-4 text-sm font-medium">
                 Line width
                 <select value={draft.strokeWidth ?? 1} onChange={(event) => updateStyleDraft({ strokeWidth: Number(event.target.value) })} className={`h-11 w-44 rounded-lg border px-3 outline-none ${fieldClass}`}>
-                  {DRAWING_WIDTHS.map((width) => <option key={width} value={width}>{width}px</option>)}
+                  {DRAWING_WIDTHS.map((width) => <option key={width} value={width}>{formatStrokeWidthLabel(width)}</option>)}
                 </select>
               </label>
               <label className="flex items-center justify-between gap-4 text-sm font-medium">
@@ -1231,16 +1231,16 @@ function TopToolEditorBar({
           <div className="relative order-5">
             <ToolEditorButton title="Line width" active={openMenu === 'width'} onClick={() => toggleMenu('width')} chartTheme={chartTheme} className="px-2.5">
               <span className="block h-px w-5 bg-current" />
-              <span className="text-sm font-semibold tabular-nums">{activeStrokeWidth}px</span>
+              <span className="text-sm font-semibold tabular-nums">{formatStrokeWidthLabel(activeStrokeWidth)}</span>
             </ToolEditorButton>
             {openMenu === 'width' && (
               <div className={menuPanelClass}>
                 <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${editorLabelClass}`}>Line Width</div>
-                <div className="grid grid-cols-6 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   {DRAWING_WIDTHS.map((width) => (
                     <IconTooltipButton
                       key={width}
-                      label={`${width}px`}
+                      label={formatStrokeWidthLabel(width)}
                       isDark={isDark}
                       onClick={() => {
                         onDrawingWidthChange(width);
@@ -1248,10 +1248,14 @@ function TopToolEditorBar({
                       }}
                       className={`flex h-8 items-center justify-center rounded border text-[11px] ${editorOptionClass(activeStrokeWidth === width)}`}
                     >
-                      <span
-                        className="block rounded-full bg-white"
-                        style={{ width: 18, height: Math.max(width, 1) }}
-                      />
+                      {width === 0 ? (
+                        <span className="text-[10px] font-semibold leading-none">None</span>
+                      ) : (
+                        <span
+                          className="block rounded-full bg-white"
+                          style={{ width: 18, height: Math.max(width, 0.5) }}
+                        />
+                      )}
                     </IconTooltipButton>
                   ))}
                 </div>

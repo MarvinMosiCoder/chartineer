@@ -77,7 +77,59 @@ export const PLAYBACK_SPEEDS = [
   { label: '20x', value: 50 },
 ];
 
-export const DRAWING_WIDTHS = [1, 2, 3, 4, 6, 8];
+export const DRAWING_WIDTHS = [0, 0.5, 1, 2, 3, 4, 6, 8];
+
+// Filled geometry already shows where it is through its tint, so a full-strength
+// outline on top of the fill reads as a second, heavier shape. These draw their
+// edge softly instead — present, but closer to a gridline than an outline. Width
+// stays the user's dial (0 turns the edge off entirely); this is only how hard the
+// edge is painted.
+export const FILLED_GEOMETRY_TOOL_TYPES = [
+  'rect', 'circle', 'price-range', 'date-range', 'price-date-range', 'triangle',
+];
+export const GEOMETRY_BORDER_OPACITY = 0.5;
+
+// Arc/curve/double-curve are unfilled — the stroke *is* the drawing, not a border
+// around one — so they are excluded above and only join the list the settings
+// migration walks.
+export const GEOMETRY_TOOL_TYPES = [
+  ...FILLED_GEOMETRY_TOOL_TYPES,
+  'arc', 'curve', 'double-curve',
+];
+
+export const MIN_DRAWING_STROKE_WIDTH = 0;
+// An edgeless shape is only an 8%-alpha tint while you drag it out, which is not
+// enough to aim with — the in-progress preview always keeps a visible edge.
+export const MIN_PREVIEW_STROKE_WIDTH = 1;
+
+export function formatStrokeWidthLabel(width) {
+  return Number(width) === 0 ? 'None' : `${width}px`;
+}
+
+// Finishing a drawing saves its own style back as that tool type's default, so the
+// hairline and edgeless widths this feature briefly defaulted to are now sitting in
+// saved settings, where they would win over the softened 1px edge. Clear those two
+// once — any width actually chosen from the picker is left alone — and stamp the
+// blob so a deliberate re-pick of either is never dropped again.
+export const TOOL_SETTINGS_SCHEMA_VERSION = 3;
+const LEGACY_GEOMETRY_STROKE_WIDTHS = [0, 0.5];
+
+export function migrateToolSettings(settings) {
+  const source = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {};
+  if (Number(source.schemaVersion) >= TOOL_SETTINGS_SCHEMA_VERSION) return null;
+
+  const next = { ...source, schemaVersion: TOOL_SETTINGS_SCHEMA_VERSION };
+
+  for (const type of GEOMETRY_TOOL_TYPES) {
+    if (!LEGACY_GEOMETRY_STROKE_WIDTHS.includes(Number(next[type]?.strokeWidth))) continue;
+
+    const { strokeWidth, ...rest } = next[type];
+    next[type] = rest;
+  }
+
+  return next;
+}
+
 export const TEXT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32];
 export const DRAWING_COLORS = [
   '#60a5fa',

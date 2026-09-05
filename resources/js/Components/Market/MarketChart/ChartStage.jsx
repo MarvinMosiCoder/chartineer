@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Bookmark, Flag, FileText, MapPin, MessageCircle, Quote, Save, Signpost, StickyNote, Tag, Trash2, X } from 'lucide-react';
 import getAppLogo from '../../SystemSettings/ApplicationLogo';
-import { CHART_HEIGHT, DRAWING_COLOR, DRAWING_FILL, TIMEFRAME_SECONDS } from './constants';
+import { CHART_HEIGHT, DRAWING_COLOR, DRAWING_FILL, FILLED_GEOMETRY_TOOL_TYPES, GEOMETRY_BORDER_OPACITY, MIN_DRAWING_STROKE_WIDTH, MIN_PREVIEW_STROKE_WIDTH, TIMEFRAME_SECONDS } from './constants';
 import {
   colorToRgba,
   CYCLE_TOOL_TYPES,
@@ -872,9 +872,18 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
         {renderedDrawings.map((d) => {
           const drawingColor = d.color ?? DRAWING_COLOR;
           const stroke = drawingColor;
-          const strokeWidth = d.id.startsWith('temp-')
-            ? (d.strokeWidth ?? 1)
-            : Math.max(d.strokeWidth ?? 1, 1);
+          const isPreview = d.id.startsWith('temp-');
+          const drawnStrokeWidth = Math.max(d.strokeWidth ?? 1, MIN_DRAWING_STROKE_WIDTH);
+          // An edgeless shape is only its fill, which is too faint to aim with while
+          // you are still dragging it out — the preview keeps an edge either way.
+          const strokeWidth = isPreview && drawnStrokeWidth <= 0
+            ? MIN_PREVIEW_STROKE_WIDTH
+            : drawnStrokeWidth;
+          // A filled shape's edge frames its tint rather than outlining it, so once
+          // finished it is painted softly; the preview stays solid to aim with.
+          const fillEdgeOpacity = !isPreview && FILLED_GEOMETRY_TOOL_TYPES.includes(d.type)
+            ? GEOMETRY_BORDER_OPACITY
+            : 1;
           const textWeight = getDrawingTextWeight(d);
           const textStyle = getDrawingTextStyle(d);
           const textSize = Number(d.textSize) || 12;
@@ -1164,6 +1173,7 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
                     fill={colorToRgba(stroke, d.id.startsWith('temp-') ? 0.08 : 0.16) || DRAWING_FILL}
                     stroke={stroke}
                     strokeWidth={strokeWidth}
+                    strokeOpacity={fillEdgeOpacity}
                     strokeDasharray={shapeDashArray}
                   />
                 );
@@ -1449,6 +1459,7 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
                     fill={shapeFill}
                     stroke={stroke}
                     strokeWidth={strokeWidth}
+                    strokeOpacity={fillEdgeOpacity}
                     strokeDasharray={rectDashArray}
                   />
                 ) : (
@@ -1460,6 +1471,7 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
                     fill={shapeFill}
                     stroke={stroke}
                     strokeWidth={strokeWidth}
+                    strokeOpacity={fillEdgeOpacity}
                     strokeDasharray={rectDashArray}
                   />
                 )}

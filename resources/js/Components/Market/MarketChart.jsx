@@ -39,6 +39,7 @@ import {
   DRAWING_COLOR,
   INTERVAL_MAP,
   MAX_CANDLE_SIZE,
+  migrateToolSettings,
   MIN_CANDLE_SIZE,
   SESSION_BAND_LABEL_MIN_WIDTH_PX,
   SESSION_BAND_MIN_WIDTH_PX,
@@ -2352,14 +2353,23 @@ export default function MarketReplayChart({
             : {};
 
         if (!cancelled) {
-          setToolSettings(nextSettings);
-          try {
-            localStorage.setItem(toolSettingsStorageKey, JSON.stringify(nextSettings));
-          } catch {}
+          // A migration rewrites the blob, so it goes back out through the normal
+          // persist path (localStorage + server) rather than only being cached.
+          const migrated = migrateToolSettings(nextSettings);
+
+          if (migrated) {
+            setToolSettings(migrated);
+            persistToolSettings(migrated);
+          } else {
+            setToolSettings(nextSettings);
+            try {
+              localStorage.setItem(toolSettingsStorageKey, JSON.stringify(nextSettings));
+            } catch {}
+          }
         }
       } catch {
         if (!cancelled) {
-          setToolSettings(localSettings);
+          setToolSettings(migrateToolSettings(localSettings) ?? localSettings);
         }
       }
     };
@@ -2369,7 +2379,7 @@ export default function MarketReplayChart({
     return () => {
       cancelled = true;
     };
-  }, [toolSettingsStorageKey]);
+  }, [persistToolSettings, toolSettingsStorageKey]);
 
   const persistDrawingsToServer = useCallback(async (nextDrawings, activeSymbol = symbol) => {
     await axios.put('/market-drawings', {
