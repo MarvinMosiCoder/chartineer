@@ -54,6 +54,8 @@ import {
   clampRiskPrice,
   CYCLE_TOOL_TYPES,
   distanceToSegment,
+  drawingIntersectsRect,
+  normalizeMarqueeRect,
   orderLevelButtonRects,
   estimateDrawingLogicalFromTime,
   estimateLogicalFromTime,
@@ -74,6 +76,13 @@ import {
 } from './MarketChart/utils';
 
 const MAX_DRAWING_UNDO_STEPS = 25;
+// Below this the ctrl+left-drag is treated as a click (deselect) rather than a
+// marquee, so a stray twitch while ctrl+clicking can't look like a failed box.
+const MARQUEE_MIN_DRAG_PX = 4;
+// How long after a marquee ends a `contextmenu` is still assumed to belong to
+// that gesture (macOS dispatches one for Ctrl+click, on release). Long enough
+// to cover the same release, short enough never to eat a later right-click.
+const MARQUEE_CONTEXT_MENU_GRACE_MS = 300;
 const POSITION_MONITOR_GAP_LIMIT = 500;
 // Synthetic "tool type" key so chart-settings templates reuse the exact same
 // named-preset storage (toolSettings.presets[type], saved via /market-tool-settings)
@@ -164,6 +173,13 @@ const CHART_THEMES = {
     text: '#d1d4dc',
     grid: 'rgba(148, 163, 184, 0.06)',
     border: '#252a32',
+    // layout.panes.separatorColor — the divider above each indicator pane.
+    // Deliberately stronger than the 0.12 this used to be: at that alpha the
+    // 1px line sits about at the perceptual floor, and on a fractional
+    // devicePixelRatio it antialiases across two rows at roughly half that and
+    // reads as absent. Still well short of the ~90% originally tried, which
+    // came across as a hard rule drawn through the chart.
+    paneSeparator: 'rgba(255, 255, 255, 0.32)',
     overlay: 'rgba(11, 13, 16, 0.78)',
     selectedReplayPriceMarker: '#363a45',
   },
@@ -179,10 +195,25 @@ const CHART_THEMES = {
     text: '#0f172a',
     grid: 'rgba(100, 116, 139, 0.08)',
     border: '#cbd5e1',
+    paneSeparator: 'rgba(15, 23, 42, 0.28)',
     overlay: 'rgba(255, 255, 255, 0.76)',
     selectedReplayPriceMarker: '#363a45',
   },
 };
+
+// The dashed row drawn at the hovered price, anchoring the +/bell price actions.
+// It is deliberately weaker than it looks like it should be, because it is not
+// drawn alone: lightweight-charts' own crosshair horizontal line sits at the
+// exact same y (both track the pointer), so the two dashed strokes composite
+// into something visibly heavier than the vertical crosshair right beside it.
+// Held at partial alpha so the pair reads as one line of the same weight as the
+// vertical. Judge any retune against the vertical line on screen, not on its own.
+const PRICE_ACTION_ROW_COLOR = 'rgba(120, 123, 134, 0.45)';
+
+// Brand teal, shown while the separator is hovered/dragged to resize a pane.
+// Theme-independent, and referenced from both the chart-creation options and
+// the theme effect that re-applies them — one constant so they cannot drift.
+const PANE_SEPARATOR_HOVER_COLOR = '#2dd4bf';
 
 // Screen distance from the entry line at which a TP/SL added from the entry-line
 // buttons is placed. See addBacktestPositionLevel for why this is pixels, not percent.
@@ -1148,6 +1179,15 @@ export default function MarketReplayChart({
   const dragDrawingRef = useRef(null);
   const resizeDrawingRef = useRef(null);
   const dragBacktestOrderRef = useRef(null);
+  const marqueeSelectionRef = useRef(null);
+  const multiSelectedDrawingIdsRef = useRef([]);
+  // macOS treats Ctrl+left-click as a secondary click, so the marquee gesture
+  // fires `contextmenu` there even though it uses the left button (Windows and
+  // Linux never do). handleContextMenu's ctrl/meta check covers the press;
+  // this timestamp covers the release, where the modifier may already be gone.
+  // Deliberately a short window rather than a "suppress the next one" flag,
+  // which would outlive the gesture and eat a later, deliberate right-click.
+  const marqueeEndedAtRef = useRef(0);
   const isReplayPricePickActiveRef = useRef(false);
   const isTouchInputRef = useRef(false);
   const isNarrowChartRef = useRef(false);
@@ -1375,6 +1415,13 @@ export default function MarketReplayChart({
   const [drawingSaveStatus, setDrawingSaveStatus] = useState('saved');
   const [tempDrawing, setTempDrawing] = useState(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState(null);
+  // Ctrl/Cmd + left-drag marquee. `marqueeSelection` is the live drag box
+  // (null when no drag is in progress); `multiSelectedDrawingIds` is what the
+  // finished box caught. Kept separate from selectedDrawingId on purpose: the
+  // single-selection style toolbar edits one drawing, this set only exists to
+  // act on many at once.
+  const [marqueeSelection, setMarqueeSelection] = useState(null);
+  const [multiSelectedDrawingIds, setMultiSelectedDrawingIds] = useState([]);
   const [hoveredPositionDrawingId, setHoveredPositionDrawingId] = useState(null);
   const [isHoveringBacktestOrderButton, setIsHoveringBacktestOrderButton] = useState(false);
   const [isHoveringBacktestOrderLine, setIsHoveringBacktestOrderLine] = useState(false);
@@ -1626,6 +1673,10 @@ export default function MarketReplayChart({
   useEffect(() => {
     selectedDrawingIdRef.current = selectedDrawingId;
   }, [selectedDrawingId]);
+
+  useEffect(() => {
+    multiSelectedDrawingIdsRef.current = multiSelectedDrawingIds;
+  }, [multiSelectedDrawingIds]);
 
   useEffect(() => {
     isReplayPricePickActiveRef.current = isReplayPricePickActive;
@@ -2818,6 +2869,16 @@ export default function MarketReplayChart({
     };
 
     const handleContextMenu = (event) => {
+      // Ctrl/Cmd + left-drag is the marquee multi-select gesture (see
+      // handleMouseDown). It must never also open the price menu on top of
+      // itself — which macOS would otherwise do, since Ctrl+click is a
+      // secondary click there.
+      if (event.ctrlKey || event.metaKey || Date.now() - marqueeEndedAtRef.current < MARQUEE_CONTEXT_MENU_GRACE_MS) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
       const action = getPriceAction(event);
       if (!action) return;
 
@@ -3449,6 +3510,18 @@ export default function MarketReplayChart({
     return null;
   }, [overlaySize.width, renderedDrawings]);
 
+  // Marquee counterpart to hitTestDrawing: every drawing the box touches, not
+  // just the topmost one. Reads renderedDrawings, so drawings hidden by the
+  // rail's Show/Hide (or by the active timeframe filter) are already excluded —
+  // a marquee can never select something the user cannot see.
+  const hitTestDrawingsInRect = useCallback((rect) => {
+    if (!rect) return [];
+
+    return renderedDrawings
+      .filter((drawing) => !drawing.id.startsWith('temp-') && drawingIntersectsRect(drawing, rect))
+      .map((drawing) => drawing.id);
+  }, [renderedDrawings]);
+
   const hitTestBacktestOrder = useCallback((x, y) => {
     for (let i = renderedBacktestOrders.length - 1; i >= 0; i -= 1) {
       const item = renderedBacktestOrders[i];
@@ -3679,8 +3752,8 @@ export default function MarketReplayChart({
         fontSize: isNarrowChartRef.current ? 9 : 10,
         panes: {
           enableResize: true,
-          separatorColor: chartTheme.mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(15, 23, 42, 0.12)',
-          separatorHoverColor: '#2dd4bf',
+          separatorColor: chartTheme.paneSeparator,
+          separatorHoverColor: PANE_SEPARATOR_HOVER_COLOR,
         },
       },
       grid: {
@@ -4098,7 +4171,13 @@ export default function MarketReplayChart({
     // mousedown-to-mouseup span, independent of how many (or few) native events fire in between —
     // it re-syncs every real frame no matter which internal gesture is happening.
     const stepViewportDragOverlay = () => {
-      if (!isViewportDraggingRef.current) {
+      // A marquee drag disables chart pan/scale outright, so there is no
+      // viewport change for this loop to keep the overlay synced with — it
+      // would just be a flushSync per frame for nothing. The guard has to live
+      // here rather than in handleViewportDragStart because `pointerdown`
+      // reaches that window listener before the marquee's own mousedown
+      // handler has run, so the ref is still null at drag-start time.
+      if (!isViewportDraggingRef.current || marqueeSelectionRef.current) {
         viewportDragFrameRef.current = null;
         return;
       }
@@ -4246,6 +4325,18 @@ export default function MarketReplayChart({
         textColor: chartTheme.text,
         attributionLogo: false,
         fontSize: isNarrowChartRef.current ? 9 : 10,
+        // Must be re-applied here, not only at chart creation. The chart is
+        // deliberately never rebuilt on a theme change (that would discard the
+        // viewport), so a separator left at the creating theme's color survives
+        // the toggle — and since each theme's value is a low-alpha tint of its
+        // own foreground, that means white-on-white or near-black-on-near-black.
+        // The line vanished completely until the next full reload, which is
+        // what made it look like it disappeared at random.
+        panes: {
+          enableResize: true,
+          separatorColor: chartTheme.paneSeparator,
+          separatorHoverColor: PANE_SEPARATOR_HOVER_COLOR,
+        },
       },
       grid: {
         vertLines: { color: chartTheme.grid },
@@ -4887,6 +4978,22 @@ export default function MarketReplayChart({
     return true;
   }, [getKeyboardPriceStep, saveDrawings, timeframe]);
 
+  // Deletes everything the marquee caught, in one undoable step. Matches the
+  // single-drawing Delete in ignoring `locked`/allDrawingsLocked — the existing
+  // Delete key already does, and diverging here would be a new inconsistency.
+  const handleDeleteMultiSelectedDrawings = useCallback(() => {
+    const ids = multiSelectedDrawingIdsRef.current;
+    if (!ids.length) return false;
+
+    pushDrawingUndoSnapshot(null);
+    const doomed = new Set(ids);
+    saveDrawings(drawingsRef.current.filter((drawing) => !doomed.has(drawing.id)));
+    setMultiSelectedDrawingIds([]);
+    setSelectedDrawingId(null);
+
+    return true;
+  }, [pushDrawingUndoSnapshot, saveDrawings]);
+
   const handleDuplicateSelectedDrawing = useCallback(() => {
     const selectedId = selectedDrawingIdRef.current;
     if (!selectedId) return false;
@@ -5006,12 +5113,19 @@ export default function MarketReplayChart({
         }
       }
 
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedDrawingIdRef.current) {
-        event.preventDefault();
-        pushDrawingUndoSnapshot(selectedDrawingIdRef.current);
-        const next = drawingsRef.current.filter((d) => d.id !== selectedDrawingIdRef.current);
-        saveDrawings(next);
-        setSelectedDrawingId(null);
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        // A marquee selection takes precedence: the two are mutually exclusive
+        // by construction, but if both ever held a value the bulk one is what
+        // the user just built and is looking at.
+        if (handleDeleteMultiSelectedDrawings()) {
+          event.preventDefault();
+        } else if (selectedDrawingIdRef.current) {
+          event.preventDefault();
+          pushDrawingUndoSnapshot(selectedDrawingIdRef.current);
+          const next = drawingsRef.current.filter((d) => d.id !== selectedDrawingIdRef.current);
+          saveDrawings(next);
+          setSelectedDrawingId(null);
+        }
       }
 
       if (event.key === 'Escape') {
@@ -5024,6 +5138,9 @@ export default function MarketReplayChart({
         resizeDrawingRef.current = null;
         dragDrawingRef.current = null;
         dragBacktestOrderRef.current = null;
+        marqueeSelectionRef.current = null;
+        setMarqueeSelection(null);
+        setMultiSelectedDrawingIds([]);
         setIsReplayPricePickActive(false);
       }
     };
@@ -5045,7 +5162,7 @@ export default function MarketReplayChart({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [allCandles, handleDuplicateSelectedDrawing, handleFinishPathDrawing, handleNudgeSelectedDrawing, handleUndoDrawings, marketCategory, pushDrawingUndoSnapshot, replayIndex, replayMode, saveDrawings]);
+  }, [allCandles, handleDeleteMultiSelectedDrawings, handleDuplicateSelectedDrawing, handleFinishPathDrawing, handleNudgeSelectedDrawing, handleUndoDrawings, marketCategory, pushDrawingUndoSnapshot, replayIndex, replayMode, saveDrawings]);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -5094,6 +5211,31 @@ export default function MarketReplayChart({
 
       const { x, y } = getRelativePoint(event);
       if (!isInMainPricePane(y)) return;
+
+      // Ctrl/Cmd + left-drag draws a marquee and selects every drawing it
+      // touches, so a chosen subset can be deleted in one action instead of
+      // Clear Tools taking everything. Checked before every other branch: it
+      // has to win over drawing creation, drag/resize and plain click-select
+      // regardless of which tool happens to be armed. `button` is undefined for
+      // the synthetic touch events handleTouchStart feeds in, so touch never
+      // enters this path.
+      //
+      // The stopPropagation below is load-bearing for the left button in a way
+      // it was not for the right: this listener is capture-phase on the chart
+      // wrapper, so halting here is what keeps the mousedown away from
+      // lightweight-charts' own pan handling and from ChartStage's
+      // isChartDragging ("grabbing" cursor) bubble handler.
+      if (event.button === 0 && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setChartMouseInteractions(false);
+        dragDrawingRef.current = null;
+        resizeDrawingRef.current = null;
+        dragBacktestOrderRef.current = null;
+        marqueeSelectionRef.current = { origin: { x, y }, current: { x, y } };
+        setMarqueeSelection(marqueeSelectionRef.current);
+        return;
+      }
 
       const backtestOrderHit = hitTestBacktestOrder(x, y);
       if (backtestOrderHit?.action === 'cancel') {
@@ -5326,6 +5468,7 @@ export default function MarketReplayChart({
         event.stopPropagation();
         setChartMouseInteractions(false);
         setSelectedDrawingId(hitId);
+        setMultiSelectedDrawingIds([]);
         resizeDrawingRef.current = null;
 
         const coords = getChartCoordinates(x, y);
@@ -5356,6 +5499,7 @@ export default function MarketReplayChart({
       }
 
       setSelectedDrawingId(null);
+      setMultiSelectedDrawingIds([]);
       dragDrawingRef.current = null;
       resizeDrawingRef.current = null;
       // no replay-price auto-drag here; native chart behavior stays active
@@ -5364,6 +5508,24 @@ export default function MarketReplayChart({
     const handleMouseMove = (event) => {
       const { x, y } = getRelativePoint(event);
       const bounds = el.getBoundingClientRect();
+
+      // An in-progress marquee owns the pointer outright — this listener is on
+      // window, so the box keeps tracking (clamped to the pane) even when the
+      // cursor leaves the chart mid-drag.
+      if (marqueeSelectionRef.current) {
+        event.preventDefault();
+        const next = {
+          ...marqueeSelectionRef.current,
+          current: {
+            x: Math.min(Math.max(x, 0), bounds.width),
+            y: Math.min(Math.max(y, 0), bounds.height),
+          },
+        };
+        marqueeSelectionRef.current = next;
+        setMarqueeSelection(next);
+        return;
+      }
+
       const isInsideChart = x >= 0 && x <= bounds.width && y >= 0 && y <= bounds.height && isInMainPricePane(y);
       if (TWO_POINT_TOOL_TYPES.includes(toolRef.current)) {
         logDrawDebug('mousemove: bounds check', { x, y, boundsWidth: bounds.width, boundsHeight: bounds.height, isInsideChart, isSpacePressed: isSpacePressedRef.current, hasTemp: Boolean(tempDrawingRef.current) });
@@ -5610,6 +5772,25 @@ export default function MarketReplayChart({
     };
 
     const handleMouseUp = () => {
+      if (marqueeSelectionRef.current) {
+        const marquee = marqueeSelectionRef.current;
+        marqueeSelectionRef.current = null;
+        setMarqueeSelection(null);
+        restoreChartMouseInteractions();
+        marqueeEndedAtRef.current = Date.now();
+
+        const rect = normalizeMarqueeRect(marquee.origin, marquee.current);
+        // A ctrl+left *click* (no real drag) is a deselect, not a zero-area
+        // marquee that would match nothing but still read as a failed gesture.
+        const isRealDrag = rect
+          && (rect.right - rect.left >= MARQUEE_MIN_DRAG_PX || rect.bottom - rect.top >= MARQUEE_MIN_DRAG_PX);
+        const hitIds = isRealDrag ? hitTestDrawingsInRect(rect) : [];
+
+        setMultiSelectedDrawingIds(hitIds);
+        if (hitIds.length) setSelectedDrawingId(null);
+        return;
+      }
+
       if (dragBacktestOrderRef.current) {
         const dragState = dragBacktestOrderRef.current;
         dragBacktestOrderRef.current = null;
@@ -5700,7 +5881,7 @@ export default function MarketReplayChart({
       window.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [addBacktestPositionLevel, appendDrawing, getChartCoordinates, getDefaultPositionStop, getToolSettingsForType, handleFinishPathDrawing, handleUpdateBacktestPositionRisk, hitTestBacktestOrder, hitTestDrawing, hitTestResizeHandle, saveDrawings, updateLocalBacktestPositionLine]);
+  }, [addBacktestPositionLevel, appendDrawing, getChartCoordinates, getDefaultPositionStop, getToolSettingsForType, handleFinishPathDrawing, handleUpdateBacktestPositionRisk, hitTestBacktestOrder, hitTestDrawing, hitTestDrawingsInRect, hitTestResizeHandle, saveDrawings, updateLocalBacktestPositionLine]);
 
   useEffect(() => {
     async function fetchKlines() {
@@ -5794,6 +5975,7 @@ export default function MarketReplayChart({
       setIsPlaying(false);
       setFollowReplay(!shouldFrameDrawings);
       setSelectedDrawingId(null);
+      setMultiSelectedDrawingIds([]);
       setTempDrawing(null);
       setTextInput(null);
       setIsReplayPricePickActive(false);
@@ -6461,6 +6643,7 @@ export default function MarketReplayChart({
     setTool(resolvedTool);
     if (resolvedTool) {
       setSelectedDrawingId(null);
+      setMultiSelectedDrawingIds([]);
     }
     setTempDrawing(null);
     setTextInput(null);
@@ -6479,6 +6662,7 @@ export default function MarketReplayChart({
     pushDrawingUndoSnapshot(selectedDrawingIdRef.current);
     saveDrawings([]);
     setSelectedDrawingId(null);
+    setMultiSelectedDrawingIds([]);
     setShowClearDrawingsConfirm(false);
   };
 
@@ -7791,6 +7975,10 @@ export default function MarketReplayChart({
             renderedTradeMarkers={renderedTradeMarkers}
             swingPointMarkers={swingPointMarkers}
             selectedDrawingId={selectedDrawingId}
+            marqueeRect={marqueeSelection ? normalizeMarqueeRect(marqueeSelection.origin, marqueeSelection.current) : null}
+            multiSelectedDrawingIds={multiSelectedDrawingIds}
+            onDeleteMultiSelected={handleDeleteMultiSelectedDrawings}
+            onClearMultiSelection={() => setMultiSelectedDrawingIds([])}
             hoveredPositionDrawingId={hoveredPositionDrawingId}
             textInput={textInput}
             textDraft={textDraft}
@@ -7948,7 +8136,7 @@ export default function MarketReplayChart({
             );
           })}
 
-          {chartOrderAction && !loading && !error && <div className="pointer-events-none absolute left-0 right-0 z-10 border-t border-dashed border-[#787b86]" style={{ top: chartOrderAction.y }} />}
+          {chartOrderAction && !loading && !error && <div className="pointer-events-none absolute left-0 right-0 z-10 border-t border-dashed" style={{ top: chartOrderAction.y, borderTopColor: PRICE_ACTION_ROW_COLOR }} />}
           <div className="hidden" aria-hidden="true">
             <button
               type="button"
@@ -8112,8 +8300,12 @@ export default function MarketReplayChart({
             chartTheme={chartTheme}
           />
 
+          {/* The fullscreen `top-10` tracks FullscreenChartHeader's own h-10.
+              This rail is `fixed` there, so it is offset from the viewport
+              rather than from the navbar — the two numbers have to move
+              together or the rail starts under, or short of, the navbar. */}
           <ReplayPanel
-            className={isFullscreen ? 'fixed bottom-7 left-0 right-0 top-12 z-[70]' : 'absolute -left-[52px] bottom-7 right-0 top-0 z-50'}
+            className={isFullscreen ? 'fixed bottom-7 left-0 right-0 top-10 z-[70]' : 'absolute -left-[52px] bottom-7 right-0 top-0 z-50'}
             fullscreenDrawingOnly={isFullscreen}
             groupedWorkspaceRail={!isFullscreen}
             marketCategory={marketCategory}

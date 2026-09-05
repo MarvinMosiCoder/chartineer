@@ -67,17 +67,24 @@ export default function FullscreenChartHeader({
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [isWatchlistPanelOpen]);
 
+  // Navbar sizing is one scale, and the pieces are coupled: the bar is h-10
+  // (40px, down from h-12), holding an h-9 ChartHeader box (36px = 28px of
+  // controls + its own py-1), holding h-7 controls (28px) that match both this
+  // file's own four buttons and TimeframeSelector's pills. The height came out
+  // of dead space above/below the controls and out of ChartHeader's old p-2 —
+  // no control's tap target shrank below 28px. Change one value and the row
+  // stops lining up, so move them together.
   return (
     <header
       data-chart-ui="fullscreen-navbar"
-      className="relative z-[80] flex h-12 shrink-0 items-center border-b"
+      className="relative z-[80] flex h-10 shrink-0 items-center border-b"
       style={{
         backgroundColor: chartTheme?.panel ?? (isDark ? '#131722' : '#ffffff'),
         borderColor: chartTheme?.border ?? (isDark ? '#2a2e39' : '#e2e8f0'),
       }}
     >
       <div className={`flex h-full min-w-0 shrink-0 items-center gap-2 px-2 sm:px-3 ${isFullscreen ? 'border-r' : ''}`} style={{ borderColor: chartTheme?.border }}>
-        {appLogo && <img src={appLogo} alt="" className="h-7 w-7 shrink-0 object-contain" draggable="false" />}
+        {appLogo && <img src={appLogo} alt="" className="h-6 w-6 shrink-0 object-contain" draggable="false" />}
         {showAppName && (
           <span className={`hidden max-w-32 truncate text-xs font-bold sm:block ${isDark ? 'text-white' : 'text-slate-900'}`}>
             <AppNameWordmark name={appName} />
@@ -89,17 +96,19 @@ export default function FullscreenChartHeader({
         {/* `shadow-none` was dropped from this className: it never took effect
             (Tailwind emits `.shadow-xl` after `.shadow-none`, so ChartHeader's base
             class won regardless of order here), and that base no longer sets a
-            shadow at all. */}
+            shadow at all. `p-0` went the same way and for the same reason — it
+            never beat the base `p-2`, so the padding was cut at the base instead
+            (now `px-2 py-1`). h-9 is that padding plus one 28px control row. */}
         <ChartHeader
           {...chartHeaderProps}
           compact
-          className="h-10 flex-nowrap border-0 bg-transparent p-0"
+          className="h-9 flex-nowrap border-0 bg-transparent"
         />
       </div>
 
-      {/* Every button in this bar is an icon-only h-8 square: their anchored hover
+      {/* Every button in this bar is an icon-only h-7 square: their anchored hover
           labels already name them, so text spans only ate header width the symbol
-          and timeframe controls need more. Enter Position is min-w-8 rather than w-8
+          and timeframe controls need more. Enter Position is min-w-7 rather than w-7
           because it still shows the account balance beside its icon — data, not a
           label the tooltip repeats. */}
       <button
@@ -111,7 +120,7 @@ export default function FullscreenChartHeader({
         onMouseLeave={productHubTooltip.hide}
         onFocus={productHubTooltip.show}
         onBlur={productHubTooltip.hide}
-        className={`mx-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition ${
+        className={`mx-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition ${
           isProductHubOpen
             ? 'border-[#2dd4bf] bg-[#2dd4bf] text-white'
             : isDark
@@ -146,7 +155,7 @@ export default function FullscreenChartHeader({
           onFocus={watchlistsTooltip.show}
           onBlur={watchlistsTooltip.hide}
           aria-expanded={isWatchlistPanelOpen}
-          className={`flex h-8 w-8 items-center justify-center rounded-md border transition ${
+          className={`flex h-7 w-7 items-center justify-center rounded-md border transition ${
             isWatchlistPanelOpen
               ? 'border-[#2dd4bf] bg-[#2dd4bf] text-white'
               : isDark
@@ -158,7 +167,7 @@ export default function FullscreenChartHeader({
         </button>
         <AnchoredTooltipPortal pos={watchlistsTooltip.pos} label="Watchlists" isDark={isDark} />
         {isWatchlistPanelOpen && (
-          <div className="absolute right-0 top-11 z-[130]">
+          <div className="absolute right-0 top-10 z-[130]">
             <WatchlistPanel
               isFullscreen
               compact
@@ -183,7 +192,7 @@ export default function FullscreenChartHeader({
         onFocus={enterPositionTooltip.show}
         onBlur={enterPositionTooltip.hide}
         aria-expanded={isEntryPanelOpen}
-        className={`mx-1 flex h-8 min-w-8 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 transition ${
+        className={`mx-1 flex h-7 min-w-7 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 transition ${
           isEntryPanelOpen
             ? 'border-[#2dd4bf] bg-[#2dd4bf] text-white'
             : isDark
@@ -209,7 +218,7 @@ export default function FullscreenChartHeader({
         onMouseLeave={fullscreenTooltip.hide}
         onFocus={fullscreenTooltip.show}
         onBlur={fullscreenTooltip.hide}
-        className={`mx-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition sm:mx-2 ${
+        className={`mx-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition sm:mx-2 ${
           isDark
             ? 'border-gray-700 bg-black-table-color text-white hover:bg-white hover:text-black'
             : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-900 hover:text-white'

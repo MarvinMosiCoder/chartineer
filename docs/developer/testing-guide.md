@@ -13,6 +13,7 @@ The pure frontend helpers have their own suites under `tests/js`, run on Node's 
 ```bash
 npm run test:chart-utils        # tests/js/marketChartUtils.test.js
 npm run test:market-sessions    # tests/js/marketSessions.test.js
+npm run test:marquee-selection  # tests/js/marqueeSelection.test.js
 npm run test:order-risk-lines   # tests/js/orderRiskLines.test.js
 ```
 

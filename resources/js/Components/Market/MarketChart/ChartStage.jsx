@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Bookmark, Flag, FileText, MapPin, MessageCircle, Quote, Save, Signpost, StickyNote, Tag, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Bookmark, Flag, FileText, MapPin, MessageCircle, Quote, Save, Signpost, StickyNote, Tag, Trash2, X } from 'lucide-react';
 import getAppLogo from '../../SystemSettings/ApplicationLogo';
 import { CHART_HEIGHT, DRAWING_COLOR, DRAWING_FILL, TIMEFRAME_SECONDS } from './constants';
 import {
   colorToRgba,
   CYCLE_TOOL_TYPES,
+  getDrawingScreenBounds,
   isHorizontalRayDrawing,
   isLineLikeDrawing,
   isPathDrawing,
@@ -1706,6 +1707,107 @@ function ChartBrandLogo({ chartTheme }) {
   );
 }
 
+const MARQUEE_ACCENT = '#2dd4bf';
+// Breathing room between a selected drawing's own geometry and its outline, so
+// the dashed box reads as "around this" rather than as part of the drawing.
+const MARQUEE_OUTLINE_PADDING_PX = 4;
+
+// The live ctrl/cmd+left-drag box, plus a dashed outline around everything the
+// finished box caught. Sits above DrawingOverlay so an outline is never buried
+// under the drawing it belongs to, and stays pointer-transparent — selection is
+// driven entirely by MarketChart's own window-level mouse handlers.
+function MarqueeSelectionOverlay({ marqueeRect, renderedDrawings, multiSelectedDrawingIds, overlaySize }) {
+  const selectedIds = multiSelectedDrawingIds ?? [];
+  if (!marqueeRect && !selectedIds.length) return null;
+
+  const selectedSet = new Set(selectedIds);
+  const outlines = renderedDrawings
+    .filter((drawing) => selectedSet.has(drawing.id))
+    .map((drawing) => ({ id: drawing.id, bounds: getDrawingScreenBounds(drawing) }))
+    .filter((entry) => entry.bounds);
+
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 z-[14]"
+      width={overlaySize.width}
+      height={overlaySize.height}
+      style={{ width: '100%', height: '100%' }}
+      aria-hidden="true"
+    >
+      {outlines.map(({ id, bounds }) => (
+        <rect
+          key={`marquee-selected-${id}`}
+          x={bounds.left - MARQUEE_OUTLINE_PADDING_PX}
+          y={bounds.top - MARQUEE_OUTLINE_PADDING_PX}
+          width={Math.max(bounds.right - bounds.left + (MARQUEE_OUTLINE_PADDING_PX * 2), 8)}
+          height={Math.max(bounds.bottom - bounds.top + (MARQUEE_OUTLINE_PADDING_PX * 2), 8)}
+          fill={colorToRgba(MARQUEE_ACCENT, 0.08)}
+          stroke={MARQUEE_ACCENT}
+          strokeWidth={1}
+          strokeDasharray="4,3"
+          rx={3}
+        />
+      ))}
+
+      {marqueeRect && (
+        <rect
+          x={marqueeRect.left}
+          y={marqueeRect.top}
+          width={Math.max(marqueeRect.right - marqueeRect.left, 0)}
+          height={Math.max(marqueeRect.bottom - marqueeRect.top, 0)}
+          fill={colorToRgba(MARQUEE_ACCENT, 0.12)}
+          stroke={MARQUEE_ACCENT}
+          strokeWidth={1}
+          strokeDasharray="5,4"
+        />
+      )}
+    </svg>
+  );
+}
+
+// Bottom-centre so it clears the top-left legend and the top-centre drawing
+// Tool Style bar. Carries data-chart-ui so MarketChart's mousedown handler
+// treats a click here as UI, not as a chart click that would deselect.
+function MarqueeSelectionToolbar({ count, chartTheme, onDelete, onClear }) {
+  if (!count) return null;
+
+  const isDark = chartTheme?.mode !== 'light';
+
+  return (
+    <div
+      data-chart-ui="marquee-selection-toolbar"
+      role="toolbar"
+      aria-label={`${count} drawing${count === 1 ? '' : 's'} selected`}
+      onContextMenu={(event) => event.preventDefault()}
+      className={`absolute bottom-4 left-1/2 z-[30] flex -translate-x-1/2 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs shadow-lg ${
+        isDark ? 'border-[#2a2e39] bg-[#131722] text-[#d1d4dc]' : 'border-slate-200 bg-white text-slate-700'
+      }`}
+    >
+      <span className="font-semibold">
+        {count} selected
+      </span>
+      <span className={isDark ? 'text-[#787b86]' : 'text-slate-400'}>·</span>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="flex items-center gap-1 rounded px-2 py-1 font-semibold text-red-500 transition hover:bg-red-500/10"
+      >
+        <Trash2 size={13} />
+        Delete
+      </button>
+      <button
+        type="button"
+        onClick={onClear}
+        className={`rounded px-2 py-1 font-medium transition ${
+          isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'
+        }`}
+      >
+        Clear
+      </button>
+    </div>
+  );
+}
+
 export default function ChartStage({
   wrapperRef,
   containerRef,
@@ -1729,6 +1831,10 @@ export default function ChartStage({
   renderedTradeMarkers,
   swingPointMarkers,
   selectedDrawingId,
+  marqueeRect,
+  multiSelectedDrawingIds,
+  onDeleteMultiSelected,
+  onClearMultiSelection,
   hoveredPositionDrawingId,
   textInput,
   textDraft,
@@ -1782,7 +1888,9 @@ export default function ChartStage({
       style={{
         backgroundColor: chartTheme?.background ?? '#151617',
         height: isFullscreen ? '100%' : `min(${CHART_HEIGHT}px, max(420px, calc(100dvh - 220px)))`,
-        cursor: isChartDragging
+        cursor: marqueeRect
+          ? 'crosshair'
+          : isChartDragging
           ? 'grabbing'
           : isSpacePressed
             ? 'grab'
@@ -1843,6 +1951,13 @@ export default function ChartStage({
         chartTheme={chartTheme}
       />
 
+      <MarqueeSelectionOverlay
+        marqueeRect={marqueeRect}
+        renderedDrawings={renderedDrawings}
+        multiSelectedDrawingIds={multiSelectedDrawingIds}
+        overlaySize={mainOverlaySize}
+      />
+
       <BacktestOrderOverlay
         renderedBacktestOrders={renderedBacktestOrders}
         overlaySize={mainOverlaySize}
@@ -1860,6 +1975,13 @@ export default function ChartStage({
           <circle key={marker.id} cx={marker.x} cy={marker.y} r="4" fill="none" stroke="#2dd4bf" strokeWidth="1.5" />
         ))}
       </svg>
+
+      <MarqueeSelectionToolbar
+        count={(multiSelectedDrawingIds ?? []).length}
+        chartTheme={chartTheme}
+        onDelete={onDeleteMultiSelected}
+        onClear={onClearMultiSelection}
+      />
 
       <TextInputPopover
         textInput={textInput}

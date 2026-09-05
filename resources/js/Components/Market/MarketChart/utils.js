@@ -505,3 +505,145 @@ export function offsetDrawing(drawing, deltaTime, deltaPrice, deltaLogical) {
 
   return drawing;
 }
+
+// --- Marquee (Ctrl/Cmd + left-drag) multi-select geometry --------------------
+//
+// The marquee tests real drawing geometry, not each drawing's bounding box:
+// a long shallow trend line's box covers a lot of chart it doesn't actually
+// pass through, and a false positive here is destructive rather than merely
+// untidy — the whole point of the gesture is picking a subset to delete.
+
+// A point marker has no extent of its own, so a marquee that visibly covers the
+// glyph should still catch it. Deliberately much tighter than hitTestDrawing's
+// 80x24 click target, which is generous because it only ever resolves one hit.
+export const MARQUEE_MARKER_PADDING_PX = 10;
+
+export function normalizeMarqueeRect(a, b) {
+  if (!a || !b) return null;
+
+  return {
+    left: Math.min(a.x, b.x),
+    right: Math.max(a.x, b.x),
+    top: Math.min(a.y, b.y),
+    bottom: Math.max(a.y, b.y),
+  };
+}
+
+export function pointInRect(point, rect) {
+  if (!point || !rect) return false;
+
+  return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+}
+
+export function rectsIntersect(a, b) {
+  if (!a || !b) return false;
+
+  return a.left <= b.right && a.right >= b.left && a.top <= b.bottom && a.bottom >= b.top;
+}
+
+function segmentsCross(p1, p2, p3, p4) {
+  const side = (a, b, c) => ((c.y - a.y) * (b.x - a.x)) - ((b.y - a.y) * (c.x - a.x));
+  const d1 = side(p3, p4, p1);
+  const d2 = side(p3, p4, p2);
+  const d3 = side(p1, p2, p3);
+  const d4 = side(p1, p2, p4);
+
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+export function segmentIntersectsRect(a, b, rect) {
+  if (!a || !b || !rect) return false;
+  if (pointInRect(a, rect) || pointInRect(b, rect)) return true;
+
+  const topLeft = { x: rect.left, y: rect.top };
+  const topRight = { x: rect.right, y: rect.top };
+  const bottomRight = { x: rect.right, y: rect.bottom };
+  const bottomLeft = { x: rect.left, y: rect.bottom };
+
+  return (
+    segmentsCross(a, b, topLeft, topRight)
+    || segmentsCross(a, b, topRight, bottomRight)
+    || segmentsCross(a, b, bottomRight, bottomLeft)
+    || segmentsCross(a, b, bottomLeft, topLeft)
+  );
+}
+
+// Screen-space bounding box of a rendered drawing, used for the selection
+// outline (not for hit testing — see drawingIntersectsRect for that).
+export function getDrawingScreenBounds(drawing) {
+  const screen = drawing?.screen;
+  if (!screen) return null;
+
+  const points = Array.isArray(screen.points)
+    ? screen.points
+    : [screen.rayStart, screen.rayEnd, screen.p1, screen.p2, screen.p3, screen.pStop, screen.p];
+
+  const usable = points.filter((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y));
+  if (!usable.length) return null;
+
+  const xs = usable.map((point) => point.x);
+  const ys = usable.map((point) => point.y);
+
+  return {
+    left: Math.min(...xs),
+    right: Math.max(...xs),
+    top: Math.min(...ys),
+    bottom: Math.max(...ys),
+  };
+}
+
+// Dispatches on the `screen` shape renderedDrawings produced rather than on the
+// drawing's `type`, so a new tool type is covered for free as long as it
+// projects into one of the five existing shapes — and so this doesn't become a
+// fourth place duplicating BOX_TOOL_TYPES/TEXT_MARKER_TYPES.
+export function drawingIntersectsRect(drawing, rect) {
+  const screen = drawing?.screen;
+  if (!screen || !rect) return false;
+
+  // Freehand/path/pattern tools: a polyline through every projected vertex.
+  if (Array.isArray(screen.points)) {
+    const points = screen.points.filter(Boolean);
+    if (points.some((point) => pointInRect(point, rect))) return true;
+
+    for (let index = 1; index < points.length; index += 1) {
+      if (segmentIntersectsRect(points[index - 1], points[index], rect)) return true;
+    }
+
+    return false;
+  }
+
+  // Text/icon markers: a single anchor point, padded.
+  if (screen.p) {
+    return rectsIntersect(
+      {
+        left: screen.p.x - MARQUEE_MARKER_PADDING_PX,
+        right: screen.p.x + MARQUEE_MARKER_PADDING_PX,
+        top: screen.p.y - MARQUEE_MARKER_PADDING_PX,
+        bottom: screen.p.y + MARQUEE_MARKER_PADDING_PX,
+      },
+      rect,
+    );
+  }
+
+  // Long/short position tools: two filled zones, so the whole region counts.
+  if (screen.pStop) {
+    const bounds = getDrawingScreenBounds(drawing);
+    return rectsIntersect(bounds, rect);
+  }
+
+  // Line-like tools: the visible extension (rayStart/rayEnd) is what the user
+  // sees and boxes around, so an extended line counts across the whole pane.
+  if (isLineLikeDrawing(drawing)) {
+    if (segmentIntersectsRect(screen.rayStart ?? screen.p1, screen.rayEnd ?? screen.p2, rect)) return true;
+
+    if (screen.p3) {
+      if (segmentIntersectsRect(screen.p2, screen.p3, rect)) return true;
+      if (segmentIntersectsRect(screen.p1, screen.p3, rect)) return true;
+    }
+
+    return false;
+  }
+
+  // Everything left is a two-point box tool (rect/circle/ranges).
+  return rectsIntersect(getDrawingScreenBounds(drawing), rect);
+}

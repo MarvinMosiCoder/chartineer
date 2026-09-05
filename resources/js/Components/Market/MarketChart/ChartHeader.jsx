@@ -303,7 +303,12 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
   }, [isAddOpen, isIndicatorsOpen, isMarketInfoOpen, isMobileMenuOpen]);
 
   if (compact) {
-    const compactFieldClass = `h-8 rounded-md border px-2 text-xs outline-none ${isDark ? 'border-gray-700 bg-black-table-color/95 text-white' : 'border-gray-200 bg-white/95 text-gray-800'}`;
+    // h-7 (28px) is the compact navbar's one control height — it matches
+    // TimeframeSelector's pills, which were already h-7 while everything beside
+    // them was h-8, so the row never actually lined up. Change all of them
+    // together (here, the replay/alert buttons below, and
+    // FullscreenChartHeader's own four buttons) or it goes ragged again.
+    const compactFieldClass = `h-7 rounded-md border px-2 text-xs outline-none ${isDark ? 'border-gray-700 bg-black-table-color/95 text-white' : 'border-gray-200 bg-white/95 text-gray-800'}`;
 
     // The root below carries no shadow on purpose. It used to set `shadow-xl`, which
     // the sole caller (FullscreenChartHeader) tried to cancel by passing `shadow-none`
@@ -312,8 +317,15 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
     // `.shadow-none`, so the base always won. The result was a heavy drop shadow under
     // the chart header, obvious in light theme and invisible in dark. Don't re-add a
     // shadow utility here expecting a caller to override it; change it here instead.
+    //
+    // Padding is `px-2 py-1`, not the `p-2` it used to be. Its only caller sits
+    // this inside a fixed-height navbar, so 8px top and bottom was 16px of the
+    // bar's height spent on nothing — and the caller's attempt to cancel it with
+    // `p-0` never worked, for the same stylesheet-order reason as the shadow
+    // above. The vertical value is load-bearing now: 28px controls + 4px + 4px
+    // is exactly the h-9 the caller passes, so changing one means changing both.
     return (
-      <div className={`flex max-w-full flex-wrap items-center gap-2 rounded-md border p-2 backdrop-blur ${className}`} style={panelStyle}>
+      <div className={`flex max-w-full flex-wrap items-center gap-2 rounded-md border px-2 py-1 backdrop-blur ${className}`} style={panelStyle}>
         {confirmElement}
         <button data-chart-ui="mobile-menu" type="button" onClick={() => setIsMobileMenuOpen((open) => !open)} className={`${compactFieldClass} flex items-center gap-2 font-semibold lg:hidden`} aria-expanded={isMobileMenuOpen} aria-label="Menu">
           <Menu size={15} />
@@ -455,16 +467,16 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
             />
           </div>
 
-          <button ref={replayTooltip.anchorRef} data-tour="replay" type="button" onClick={onToggleReplayMode} onMouseEnter={replayTooltip.show} onMouseLeave={replayTooltip.hide} onFocus={replayTooltip.show} onBlur={replayTooltip.hide} disabled={replayAccessStatus === 'checking-access'} aria-label={replayTooltipLabel} className={`flex h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-semibold disabled:cursor-wait disabled:opacity-60 ${replayMode ? 'bg-red-600 text-white hover:bg-red-700' : neutralActionClass}`}>
+          <button ref={replayTooltip.anchorRef} data-tour="replay" type="button" onClick={onToggleReplayMode} onMouseEnter={replayTooltip.show} onMouseLeave={replayTooltip.hide} onFocus={replayTooltip.show} onBlur={replayTooltip.hide} disabled={replayAccessStatus === 'checking-access'} aria-label={replayTooltipLabel} className={`flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-semibold disabled:cursor-wait disabled:opacity-60 ${replayMode ? 'bg-red-600 text-white hover:bg-red-700' : neutralActionClass}`}>
             {replayAccessStatus === 'checking-access' ? <LoaderCircle size={14} className="animate-spin" /> : replayMode ? <X size={14} /> : <Play size={14} />}
           </button>
           {replayAccessStatus !== 'checking-access' && <AnchoredTooltipPortal pos={replayTooltip.pos} label={replayTooltipLabel} isDark={isDark} />}
-          <button ref={alertTooltip.anchorRef} type="button" onClick={onCreatePriceAlert} onMouseEnter={alertTooltip.show} onMouseLeave={alertTooltip.hide} onFocus={alertTooltip.show} onBlur={alertTooltip.hide} aria-label="Create alert" className="flex h-8 items-center gap-1.5 rounded-md bg-[#2dd4bf] px-2.5 text-xs font-semibold text-white">
+          <button ref={alertTooltip.anchorRef} type="button" onClick={onCreatePriceAlert} onMouseEnter={alertTooltip.show} onMouseLeave={alertTooltip.hide} onFocus={alertTooltip.show} onBlur={alertTooltip.hide} aria-label="Create alert" className="flex h-7 items-center gap-1.5 rounded-md bg-[#2dd4bf] px-2.5 text-xs font-semibold text-white">
             <Bell size={13} />
           </button>
           <AnchoredTooltipPortal pos={alertTooltip.pos} label="Create alert" isDark={isDark} />
           <div data-chart-ui="market-info" className="relative">
-            <button ref={infoTooltip.anchorRef} type="button" onClick={toggleMarketInfo} onMouseEnter={infoTooltip.show} onMouseLeave={infoTooltip.hide} onFocus={infoTooltip.show} onBlur={infoTooltip.hide} className={`${compactFieldClass} flex w-8 items-center justify-center`} aria-label="Market information" aria-expanded={isMarketInfoOpen}><Info size={14}/></button>
+            <button ref={infoTooltip.anchorRef} type="button" onClick={toggleMarketInfo} onMouseEnter={infoTooltip.show} onMouseLeave={infoTooltip.hide} onFocus={infoTooltip.show} onBlur={infoTooltip.hide} className={`${compactFieldClass} flex w-7 items-center justify-center`} aria-label="Market information" aria-expanded={isMarketInfoOpen}><Info size={14}/></button>
             {isMarketInfoOpen && marketInfo}
             <AnchoredTooltipPortal pos={infoTooltip.pos} label="Market information" isDark={isDark} />
           </div>
