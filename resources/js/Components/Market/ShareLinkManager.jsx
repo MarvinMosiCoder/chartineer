@@ -118,7 +118,7 @@ export default function ShareLinkManager() {
       await load();
     } catch (err) {
       const validation = err.response?.data?.errors;
-      setError(validation ? Object.values(validation).flat()[0] : (err.response?.data?.message ?? 'Unable to create share link.'));
+      setError(validation ? Object.values(validation).flat()[0] : toAccessError(err, 'Unable to create share link.'));
     } finally {
       setSaving(false);
     }

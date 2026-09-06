@@ -89,7 +89,7 @@ export default function TrainingChallengeCatalog() {
       await axios.post(`/training-challenges/attempts/${attempt.id}/abandon`);
       await load();
     } catch (err) {
-      setError(err.response?.data?.message ?? 'Unable to abandon this attempt.');
+      setError(toAccessError(err, 'Unable to abandon this attempt.'));
     } finally {
       setBusyId(null);
     }

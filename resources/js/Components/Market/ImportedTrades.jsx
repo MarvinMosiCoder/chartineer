@@ -3,6 +3,8 @@ import axios from 'axios';
 import { useTheme } from '../../Context/ThemeContext';
 import { useConfirm } from '../../Hooks/useConfirm';
 
+import AccessNotice from '../Subscriptions/AccessNotice';
+import { toAccessError, isGatedError } from '../Subscriptions/accessError';
 const TARGET_FIELDS = [
   { key: 'symbol', label: 'Symbol', required: true },
   { key: 'side', label: 'Side', required: true },
@@ -85,7 +87,7 @@ export default function ImportedTrades() {
       setBatches(response.data?.batches ?? []);
       setBatchesError('');
     } catch (err) {
-      setBatchesError(err.response?.data?.message ?? 'Unable to load import batches.');
+      setBatchesError(toAccessError(err, 'Unable to load import batches.'));
     } finally {
       setBatchesLoading(false);
     }
@@ -101,7 +103,7 @@ export default function ImportedTrades() {
       setTradesPagination(response.data?.pagination ?? null);
       setTradesError('');
     } catch (err) {
-      setTradesError(err.response?.data?.message ?? 'Unable to load imported trades.');
+      setTradesError(toAccessError(err, 'Unable to load imported trades.'));
     } finally {
       setTradesLoading(false);
     }
@@ -160,7 +162,7 @@ export default function ImportedTrades() {
       await loadBatches();
     } catch (err) {
       const errors = err.response?.data?.errors;
-      setUploadError(errors ? Object.values(errors).flat()[0] : (err.response?.data?.message ?? 'Unable to upload file.'));
+      setUploadError(errors ? Object.values(errors).flat()[0] : toAccessError(err, 'Unable to upload file.'));
     } finally {
       setUploading(false);
     }
@@ -194,7 +196,7 @@ export default function ImportedTrades() {
       await loadTrades(1, tradeFilterBatchId);
     } catch (err) {
       const errors = err.response?.data?.errors;
-      setCommitError(errors ? Object.values(errors).flat()[0] : (err.response?.data?.message ?? 'Unable to commit import.'));
+      setCommitError(errors ? Object.values(errors).flat()[0] : toAccessError(err, 'Unable to commit import.'));
     } finally {
       setCommitting(false);
     }
@@ -208,7 +210,7 @@ export default function ImportedTrades() {
       await loadBatches();
       await loadTrades(1, tradeFilterBatchId);
     } catch (err) {
-      setBatchesError(err.response?.data?.message ?? 'Unable to delete batch.');
+      setBatchesError(toAccessError(err, 'Unable to delete batch.'));
     }
   };
 
@@ -223,6 +225,10 @@ export default function ImportedTrades() {
   const button = isDark ? 'bg-skin-black-light text-gray-200 hover:bg-gray-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200';
   const rowBorder = isDark ? 'border-gray-800' : 'border-slate-200';
 
+  // Both list requests fail together when the tier is missing, so the refusal
+  // is hoisted to one page-level notice instead of repeating per section.
+  const gate = isGatedError(batchesError) ? batchesError : (isGatedError(tradesError) ? tradesError : null);
+
   return (
     <div data-tour="journal-import" className={`rounded-lg border p-4 ${surface}`}>
       {confirmElement}
@@ -230,6 +236,8 @@ export default function ImportedTrades() {
         <h2 className="text-sm font-semibold">Imported Trades</h2>
         <p className={`mt-1 text-xs ${muted}`}>Bring in real historical fills from a broker or exchange CSV export.</p>
       </div>
+
+      <AccessNotice error={gate} isDark={isDark} feature="importing your real broker trades" className="mb-4" />
 
       <div className="mb-4 rounded border border-amber-700/50 bg-amber-500/10 p-3 text-xs text-amber-500">
         Imported trades are a separate real-trade record — they are never mixed into your simulated backtest analytics or reports.
@@ -255,7 +263,7 @@ export default function ImportedTrades() {
               {uploading ? 'Uploading…' : 'Upload CSV'}
             </button>
           </div>
-          {uploadError && <p className="mt-2 text-xs text-red-400">{uploadError}</p>}
+          <AccessNotice error={uploadError} isDark={isDark} feature="importing your real broker trades" className="mt-2" />
         </form>
       )}
 
@@ -330,7 +338,7 @@ export default function ImportedTrades() {
             </div>
           )}
 
-          {commitError && <p className="mt-2 text-xs text-red-400">{commitError}</p>}
+          <AccessNotice error={commitError} isDark={isDark} feature="importing your real broker trades" className="mt-2" />
           <div className="mt-3">
             <button
               type="button"
@@ -349,7 +357,7 @@ export default function ImportedTrades() {
           <h3 className="text-xs font-semibold">Import batches</h3>
           <button type="button" onClick={loadBatches} className={`rounded px-2 py-1 text-xs ${button}`}>Refresh</button>
         </div>
-        {batchesError && <p className="mt-1 text-xs text-red-400">{batchesError}</p>}
+        {!gate && <AccessNotice error={batchesError} isDark={isDark} className="mt-2" />}
         <div className="mt-2 space-y-2">
           {batchesLoading ? (
             <p className={`text-xs ${muted}`}>Loading batches…</p>
@@ -368,7 +376,7 @@ export default function ImportedTrades() {
                 <button type="button" onClick={() => deleteBatch(batch)} className="rounded bg-red-700 px-2 py-1 text-xs text-white">Delete</button>
               </div>
             </div>
-          )) : <p className={`text-xs ${muted}`}>No import batches yet.</p>}
+          )) : (gate ? null : <p className={`text-xs ${muted}`}>No import batches yet.</p>)}
         </div>
       </div>
 
@@ -389,7 +397,7 @@ export default function ImportedTrades() {
             <button type="button" onClick={() => loadTrades(1, tradeFilterBatchId)} className={`rounded px-2 py-1 text-xs ${button}`}>Refresh</button>
           </div>
         </div>
-        {tradesError && <p className="mt-1 text-xs text-red-400">{tradesError}</p>}
+        {!gate && <AccessNotice error={tradesError} isDark={isDark} className="mt-2" />}
         <div className="mt-2 overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-xs">
             <thead>
@@ -413,7 +421,7 @@ export default function ImportedTrades() {
                   <td className="whitespace-nowrap px-2 py-1">{formatTimestamp(trade.openedAtTime)}</td>
                   <td className="whitespace-nowrap px-2 py-1">{formatTimestamp(trade.closedAtTime)}</td>
                 </tr>
-              )) : <tr><td colSpan={8} className={`px-2 py-3 text-center ${muted}`}>No imported trades yet.</td></tr>}
+              )) : <tr><td colSpan={8} className={`px-2 py-3 text-center ${muted}`}>{gate ? 'Locked' : 'No imported trades yet.'}</td></tr>}
             </tbody>
           </table>
         </div>
