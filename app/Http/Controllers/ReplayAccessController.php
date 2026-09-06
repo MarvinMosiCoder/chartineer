@@ -10,6 +10,7 @@ use App\Services\Payments\PayMongoCheckoutService;
 use App\Services\Payments\PaymentActivityLogger;
 use App\Services\Payments\SubscriptionEntitlementService;
 use App\Services\AdminAccessService;
+use App\Services\SubscriptionTierService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -24,6 +25,7 @@ class ReplayAccessController extends Controller
         private readonly AdminAccessService $adminAccess,
         private readonly SubscriptionEntitlementService $entitlements,
         private readonly PaymentActivityLogger $activityLog,
+        private readonly SubscriptionTierService $tiers,
     ) {}
 
     public function plans(Request $request)
@@ -84,6 +86,7 @@ class ReplayAccessController extends Controller
                     ->withCount('messages')->latest()->get()->map(fn ($payment) => $this->paymentPayload($payment)),
                 'checkout' => $this->checkouts->availability(),
                 'activeAccess' => $this->activeAccessPayload($user),
+                'entitlements' => $this->tiers->payloadFor($user),
             ],
         ]);
     }
@@ -122,6 +125,9 @@ class ReplayAccessController extends Controller
             'latestRequest' => optional(SubscriptionRequest::where('adm_user_id', $user->id)->latest()->first(), fn ($payment) => $this->paymentPayload($payment)),
             'checkout' => $this->checkouts->availability(),
             'activeAccess' => $this->activeAccessPayload($user),
+            // Entitlements come from the server so the frontend never infers a
+            // tier from plan codes.
+            'entitlements' => $this->tiers->payloadFor($user),
         ]);
     }
 
@@ -170,11 +176,29 @@ class ReplayAccessController extends Controller
     public function createCheckout(Request $request)
     {
         $this->checkouts->expireStalePending($request->user());
-        if ($this->activeAccessPayload($request->user())) {
-            return response()->json(['message' => 'Your replay access is already active. You can choose another plan after it expires.'], 409);
-        }
         $data = $request->validate(['plan' => 'required|string|max:50', 'submission_token' => 'required|uuid']);
         $plan = SubscriptionPlan::where('code', $data['plan'])->where('is_active', true)->firstOrFail();
+
+        // The guard is phrased against the *paid* window, not against access in
+        // general. A running trial therefore no longer blocks a purchase — a
+        // user convinced on trial day two can pay immediately instead of
+        // waiting out the week and remembering to come back. But once a paid
+        // window exists (including one queued behind a still-running trial),
+        // only a strictly higher tier may be bought, so a converted trial user
+        // cannot stack a lower tier over a higher one and leave
+        // replay_access_tier holding the wrong value.
+        $paidTier = $this->tiers->paidTier($request->user());
+        if ($paidTier > 0 && (int) $plan->tier_level <= $paidTier) {
+            $current = $this->tiers->tierName($paidTier);
+
+            return response()->json([
+                'message' => (int) $plan->tier_level === $paidTier
+                    ? "Your {$current} access is already active. You can choose another plan after it expires."
+                    : "Your {$current} access is already active. Only an upgrade to a higher plan is available until it expires.",
+                'currentTier' => $paidTier,
+                'currentTierName' => $current,
+            ], 409);
+        }
 
         try {
             $payment = $this->checkouts->create($request->user(), $plan, $data['submission_token']);
@@ -376,6 +400,12 @@ class ReplayAccessController extends Controller
         return [
             'kind' => $paidActive ? 'paid' : 'trial', 'plan' => $payment?->plan,
             'endsAt' => optional($paidActive ? $user->replay_access_ends_at : $user->replay_trial_ends_at)->toIso8601String(),
+            // The effective tier, not the paid one: during a trial that outranks
+            // the purchased plan the user really is at the higher tier.
+            'tier' => $this->tiers->effectiveTier($user),
+            'tierName' => $this->tiers->tierName($this->tiers->effectiveTier($user)),
+            'paidTier' => $this->tiers->paidTier($user),
+            'trialEndsAt' => optional($user->replay_trial_ends_at)->toIso8601String(),
         ];
     }
 

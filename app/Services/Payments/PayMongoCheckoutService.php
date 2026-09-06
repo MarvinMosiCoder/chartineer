@@ -38,6 +38,7 @@ class PayMongoCheckoutService
                 'amount' => $plan->price,
                 'currency' => strtoupper($plan->currency ?: 'PHP'),
                 'duration_days' => $plan->duration_days,
+                'tier_level' => $plan->tier_level ?? 1,
                 'provider' => 'paymongo',
                 'status' => 'creating',
                 'submission_token' => $token,

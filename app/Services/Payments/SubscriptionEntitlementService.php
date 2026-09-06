@@ -4,6 +4,7 @@ namespace App\Services\Payments;
 
 use App\Models\AdmModels\AdmNotifications;
 use App\Models\AdmUser;
+use App\Models\SubscriptionPlan;
 use App\Models\SubscriptionRequest;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -26,10 +27,29 @@ class SubscriptionEntitlementService
             $this->assertProviderPaymentMatches($lockedPayment, $providerPayment);
 
             $user = AdmUser::whereKey($lockedPayment->adm_user_id)->lockForUpdate()->firstOrFail();
-            $startsAt = $user->replay_access_ends_at && $user->replay_access_ends_at->isFuture()
-                ? $user->replay_access_ends_at->copy()
-                : now();
+
+            // The paid window starts after every window the user already holds,
+            // the free trial included. A plan bought on trial day two therefore
+            // queues behind the trial rather than overlapping it: the user
+            // keeps their remaining free days and still gets the full paid
+            // duration. Considering only replay_access_ends_at (as this did
+            // before tiers) would have silently burned the overlap.
+            $startsAt = collect([now(), $user->replay_access_ends_at, $user->replay_trial_ends_at])
+                ->filter()
+                ->sortByDesc(fn (Carbon $date) => $date->getTimestamp())
+                ->first()
+                ->copy();
             $endsAt = $startsAt->addDays($lockedPayment->duration_days);
+
+            // Normally the checkout guard has already ensured this is an
+            // upgrade, so the purchased tier is the higher one. max() covers
+            // the paths that bypass that guard — admin reconciliation and the
+            // scheduled PayMongo poller — where an older, lower-tier payment
+            // could otherwise land after a higher one and downgrade the user.
+            $currentTier = $user->replay_access_ends_at && $user->replay_access_ends_at->isFuture()
+                ? (int) ($user->replay_access_tier ?? 1)
+                : 0;
+            $tier = max($currentTier, $this->planTierFor($lockedPayment));
             $paidAt = isset($providerPayment['paid_at']) && is_numeric($providerPayment['paid_at'])
                 ? Carbon::createFromTimestamp((int) $providerPayment['paid_at'])
                 : now();
@@ -45,6 +65,7 @@ class SubscriptionEntitlementService
             ]);
             $user->forceFill([
                 'replay_access_ends_at' => $endsAt,
+                'replay_access_tier' => $tier,
                 'renewal_reminder_sent_at' => null,
             ])->save();
 
@@ -57,7 +78,7 @@ class SubscriptionEntitlementService
             ]);
 
             $this->activityLog->log($lockedPayment, $user, 'payment_activated',
-                "Access activated until {$endsAt->format('M j, Y g:i A')} ({$lockedPayment->duration_days} days, {$lockedPayment->plan} plan).");
+                "Access activated until {$endsAt->format('M j, Y g:i A')} ({$lockedPayment->duration_days} days, {$lockedPayment->plan} plan, tier {$tier}).");
 
             return $lockedPayment->fresh();
         });
@@ -124,7 +145,23 @@ class SubscriptionEntitlementService
                 ? $user->replay_access_ends_at->copy()
                 : now();
             $endsAt = $startsAt->addDays($days);
-            $user->forceFill(['replay_access_ends_at' => $endsAt])->save();
+
+            // Restore the tier the referenced purchase actually granted, not
+            // whatever stale value the column happens to hold and not something
+            // the admin picked — an admin can choose how many days to restore,
+            // never which tier. A plan that no longer exists falls back to the
+            // user's current value and says so in the log.
+            $restoredTier = $this->planTierFor($lockedPayment, 0);
+            if ($restoredTier === 0) {
+                $restoredTier = (int) ($user->replay_access_tier ?? 1);
+                Log::warning('Restoring access for user '.$user->id.' via subscription_request '.$lockedPayment->id
+                    .": plan '{$lockedPayment->plan}' no longer exists; kept the user's existing tier {$restoredTier}.");
+            }
+
+            $user->forceFill([
+                'replay_access_ends_at' => $endsAt,
+                'replay_access_tier' => max((int) ($user->replay_access_tier ?? 0), $restoredTier),
+            ])->save();
 
             $note = now()->format('Y-m-d H:i').' — admin:'.$admin->id." restored {$days} day(s) of access: {$reason}";
             $lockedPayment->update(['admin_notes' => trim(($lockedPayment->admin_notes ? $lockedPayment->admin_notes."\n" : '').$note)]);
@@ -145,6 +182,25 @@ class SubscriptionEntitlementService
 
             return $lockedPayment->fresh();
         });
+    }
+
+    /**
+     * The tier a transaction grants.
+     *
+     * Prefers the snapshot taken at checkout, so a plan retuned or deactivated
+     * between purchase and payment cannot change what the customer bought.
+     * Rows written before that column existed fall back to a lookup by plan
+     * code, then to $default.
+     */
+    private function planTierFor(SubscriptionRequest $payment, int $default = 1): int
+    {
+        if ($payment->tier_level !== null) {
+            return (int) $payment->tier_level;
+        }
+
+        $tier = SubscriptionPlan::where('code', $payment->plan)->value('tier_level');
+
+        return $tier === null ? $default : (int) $tier;
     }
 
     public function assertProviderPaymentMatches(SubscriptionRequest $payment, array $providerPayment): void
