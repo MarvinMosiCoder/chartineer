@@ -110,3 +110,17 @@ Every controller action scopes its query to `$request->user()->id` — a batch o
 - Cross-user `404` on `destroyBatch`/`items`.
 
 Related: [Backtesting and orders](backtesting-and-orders.md), [Trade reports and journals](trade-reports-and-journals.md).
+
+# Tier gate
+
+Every `/imported-trades/*` route is gated `replay.access:imported_trades` (tier 3, Elite — see [Subscriptions](subscriptions-trials-and-paymongo.md)). These routes previously carried only a throttle, so real-broker CSV import was reachable by any logged-in user with no subscription and no trial.
+
+Importing real trades is the point at which a user stops practising and starts analysing real money, which is why it sits at the top tier rather than alongside the simulated-trading engine. Existing batches stay readable after a downgrade; only new imports are refused.
+
+## Gated presentation
+
+Both list requests (`/imported-trades/batches` and `/imported-trades/items`) fail together when the tier is missing, so the refusal is hoisted to **one** page-level `AccessNotice` rather than repeated per section — two identical red messages stacked down the panel read as two broken panels rather than one locked feature.
+
+The empty states are suppressed while gated: `No import batches yet.` renders nothing and the trades table says `Locked`. Claiming the list is empty when it was never allowed to load is a different statement from the truth, and it hides the fact that there is an action available.
+
+The upload and commit errors route through the same notice, so a refusal on the import action itself is as actionable as one on the list. See [Subscriptions](subscriptions-trials-and-paymongo.md#gated-error-presentation-accessnotice).

@@ -52,3 +52,8 @@ Shared authentication/profile/market/subscription/feedback/admin routes are cove
 - `resources/js/Context/AnnouncementGateContext.jsx`: holds every spotlight tour back until the unread-announcement modal is done — see [Announcements](announcements.md).
 - `resources/js/Components/Feedback/FeedbackChat.jsx`: customer/admin support conversation with visible-tab polling.
 - `app/Models/UserFeedbackMessage.php`: threaded payment/subscription support message.
+- `config/subscription_tiers.php` — capability→minimum-tier map, per-tier quotas, trial level, and the public candle ceiling. Single source of truth for both enforcement and the plans modal's displayed features.
+- `app/Services/SubscriptionTierService.php` — tier resolution, capability checks, and quota refusal; superadmins resolve to the maximum tier here so no call site can forget the bypass.
+- `resources/js/Hooks/useEntitlements.jsx`, `resources/js/Components/Subscriptions/tierCapabilities.js`, `TierLockedPanel.jsx` — client-side tier reads, capability display labels, and the locked-panel placeholder.
+- `database/migrations/2026_09_06_000001..3_*` — `subscription_plans.tier_level`, `adm_users.replay_access_tier`, and the `subscription_requests.tier_level` purchase snapshot.
+- `app/Services/PropChallengeService.php`, `PropChallengeLifecycleService.php`, `PropChallengeController.php`, `app/Models/MarketBacktestChallenge.php`, `config/prop_challenges.php` — prop-firm challenge rules, account swapping, routes and templates; see [Prop-firm challenges](prop-firm-challenges.md).

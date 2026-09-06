@@ -22,6 +22,8 @@ import { broadcastChange } from '../../utils/crossTabSync';
 import ToggleSwitch from './ToggleSwitch';
 import StatCard from './StatCard';
 
+import AccessNotice from '../Subscriptions/AccessNotice';
+import { toAccessError } from '../Subscriptions/accessError';
 const EMPTY_FORM = {
   name: '', description: '', entryRules: '', confirmationRules: '', invalidationRules: '',
   stopRules: '', targetRules: '', checklistText: '', isActive: true,
@@ -107,7 +109,7 @@ export default function StrategyPlaybooks() {
       setPlaybooks(response.data?.playbooks ?? []);
       setError('');
     } catch (err) {
-      setError(err.response?.data?.message ?? 'Unable to load strategy playbooks.');
+      setError(toAccessError(err, 'Unable to load strategy playbooks.'));
     } finally {
       setLoading(false);
     }
@@ -153,7 +155,7 @@ export default function StrategyPlaybooks() {
       broadcastChange('backtradelab-playbooks-changed');
     } catch (err) {
       const validation = err.response?.data?.errors;
-      setFormError(validation ? Object.values(validation).flat()[0] : (err.response?.data?.message ?? 'Unable to save playbook.'));
+      setFormError(validation ? Object.values(validation).flat()[0] : toAccessError(err, 'Unable to save playbook.'));
     } finally {
       setSaving(false);
     }
@@ -204,7 +206,7 @@ export default function StrategyPlaybooks() {
         </div>
       </div>
 
-      {error && <div className="mb-3 rounded border border-red-800 bg-red-950/50 p-2 text-sm text-red-200">{error}</div>}
+      <AccessNotice error={error} feature="strategy playbooks" className="mb-3" />
 
       {loading ? (
         <p className={`text-sm ${muted}`}>Loading playbooks…</p>
@@ -258,7 +260,7 @@ export default function StrategyPlaybooks() {
 
             <form onSubmit={save} className="flex min-h-0 flex-1 flex-col">
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
-                {formError && <div className="rounded border border-red-800 bg-red-950/50 p-2 text-sm text-red-200">{formError}</div>}
+                <AccessNotice error={formError} feature="strategy playbooks" />
                 <input
                   required
                   maxLength={120}

@@ -2956,6 +2956,7 @@ export default function ReplayPanel({
                   {backtestAccount?.activeSession && (
                     <div className={`mt-0.5 text-[11px] ${mutedTextClass}`}>
                       {backtestAccount.activeSession.symbol} {backtestAccount.activeSession.timeframe}
+                      {' · Session #'}{backtestAccount.activeSession.id}
                     </div>
                   )}
                 </div>

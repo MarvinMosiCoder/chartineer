@@ -3,11 +3,15 @@ namespace App\Http\Controllers;
 
 use App\Models\MarketPriceAlert;
 use App\Services\MarketPriceAlertTriggerService;
+use App\Services\SubscriptionTierService;
 use Illuminate\Http\Request;
 
 class MarketPriceAlertController extends Controller
 {
-    public function __construct(private readonly MarketPriceAlertTriggerService $triggers) {}
+    public function __construct(
+        private readonly MarketPriceAlertTriggerService $triggers,
+        private readonly SubscriptionTierService $tiers,
+    ) {}
 
     public function index(Request $request)
     {
@@ -16,6 +20,13 @@ class MarketPriceAlertController extends Controller
 
     public function store(Request $request)
     {
+        // Only alerts still waiting to fire count — each one costs a scheduled
+        // monitor cycle, which a triggered or cancelled alert no longer does.
+        $this->tiers->assertWithinQuota($request->user(), 'alerts', MarketPriceAlert::query()
+            ->where('adm_user_id', $request->user()->id)
+            ->where('status', 'active')
+            ->count());
+
         $data = $request->validate([
             'exchange' => 'required|string|max:30', 'category' => 'required|string|max:30', 'symbol' => 'required|string|max:40',
             'target_price' => 'required|numeric|gt:0', 'direction' => 'required|in:above,below,cross', 'last_price' => 'nullable|numeric|gt:0',

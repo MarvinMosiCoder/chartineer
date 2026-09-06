@@ -8,11 +8,12 @@ class SubscriptionPlan extends Model
     // Explicit allowlist, not `$guarded = []` — see the same note on SubscriptionRequest.
     // Only reached today via the superadmin-gated, validated updatePlans() endpoint.
     protected $fillable = [
-        'code', 'name', 'duration_days', 'price', 'currency', 'description',
+        'code', 'name', 'duration_days', 'tier_level', 'price', 'currency', 'description',
         'features', 'is_featured', 'is_active', 'sort_order',
     ];
     protected $casts = [
         'price' => 'decimal:2',
+        'tier_level' => 'integer',
         'features' => 'array',
         'is_featured' => 'boolean',
         'is_active' => 'boolean',

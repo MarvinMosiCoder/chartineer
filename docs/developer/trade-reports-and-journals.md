@@ -108,3 +108,15 @@ The closed-trades journal table supports client-side full-text search across sym
 - Close two trades back to back where the second uses an *earlier* simulated/Replay date than the first (e.g. close a trade replaying 2022 data, then open Replay again and close another trade using 2021 candle data) and confirm the 2021-dated trade — entered second, in real time — still appears **above** the 2022-dated one in the Closed Trades table, sorted by when it was actually entered, not by its displayed "Closed" date.
 
 Related: [Backtesting](backtesting-and-orders.md), [Testing](testing-guide.md), [Imported trades](imported-trades.md), [Mentor review sharing](mentor-review-sharing.md), [Training challenges](training-challenges.md).
+
+## Analytics and Monte Carlo gate in the payload, not in middleware
+
+Advanced analytics (`advanced`) and Monte Carlo (`monteCarlo`) have **no routes of their own** — both are keys of `MarketBacktestController::report()`'s response, computed inline. Middleware cannot gate a response key, so the tier check lives in the controller: `analytics` needs tier 2, `monte_carlo` needs tier 3 (see [Subscriptions](subscriptions-trials-and-paymongo.md)).
+
+**The computation is skipped, not computed and stripped.** `monteCarlo()` runs 500 resampling iterations and that cost is precisely what is being sold; computing it for a user who will never see it would give away the expensive part and keep only the cheap part. Each key comes back `null` below its tier, alongside a `lockedCapabilities` array naming what was withheld.
+
+`TradeReport.jsx` reads `lockedCapabilities` and renders `Components/Subscriptions/TierLockedPanel.jsx` in place of the stat grid, the Monte Carlo band, and the performance breakdown. It already defaulted both keys to `{}`, so a null never crashed the page — but without the explicit lock it rendered a grid of empty stat cards, which reads as a broken report rather than a paid feature.
+
+`MentorReviewController` also computes Monte Carlo, for the public viewer, and is deliberately left ungated: the link's owner is necessarily Elite to have created it, and the viewer is an invited third party rather than a customer evading a gate.
+
+Report export (`POST /market-backtest/report/export` and its download) is gated `replay.access:export` at tier 2 — it consumes a queue worker and storage.

@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { usePage } from '@inertiajs/react';
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Download,
   Lightbulb,
   Pencil,
@@ -16,7 +18,10 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../../Context/ThemeContext';
 import StatCard from './StatCard';
+import TierLockedPanel from '../Subscriptions/TierLockedPanel';
 
+import AccessNotice from '../Subscriptions/AccessNotice';
+import { toAccessError } from '../Subscriptions/accessError';
 const DEFAULT_TRADES_PER_PAGE = 10;
 
 function formatMoney(value, digits = 2) {
@@ -160,7 +165,7 @@ export default function TradeReport({ refreshKey = 0 }) {
   const displayCurrencyStorageKey = `market-backtest-display-currency:${preferenceUserId}`;
   const phpRateStorageKey = `market-backtest-php-rate:${preferenceUserId}`;
   const isDark = adminTheme === 'bg-skin-black';
-  const [report, setReport] = useState({ summary: {}, trades: [], insights: null, playbookPerformance: [], advanced: {}, monteCarlo: {} });
+  const [report, setReport] = useState({ summary: {}, trades: [], insights: null, playbookPerformance: [], advanced: {}, monteCarlo: {}, lockedCapabilities: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [displayCurrency, setDisplayCurrency] = useState(() => (
@@ -179,6 +184,10 @@ export default function TradeReport({ refreshKey = 0 }) {
   const [resultFilter, setResultFilter] = useState('all');
   const [journalFilter, setJournalFilter] = useState('all');
   const [tradesPerPage, setTradesPerPage] = useState(DEFAULT_TRADES_PER_PAGE);
+  // Tracks which ID was most recently copied (e.g. "id:104" or "session:45") so its button
+  // can flash a checkmark. Mirrors ShareLinkManager's own copy-link affordance — these IDs are
+  // exactly what its "Session ID" and "Trade IDs" share-link fields ask the trader to type in.
+  const [copiedField, setCopiedField] = useState(null);
 
   const loadReport = async () => {
     setLoading(true);
@@ -198,9 +207,10 @@ export default function TradeReport({ refreshKey = 0 }) {
         playbookPerformance: response.data?.playbookPerformance ?? [],
         advanced: response.data?.advanced ?? {},
         monteCarlo: response.data?.monteCarlo ?? {},
+        lockedCapabilities: Array.isArray(response.data?.lockedCapabilities) ? response.data.lockedCapabilities : [],
       });
     } catch (err) {
-      setError(err.response?.data?.message ?? err.message ?? 'Failed to load trade report');
+      setError(toAccessError(err, 'Failed to load trade report'));
     } finally {
       setLoading(false);
     }
@@ -231,6 +241,12 @@ export default function TradeReport({ refreshKey = 0 }) {
   const playbookPerformance = report.playbookPerformance ?? [];
   const advanced = report.advanced ?? {};
   const monteCarlo = report.monteCarlo ?? {};
+  // The server omits these from the payload rather than sending them and
+  // trusting the client to hide them, so a lock here means there is genuinely
+  // nothing to draw.
+  const lockedCapabilities = report.lockedCapabilities ?? [];
+  const analyticsLocked = lockedCapabilities.includes('analytics');
+  const monteCarloLocked = lockedCapabilities.includes('monte_carlo');
   // Sorted by real creation time (when the trade was actually entered in the
   // browser), not `closedAtTime` (the simulated backtest/candle date) — a user
   // can replay old historical dates today and recent ones tomorrow, so the
@@ -335,6 +351,15 @@ export default function TradeReport({ refreshKey = 0 }) {
     setJournalDraft({});
   };
 
+  const copyIdValue = async (field, value) => {
+    try {
+      await navigator.clipboard.writeText(String(value));
+      setCopiedField(field);
+    } catch {
+      setCopiedField(null);
+    }
+  };
+
   const updateJournalDraft = (field, value) => {
     setJournalDraft((current) => ({
       ...current,
@@ -372,7 +397,7 @@ export default function TradeReport({ refreshKey = 0 }) {
 
       cancelJournalEdit();
     } catch (err) {
-      setError(err.response?.data?.message ?? err.message ?? 'Failed to save journal');
+      setError(toAccessError(err, 'Failed to save journal'));
     } finally {
       setJournalSaving(false);
     }
@@ -390,7 +415,7 @@ export default function TradeReport({ refreshKey = 0 }) {
       await axios.post('/market-backtest/report/export', { format, limit: 5000 });
       setExportNotice("Export started — you'll get a notification with a download link when it's ready.");
     } catch (err) {
-      setError(err.response?.data?.message ?? err.message ?? 'Failed to start export');
+      setError(toAccessError(err, 'Failed to start export'));
     } finally {
       setExportingFormat(null);
     }
@@ -529,11 +554,7 @@ export default function TradeReport({ refreshKey = 0 }) {
         </div>
       </div>
 
-      {error && (
-        <div className="mx-4 mt-4 rounded-md border border-red-900 bg-red-950/60 px-3 py-2 text-xs text-red-200">
-          {error}
-        </div>
-      )}
+      <AccessNotice error={error} isDark={isDark} feature="the trade journal and reports" className="mx-4 mt-4" />
 
       {exportNotice && (
         <div className="mx-4 mt-4 rounded-md border border-teal-900 bg-teal-950/60 px-3 py-2 text-xs text-teal-200">
@@ -603,7 +624,18 @@ export default function TradeReport({ refreshKey = 0 }) {
         </div>
       )}
 
-      {Number(summary.totalTrades ?? 0) > 0 && (
+      {Number(summary.totalTrades ?? 0) > 0 && analyticsLocked && (
+        <div className="px-4 pb-4">
+          <TierLockedPanel
+            title="Advanced analytics"
+            description="Expectancy, profit factor, max drawdown, win/loss streaks, and MAE/MFE edge ratios across your closed trades."
+            requiredTier={2}
+            isDark={isDark}
+          />
+        </div>
+      )}
+
+      {Number(summary.totalTrades ?? 0) > 0 && !analyticsLocked && (
         <div className="px-4 pb-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Expectancy" value={formatReportMoney(advanced.expectancy)} tone={Number(advanced.expectancy) >= 0 ? 'win' : 'loss'} isDark={isDark} />
@@ -626,6 +658,17 @@ export default function TradeReport({ refreshKey = 0 }) {
         </div>
       )}
 
+      {monteCarloLocked && Number(summary.totalTrades ?? 0) > 0 && (
+        <div className="px-4 pb-4">
+          <TierLockedPanel
+            title="Monte Carlo risk"
+            description="Resamples your trade sequence 500 times to estimate balance percentiles, median drawdown, and the odds of halving your account."
+            requiredTier={3}
+            isDark={isDark}
+          />
+        </div>
+      )}
+
       {monteCarlo.eligible && (
         <div className="px-4 pb-4">
           <div className={`rounded-lg border p-3 ${sectionClass}`}>
@@ -642,7 +685,7 @@ export default function TradeReport({ refreshKey = 0 }) {
         </div>
       )}
 
-      {Number(summary.totalTrades ?? 0) > 0 && (
+      {Number(summary.totalTrades ?? 0) > 0 && !analyticsLocked && (
         <div className="px-4 pb-4">
           <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${mutedTextClass}`}>Performance Breakdown</div>
           <div className="grid gap-3 sm:grid-cols-1 lg:grid-cols-3">
@@ -704,6 +747,7 @@ export default function TradeReport({ refreshKey = 0 }) {
               <thead className={`sticky top-0 z-10 text-[10px] uppercase tracking-wide ${tableHeadClass}`}>
                 <tr>
                   <th className="px-3 py-2">Closed</th>
+                  <th className="px-3 py-2" title="Trade and session identifiers, for mentor review share links">ID / Session</th>
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Mode</th>
                   <th className="px-3 py-2">Side</th>
@@ -728,6 +772,30 @@ export default function TradeReport({ refreshKey = 0 }) {
                       <React.Fragment key={trade.id}>
                         <tr className={rowHoverClass}>
                           <td className={`whitespace-nowrap px-3 py-2 ${bodyTextClass}`}>{formatTradeDate(trade)}</td>
+                          <td className="whitespace-nowrap px-3 py-2">
+                            <div className="flex flex-col items-start gap-1">
+                              <button
+                                type="button"
+                                onClick={() => copyIdValue(`id:${trade.id}`, trade.id)}
+                                title="Copy trade ID — use it under 'Specific trades' when creating a mentor share link"
+                                className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] ${isDark ? 'bg-black-table-color text-gray-300 hover:bg-skin-black-light' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-100'}`}
+                              >
+                                {copiedField === `id:${trade.id}` ? <Check size={10} /> : <Copy size={10} />}
+                                #{trade.id}
+                              </button>
+                              {trade.sessionId != null && (
+                                <button
+                                  type="button"
+                                  onClick={() => copyIdValue(`session:${trade.sessionId}`, trade.sessionId)}
+                                  title="Copy session ID — use it under 'Session' when creating a mentor share link"
+                                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] ${inactivePillClass}`}
+                                >
+                                  {copiedField === `session:${trade.sessionId}` ? <Check size={10} /> : <Copy size={10} />}
+                                  S#{trade.sessionId}
+                                </button>
+                              )}
+                            </div>
+                          </td>
                           <td className={`whitespace-nowrap px-3 py-2 font-semibold ${valueTextClass}`}>{trade.symbol}</td>
                           <td className="whitespace-nowrap px-3 py-2">
                             {trade.marginMode === 'cross' ? (
@@ -810,7 +878,7 @@ export default function TradeReport({ refreshKey = 0 }) {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={13} className={`px-3 py-10 text-center text-sm ${faintTextClass}`}>
+                    <td colSpan={15} className={`px-3 py-10 text-center text-sm ${faintTextClass}`}>
                       {allTradesCount
                         ? 'No trades match your search and filters.'
                         : 'No closed trades yet. Close a replay position to populate the report.'}

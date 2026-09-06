@@ -81,3 +81,11 @@ Supported exchange-specific behavior is implemented in the controller and live-s
 - Compression: a gzip client gets `Content-Encoding: gzip` with `Vary: Accept-Encoding` and a body that decodes to the same candle count/shape as before; a client sending no `Accept-Encoding` gets equivalent plain JSON. Validation errors (422) stay uncompressed and readable. `fresh=1` responses fall under the 1KB floor and are not compressed. Both the cold (compress-and-store) and warm (serve-stored-bytes) paths must return byte-identical JSON once decoded.
 
 Related: [Live streaming](live-market-streaming.md), [Trading chart](trading-chart.md).
+
+# Deep history is tier-gated, and capped rather than rejected
+
+`GET /api/klines` is **public and unauthenticated**, and its `max_candles` validation allows up to 20,000. Deep replay history therefore could not honestly be advertised as a paid capability — anyone could `curl` it.
+
+`klines()` now caps `max_candles` at `config('subscription_tiers.public_max_candles')` (5,000) unless the caller is authenticated and holds the `deep_history` capability (tier 2 — see [Subscriptions](subscriptions-trials-and-paymongo.md)). **Capped, not rejected**: the endpoint stays public and keeps returning usable data for anonymous callers and the free tier, rather than turning a working public route into a 402.
+
+This also has value independent of tiering. A 20,000-candle load is one anchor request plus a ~19-page pooled burst against the exchange, so an anonymous caller could previously spend twenty upstream requests per call against this app's per-exchange budget. That is now reserved for paying users.

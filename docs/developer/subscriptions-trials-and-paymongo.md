@@ -129,3 +129,87 @@ Related: [Replay](replay-and-progress.md), [Deployment](deployment-and-productio
 Trial activation success/failure is surfaced through the app-wide toast (`Context/ToastContext.jsx`'s `useToast()`/`handleToast(message, 'success' | 'error')`), not the modal's own inline status box — both usages of `SubscriptionModal.jsx` close the modal immediately on activation, so a message set only in local state would never be seen. The inline red status box in the modal remains for errors that keep the modal open (checkout start failure, plan/availability load failure). Paid checkout completion already has its own durable confirmation: PayMongo always returns to `/subscription?payment=paid|failed|cancelled`, and `Pages/Subscriptions/UserIndex.jsx` renders a persistent banner from that query param — no toast needed there since the page itself is the confirmation.
 
 The paid `weekly` plan and the free trial are both 7 days, which reads as confusing side by side in `SubscriptionModal.jsx`: the free-trial banner and the paid plan grid are independent UI, so a user could pay for `weekly` while an unused free trial of the same length sits above it. To avoid that, the modal computes `weeklyTrialEligible = selected?.code === 'weekly' && trialAvailable && !readOnly`. While true, the bottom CTA reads "Activate free trial" and calls `activateTrial()` instead of `startCheckout()` (and the adjacent "Secure checkout" copy swaps to trial copy); once the trial has been used or expired (`trialAvailable` false) or paid/trial access is already active (`readOnly`), selecting `weekly` behaves like any other plan card — "Continue with Weekly" via the normal paid checkout flow. The standalone trial banner (shown whenever `trialAvailable || activeAccess?.kind === 'trial'`, independent of which plan card is selected) is unchanged and still offers a one-click "Activate free week" regardless of plan selection.
+
+# Subscription tiers
+
+Plans used to differ only in `duration_days` and `price`; every one of them granted the same single `replay_access_ends_at` entitlement, and the `features` JSON was display-only copy that could say anything. Plans now carry a tier.
+
+| Plan | Duration | Tier | Level |
+|---|---|---|---|
+| Free trial | 7 d | Elite preview | 3 |
+| Weekly | 7 d | Starter | 1 |
+| Monthly | 30 d | Pro | 2 |
+| Yearly | 365 d | Elite | 3 |
+
+`config/subscription_tiers.php` is the single source of truth: it maps each capability name to the minimum tier that unlocks it, holds per-tier creation quotas, and names the tiers. Both enforcement (`EnsureReplayAccess`, the controllers' quota checks) and display (the plans modal's feature list, via `ReplayAccessController::plans()`) read from it, so the advertised capabilities cannot drift from the enforced ones. Retuning which tier owns a capability is a one-line edit there — no migration, no route change, no frontend rebuild.
+
+`subscription_plans.tier_level` is server-controlled and never accepted from a customer-facing request. `adm_users.replay_access_tier` records what the user's current paid window grants; `replay_access_ends_at` still decides *whether* access is live, and the tier decides *how much*. A live window with a null tier reads as Starter, so any row predating the column degrades rather than losing access.
+
+`SubscriptionTierService` resolves all of this. Superadmins resolve to the maximum tier **inside the service**, not at each call site, so a controller doing payload-level gating cannot forget the bypass `EnsureReplayAccess` has always had. `requiredTier()` returns null for an unknown capability name and every caller treats that as unreachable — a typo in a route's middleware argument locks the route rather than silently opening it.
+
+## The trial grants Elite
+
+The paid Weekly plan and the free trial are both seven days, which the modal already worked around by swapping its CTA when Weekly is selected. If the trial granted Starter, paying for Weekly would buy nothing the user just had free. Granting Elite makes Weekly legible as the cheapest way back in after the preview lapses, and makes Elite's value concrete rather than a bullet list.
+
+While a trial and a paid window are both live, the **higher tier wins** — so converting mid-trial never reads as a downgrade for the overlap.
+
+## Purchase guard: one condition, two cases
+
+`createCheckout()` permits a checkout when either holds:
+
+- the user has **no live paid window** (`replay_access_ends_at` null or past), regardless of whether a trial is running; or
+- the requested plan's `tier_level` is **strictly greater** than the user's current paid tier.
+
+Phrasing the guard against the *paid* window rather than against access generally is what keeps the two cases from colliding. Previously an active trial 409'd every purchase, so a user convinced on trial day two could not pay until day seven and had to return on their own initiative — a conversion leak the Elite preview only sharpens. But once a paid window exists, including one queued behind a still-running trial, the strictly-higher rule governs every subsequent purchase, so a converted trial user cannot stack a lower tier over a higher one and leave `replay_access_tier` holding the wrong value.
+
+## Activation windows
+
+`activate()`'s start boundary is the latest of now, `replay_access_ends_at`, and `replay_trial_ends_at` — it previously considered only the first two. A plan bought on trial day two therefore **queues behind the trial** instead of overlapping it: the trial is never shortened, and the paid window still runs its full duration from the moment the trial ends. An upgrade over a live paid window works the same way, so remaining paid days carry over. There is no proration, no credit, and no PayMongo refund call.
+
+The tier written is `max(current live paid tier, purchased tier)`. The checkout guard normally guarantees the purchased tier is the higher one; `max()` covers the paths that bypass that guard — admin reconciliation and the five-minute PayMongo poller — where an older, lower-tier payment landing late could otherwise demote a user.
+
+**Tier is snapshotted onto `subscription_requests.tier_level` at checkout**, alongside the amount/currency/duration this table already snapshots. Without it, activation would resolve the tier by plan code at webhook time, so a plan retuned or deactivated between checkout and payment would grant something other than what the customer bought. Rows predating the column fall back to a plan lookup, then to Starter.
+
+`restoreAccess()` restores the tier from that snapshot too, never from admin input — an admin chooses how many days to restore, never which tier. `revoke()` deliberately leaves `replay_access_tier` alone, for the same reason expiry does: the timestamp governs, and keeping the tier keeps the audit trail readable.
+
+## Downgrade and expiry
+
+Nothing is ever deleted. Playbooks, risk settings, imported batches, and exports stay stored and readable; the report renders locked placeholders rather than empty charts. Quotas are checked only at creation, so a user who drops a tier keeps every existing row and is simply refused new ones.
+
+The one exception is **mentor share links, which stop resolving below Elite** — they are public URLs actively serving traffic to third parties, so leaving them live would give the Elite hook away for free. The row and its token are left intact and the link works again on resubscribe; this is a live tier check in `MentorReviewController::show()`, not a `revoked_at` write.
+
+## Verification
+
+- Each plan grants its tier; the trial grants Elite; a live trial outranks a lower live paid window.
+- A user with no live paid window can buy any plan; with one, only a strictly higher tier (same and lower both 409).
+- Buying during a trial leaves `replay_trial_ends_at` untouched and starts the paid window at the trial's end, not at purchase time.
+- An upgrade carries remaining paid days; a late lower-tier activation never demotes a higher live tier.
+- A plan retuned after checkout does not change what that transaction grants.
+- `restoreAccess()` restores the referenced transaction's tier, not the column's stale value.
+- Automated coverage: `tests/Unit/SubscriptionTierServiceTest.php`, `tests/Unit/EnsureReplayAccessTierTest.php` (both database-free), and `tests/Unit/SubscriptionEntitlementServiceTierTest.php` (isolated SQLite, self-skips without `pdo_sqlite`).
+
+## Admin pricing editor
+
+`Pages/Subscriptions/AdminPlans.jsx` sets each plan's price, duration, description, featured/active flags, and now its **tier**. Tier is a bounded select validated with `Rule::in(array_keys(config('subscription_tiers.names')))` rather than an open integer — a tier with no entry in that config would grant nothing and silently break every gate keyed to plans at that level.
+
+The card mirrors the customer's plan card: the same check rows, the same "Everything below, plus" framing, and the per-tier quota table. An admin picking a tier number otherwise has no way to know what it grants, which is the same information gap that let the three plans drift into describing themselves identically. **Capabilities are read-only here** — they come from `config/subscription_tiers.php` and are shown so the admin can see the consequence of the tier they picked, not edit it. Changing which tier owns a capability is a config edit, deliberately not an admin-UI action, since it changes what already-paid customers are entitled to.
+
+The `features` JSON editor remains, relabelled "Extra copy" and rendered *beneath* the derived capabilities in both surfaces. It is supplementary marketing text and grants nothing on its own — the page says so inline, so a future admin does not mistake it for an entitlement control again.
+
+`updatePlans()`'s response goes through the same `planPayload()` helper as `plans()`. It previously returned raw models, so saving left the admin editor without `capabilities`/`tier_name` until a full page reload — changing a plan's tier appeared to do nothing.
+
+## Gated-error presentation (`AccessNotice`)
+
+A 402 from `EnsureReplayAccess` or a 422 `tier_quota_reached` used to render as a bare red bar containing only the server's sentence — "Your replay access has expired." — with no icon and no way to act on it. `Components/Subscriptions/AccessNotice.jsx` is now the single error surface for every gated feature.
+
+`accessError.js`'s `toAccessError(err, fallback)` normalizes a failed request: it returns a **plain string** for ordinary failures, preserving the shape each caller's `error` state already held, and an **object** carrying `code`/`requiredTier`/`requiredTierName`/`trialAvailable` for gated ones. `AccessNotice` renders the familiar red bar (now with an `AlertTriangle`) for the first and a locked state for the second — heading, what the plan unlocks, the server's own reason kept underneath so "expired" stays distinguishable from "never subscribed", and a CTA to `/subscription`.
+
+The CTA adapts: `Start free trial` when `trialAvailable`, otherwise `Get {tier}`. This is why the 402 body carries `requiredTier`/`requiredTierName` at all — without them the notice could only say "subscribe", not which plan.
+
+Wired into `TradeReport.jsx`, `TradeCalendar.jsx`, `StrategyPlaybooks.jsx` (both the load error and the create error, where a `tier_quota_reached` 422 lands), `ShareLinkManager.jsx`, `TrainingChallengeCatalog.jsx`, and `RiskGuardrailSettings.jsx`. Any new gated surface should use it rather than printing `err.response.data.message` into a red div.
+
+**`RiskGuardrailSettings.jsx`'s loader previously swallowed the error entirely** (`.catch(() => setMessage('Unable to load risk guardrails.'))`), so a tier refusal read as a generic load failure. It now normalizes the real error and routes a gated one to `AccessNotice`.
+
+## `prop_challenge` (Elite)
+
+The prop-firm evaluation rehearsal is gated at tier 3. **Do not conflate it with `challenges`**, which is *training* challenges at tier 1 — two different features whose capability names differ by one word. See [Prop-firm challenges](prop-firm-challenges.md).

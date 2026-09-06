@@ -6,6 +6,7 @@ use App\Models\MarketBacktestAccount;
 use App\Models\MarketBacktestPosition;
 use App\Models\MarketBacktestSession;
 use App\Models\MarketBacktestShareLink;
+use App\Services\SubscriptionTierService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -43,6 +44,10 @@ class MarketBacktestShareLinkController extends Controller
         'updated_at',
     ];
 
+    public function __construct(private readonly SubscriptionTierService $tiers)
+    {
+    }
+
     public function index(Request $request)
     {
         $account = $this->getOrCreateAccount($request);
@@ -62,6 +67,15 @@ class MarketBacktestShareLinkController extends Controller
 
     public function store(Request $request)
     {
+        // Live links only — a revoked or expired one serves no traffic and so
+        // does not occupy a slot.
+        $this->tiers->assertWithinQuota($request->user(), 'share_links',
+            MarketBacktestShareLink::query()
+                ->where('adm_user_id', $request->user()->id)
+                ->whereNull('revoked_at')
+                ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+                ->count());
+
         $validated = $request->validate([
             'label' => ['nullable', 'string', 'max:120'],
             'scope_type' => ['required', Rule::in(['session', 'date_range', 'trade_ids'])],

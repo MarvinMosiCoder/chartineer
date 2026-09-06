@@ -86,3 +86,9 @@ Notification rows send `content_html: null`, and the modal falls back to renderi
 `dismissed_at` had to be added to `AdmNotifications::$fillable` — it was missing initially, which made `update(['dismissed_at' => now()])` silently no-op (Eloquent mass-assignment drops unlisted attributes without erroring); confirmed both the bug and the fix directly against the database rather than assuming the `update()` call succeeded just because it didn't throw. (Note `source_type`/`source_id`/`metadata` are also listed in `$fillable` but don't exist as actual columns on this table — a separate, pre-existing drift issue, out of scope here; don't assume everything in `$fillable` is a real column when touching this model again.)
 
 This does not apply to announcement rows in the merged `NotificationsViewAll.jsx` list (`source_type === 'announcement'`) — those are admin-authored content shared across all users via `announcement_user`, not a per-user `adm_notifications` row, so there's no dismiss/delete affordance on them at all, on either surface.
+
+# Per-tier alert quotas
+
+`MarketPriceAlertController::store()` refuses creation past the `alerts` quota for the user's tier (`config/subscription_tiers.php`: 5 / 25 / 100 for Starter / Pro / Elite; a user with no subscription gets the Starter allowance). Over-quota returns 422 with `code: tier_quota_reached`, the limit, and the lowest tier that would raise it.
+
+**Only alerts still waiting to fire are counted.** Each active alert costs a cycle of the scheduled `market-alerts:monitor` command; a triggered or cancelled alert costs nothing, so counting them would charge users for their own history. The check is at creation only — a user who drops a tier while over quota keeps every existing alert and is simply refused new ones.
