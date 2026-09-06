@@ -58,6 +58,11 @@ return [
         'deep_history'    => 2,
 
         // Elite — genuinely additive: analysis, real money, and coaching.
+        //
+        // `prop_challenge` is the prop-firm evaluation rehearsal. Note the
+        // separate `challenges` above is *training* challenges at tier 1 —
+        // different feature, and the two names must not be conflated.
+        'prop_challenge'  => 3,
         'monte_carlo'     => 3,
         'imported_trades' => 3,
         'mentor_share'    => 3,

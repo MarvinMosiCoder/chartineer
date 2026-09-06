@@ -20,6 +20,7 @@ export const CAPABILITY_LABELS = {
     deep_history: 'Deep replay history (20,000 candles)',
 
     cross_margin: 'Cross Margin & liquidation engine',
+    prop_challenge: 'Prop-firm challenge simulator',
     monte_carlo: 'Monte Carlo risk simulation',
     imported_trades: 'Import your real broker trades',
     mentor_share: 'Mentor review share links',
