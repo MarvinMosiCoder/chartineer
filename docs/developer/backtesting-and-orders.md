@@ -330,3 +330,11 @@ It briefly shipped as an Elite-only capability during the tier work and was move
 It is the one capability with an ongoing server cost regardless of tier — the `cross-margin:monitor` worker (disabled by default, see [Deployment](deployment-and-production.md)) has to run for liquidation to be caught at all. That cost buys faithful simulation across every paid plan; do not "optimise" it by restricting the monitor to higher tiers, since a lower tier would then be liquidated late or not at all, which is a subtly wrong simulation and worse than not offering Cross.
 
 **The capability gate still has to be enforced in two places.** Margin mode is a field on the order (`margin_mode: isolated | cross`), not a separate endpoint, so the route gate alone would let a caller open a Cross position through the ordinary `POST /market-backtest/positions` route. `MarketBacktestController::openPosition()` therefore also checks `cross_margin` and returns 402 with `requiredTier` when it is not held. Both reads come from `config/subscription_tiers.php`, so retuning the tier moves both at once — but if Cross is ever restricted again, that second check is the one that actually stops it.
+
+## Prop-firm challenges hook the trading path
+
+A challenge runs on its own account and evaluates its own cumulative rules; see [Prop-firm challenges](prop-firm-challenges.md). Three things about it matter when changing this controller:
+
+- **`assertChallengeAllowsEntry()` runs beside the risk-guardrail gate in `openPosition()`.** They are separate engines with different scopes and either may refuse an entry — a challenge's window rules do not replace the trader's own daily discipline settings.
+- **`applyChallengeVerdict()` runs after `closePosition()` and `evaluateCrossPortfolio()`.** Gating only entries would miss most real failures, because a challenge is normally killed by a stop-out that was already open when it breached.
+- **`processPositionCandle()` deliberately has no hook**, because it delegates to `closePosition()` when a stop or target triggers. Adding one would evaluate the same close twice.

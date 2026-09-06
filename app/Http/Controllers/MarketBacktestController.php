@@ -19,6 +19,8 @@ use App\Services\MarketBacktestInsightService;
 use App\Services\MarketBacktestReportService;
 use App\Services\MarketBacktestRiskGuardrailService;
 use App\Services\MarketBacktestAdvancedAnalyticsService;
+use App\Services\PropChallengeLifecycleService;
+use App\Services\PropChallengeService;
 use App\Services\SubscriptionTierService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +42,9 @@ class MarketBacktestController extends Controller
         private CrossMarkService $crossMarkService,
         private CrossLiquidationService $crossLiquidationService,
         private BacktestTradeNotificationService $tradeNotifications,
-        private SubscriptionTierService $tiers
+        private SubscriptionTierService $tiers,
+        private PropChallengeService $propChallenges,
+        private PropChallengeLifecycleService $propChallengeLifecycle
     ) {
     }
 
@@ -541,6 +545,12 @@ class MarketBacktestController extends Controller
                     'riskGuardrails' => $riskEvaluation,
                 ], 422));
             }
+
+            // A challenge's rules and the trader's own guardrails are separate
+            // engines with different scopes, and either may refuse an entry. The
+            // refusal names which one, so a personal limit set tighter than the
+            // challenge's is never silently overridden.
+            $this->assertChallengeAllowsEntry($request, $validated['executed_at_time'] ?? null);
             $session = $this->resolveSessionForTrade($request, $account, $validated);
             $category = $validated['category'] ?? 'linear';
             $isSpot = $category === 'spot';
@@ -1162,6 +1172,7 @@ class MarketBacktestController extends Controller
         });
 
         $account = $result['account'];
+        $this->applyChallengeVerdict($request, $validated['executed_at_time'] ?? null);
 
         return response()->json([
             'success' => true,
@@ -1175,6 +1186,10 @@ class MarketBacktestController extends Controller
         $validated = $request->validate([
             'mode' => ['nullable', Rule::in(['live', 'replay'])],
             'session_id' => ['nullable', 'integer', 'min:1'],
+            // Optional: the replay candle this evaluation belongs to. Without it
+            // a liquidation verdict is dated from the challenge's last known
+            // replay time, which lags whatever candle actually caused it.
+            'candle_time' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $account = $this->getOrCreateAccount($request);
@@ -1184,6 +1199,11 @@ class MarketBacktestController extends Controller
         $result = $this->crossLiquidationService->evaluate($account->id, $mode, $session?->id, self::FEE_RATE);
 
         $account = $account->fresh();
+
+        // One liquidation closes several positions; PropChallengeService::apply()
+        // locks and short-circuits on a non-active challenge, so this produces a
+        // single verdict rather than one per closed position.
+        $this->applyChallengeVerdict($request, $validated['candle_time'] ?? null);
 
         return response()->json([
             'success' => true,
@@ -1357,6 +1377,51 @@ class MarketBacktestController extends Controller
     private function buildPublicStorageUrl(string $path): string
     {
         return url('storage/' . ltrim($path, '/'));
+    }
+
+    /**
+     * Refuses a new entry when the caller's challenge will not accept one.
+     *
+     * Two distinct refusals: a challenge that has already ended accepts nothing
+     * at all, and a live challenge whose rules are breached blocks entries the
+     * same way an enforced guardrail does.
+     */
+    private function assertChallengeAllowsEntry(Request $request, ?int $replayTime): void
+    {
+        $challenge = $this->propChallengeLifecycle->activeChallengeFor($request->user());
+        if (!$challenge) {
+            return;
+        }
+
+        $evaluation = $this->propChallenges->apply($challenge, $replayTime);
+
+        if ($challenge->fresh()?->isActive() === false) {
+            abort(response()->json([
+                'success' => false,
+                'message' => $evaluation['breach']['message']
+                    ?? 'This challenge has ended. Restart it to trade again.',
+                'code' => 'prop_challenge_ended',
+                'propChallenge' => $evaluation,
+            ], 422));
+        }
+    }
+
+    /**
+     * Re-evaluates the caller's challenge after a position closed.
+     *
+     * Gating only openPosition() would miss most real failures: a challenge is
+     * normally killed by a stop-out, not by an entry attempt — the losing trade
+     * is already open when it breaches. `$eventTime` is the closing trade's
+     * replay timestamp so the verdict is dated to the candle that caused it,
+     * not to whenever evaluation happened to run.
+     */
+    private function applyChallengeVerdict(Request $request, ?int $eventTime): void
+    {
+        $challenge = $this->propChallengeLifecycle->activeChallengeFor($request->user());
+
+        if ($challenge) {
+            $this->propChallenges->apply($challenge, $eventTime);
+        }
     }
 
     private function getOrCreateAccount(Request $request, bool $lock = false): MarketBacktestAccount

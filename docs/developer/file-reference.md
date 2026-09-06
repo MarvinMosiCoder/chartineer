@@ -56,3 +56,4 @@ Shared authentication/profile/market/subscription/feedback/admin routes are cove
 - `app/Services/SubscriptionTierService.php` — tier resolution, capability checks, and quota refusal; superadmins resolve to the maximum tier here so no call site can forget the bypass.
 - `resources/js/Hooks/useEntitlements.jsx`, `resources/js/Components/Subscriptions/tierCapabilities.js`, `TierLockedPanel.jsx` — client-side tier reads, capability display labels, and the locked-panel placeholder.
 - `database/migrations/2026_09_06_000001..3_*` — `subscription_plans.tier_level`, `adm_users.replay_access_tier`, and the `subscription_requests.tier_level` purchase snapshot.
+- `app/Services/PropChallengeService.php`, `PropChallengeLifecycleService.php`, `PropChallengeController.php`, `app/Models/MarketBacktestChallenge.php`, `config/prop_challenges.php` — prop-firm challenge rules, account swapping, routes and templates; see [Prop-firm challenges](prop-firm-challenges.md).

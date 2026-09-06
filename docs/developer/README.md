@@ -30,6 +30,7 @@ This handbook documents the application by feature. Each guide names the respons
 | Real trade CSV import, separate from simulated data | [Imported trades](imported-trades.md) |
 | Revocable public trade-review links | [Mentor review sharing](mentor-review-sharing.md) |
 | Rule-scored practice exercises | [Training challenges](training-challenges.md) |
+| Prop-firm evaluation rehearsal | [Prop-firm challenges](prop-firm-challenges.md) |
 | Price triggers and notifications | [Price alerts and notifications](price-alerts-and-notifications.md) |
 | Trial, plans, checkout, webhook | [Subscriptions, trials, and PayMongo](subscriptions-trials-and-paymongo.md) |
 | User/admin feedback workflow | [Feedback](feedback.md) |

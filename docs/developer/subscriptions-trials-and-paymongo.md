@@ -209,3 +209,7 @@ The CTA adapts: `Start free trial` when `trialAvailable`, otherwise `Get {tier}`
 Wired into `TradeReport.jsx`, `TradeCalendar.jsx`, `StrategyPlaybooks.jsx` (both the load error and the create error, where a `tier_quota_reached` 422 lands), `ShareLinkManager.jsx`, `TrainingChallengeCatalog.jsx`, and `RiskGuardrailSettings.jsx`. Any new gated surface should use it rather than printing `err.response.data.message` into a red div.
 
 **`RiskGuardrailSettings.jsx`'s loader previously swallowed the error entirely** (`.catch(() => setMessage('Unable to load risk guardrails.'))`), so a tier refusal read as a generic load failure. It now normalizes the real error and routes a gated one to `AccessNotice`.
+
+## `prop_challenge` (Elite)
+
+The prop-firm evaluation rehearsal is gated at tier 3. **Do not conflate it with `challenges`**, which is *training* challenges at tier 1 — two different features whose capability names differ by one word. See [Prop-firm challenges](prop-firm-challenges.md).

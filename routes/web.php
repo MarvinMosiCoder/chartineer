@@ -31,6 +31,7 @@ use App\Http\Controllers\PaymentActivityLogController;
 use App\Http\Controllers\ReplayAccessController;
 use App\Http\Controllers\RevenueReportController;
 use App\Http\Controllers\SystemErrorLogController;
+use App\Http\Controllers\PropChallengeController;
 use App\Http\Controllers\TrainingChallengeController;
 use App\Http\Controllers\UserFeedbackController;
 use App\Http\Controllers\PayMongoWebhookController;
@@ -246,6 +247,16 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/market-backtest/share-links', [MarketBacktestShareLinkController::class, 'index'])->middleware(['replay.access:mentor_share', 'throttle:backtest-read'])->name('market-backtest.share-links.index');
     Route::post('/market-backtest/share-links', [MarketBacktestShareLinkController::class, 'store'])->middleware(['replay.access:mentor_share', 'throttle:backtest-write'])->name('market-backtest.share-links.store');
     Route::delete('/market-backtest/share-links/{shareLink}', [MarketBacktestShareLinkController::class, 'destroy'])->middleware(['replay.access:mentor_share', 'throttle:backtest-write'])->name('market-backtest.share-links.destroy');
+
+    // Prop-firm challenge rehearsals (Elite). Distinct from the structured
+    // training challenges below — different feature, different capability.
+    Route::get('/prop-challenges/templates', [PropChallengeController::class, 'templates'])->middleware(['replay.access:prop_challenge', 'throttle:backtest-read'])->name('prop-challenges.templates');
+    Route::get('/prop-challenges', [PropChallengeController::class, 'index'])->middleware(['replay.access:prop_challenge', 'throttle:backtest-read'])->name('prop-challenges.index');
+    Route::post('/prop-challenges', [PropChallengeController::class, 'store'])->middleware(['replay.access:prop_challenge', 'throttle:backtest-write'])->name('prop-challenges.store');
+    Route::get('/prop-challenges/{challenge}', [PropChallengeController::class, 'show'])->middleware(['replay.access:prop_challenge', 'throttle:backtest-read'])->name('prop-challenges.show');
+    Route::post('/prop-challenges/{challenge}/abandon', [PropChallengeController::class, 'abandon'])->middleware(['replay.access:prop_challenge', 'throttle:backtest-write'])->name('prop-challenges.abandon');
+    Route::post('/prop-challenges/{challenge}/leave', [PropChallengeController::class, 'leave'])->middleware(['replay.access:prop_challenge', 'throttle:backtest-write'])->name('prop-challenges.leave');
+    Route::post('/prop-challenges/{challenge}/restart', [PropChallengeController::class, 'restart'])->middleware(['replay.access:prop_challenge', 'throttle:backtest-write'])->name('prop-challenges.restart');
 
     // Structured training challenges.
     Route::get('/training-challenges/catalog', [TrainingChallengeController::class, 'index'])->middleware(['replay.access:challenges', 'throttle:backtest-read'])->name('training-challenges.catalog');
