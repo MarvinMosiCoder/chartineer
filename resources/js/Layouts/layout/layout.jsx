@@ -1,7 +1,6 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { Link, usePage } from "@inertiajs/react";
 import AppFooter from "@/Layouts/layout/AppFooter.jsx";
-import AppSidebar from "@/Layouts/layout/AppSidebar.jsx";
 import AppNavbar from "@/Layouts/layout/AppNavbar.jsx";
 import AppContent from "@/Layouts/layout/AppContent.jsx";
 import ContentLoader from "@/Layouts/layout/ContentLoader.jsx";
@@ -26,11 +25,13 @@ const Layout = ({ children }) => {
                     {isAdmin ? <AdminNavbar /> : <TraderNavbar />}
                 </div>
                 <div className="flex h-screen pt-14">
-                    {/* Traders have no sidebar — their navigation lives in TraderNavbar,
-                        which frees the full window width for the chart and its order
-                        column. Admin keeps AppSidebar; its menu tree is data-driven and
-                        far too deep for a bar. */}
-                    {isAdmin && <AppSidebar />}
+                    {/* Nobody has a sidebar. Both roles navigate from their navbar:
+                        TraderNavbar's static NAV_ITEMS, AdminNavbar's session-driven
+                        menu tree. Admin kept a sidebar on the belief that its tree was
+                        "far too deep for a bar" — in the real data it is at most two
+                        levels (a few `URL` group parents with `Route` children), which
+                        a bar holds as dropdowns. Removing it gives admin pages the full
+                        window width, the same reason the trader sidebar went. */}
                     <div className="relative flex min-w-0 w-full flex-col overflow-hidden">
                         <div className="flex-1 w-full flex flex-col overflow-auto">
                             <div className="flex-1">
