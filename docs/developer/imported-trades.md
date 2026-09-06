@@ -110,3 +110,9 @@ Every controller action scopes its query to `$request->user()->id` — a batch o
 - Cross-user `404` on `destroyBatch`/`items`.
 
 Related: [Backtesting and orders](backtesting-and-orders.md), [Trade reports and journals](trade-reports-and-journals.md).
+
+# Tier gate
+
+Every `/imported-trades/*` route is gated `replay.access:imported_trades` (tier 3, Elite — see [Subscriptions](subscriptions-trials-and-paymongo.md)). These routes previously carried only a throttle, so real-broker CSV import was reachable by any logged-in user with no subscription and no trial.
+
+Importing real trades is the point at which a user stops practising and starts analysing real money, which is why it sits at the top tier rather than alongside the simulated-trading engine. Existing batches stay readable after a downgrade; only new imports are refused.

@@ -176,3 +176,13 @@ Independent of both other tours: separate nullable `mentor_tour_completed_at` ti
 - A first-time visit to `/mentor-review` (no `mentor_tour_completed_at` yet) opens the spotlight tour automatically; finishing or skipping it posts `/mentor-tour/complete` and it does not reopen on the next visit. `?tour=1` reopens it regardless of completion state. The "Take the tour" button reopens it manually at any time.
 
 Related: [Trade reports](trade-reports-and-journals.md), [Backtesting and orders](backtesting-and-orders.md).
+
+# Tier gate and the live owner check
+
+The authenticated management routes (`/market-backtest/share-links`, index/store/destroy) are gated `replay.access:mentor_share` (tier 3, Elite — see [Subscriptions](subscriptions-trials-and-paymongo.md)). They previously carried only a throttle, so any logged-in user could mint public share URLs without a subscription.
+
+**The public viewer enforces the owner's tier too, and that is the load-bearing half.** Gating only the management routes would leave every already-created link resolving forever after its owner downgraded — these are public URLs actively serving traffic to third parties, so the Elite hook would be given away by anyone who created links once. `MentorReviewController::show()` resolves the link owner's current tier and returns the same 410 as a revoked link when it is below Elite.
+
+This is a **live check, not a `revoked_at` write**: the row and its token hash are left intact, so every link resolves again if the owner resubscribes. Do not "fix" this by revoking on downgrade — that would be irreversible and would destroy links the user may still be relying on.
+
+Share-link creation is also quota-limited (`share_links` in `config/subscription_tiers.php`); Starter and Pro are capped at zero, which is what makes this an Elite feature in the quota table as well as the capability map.

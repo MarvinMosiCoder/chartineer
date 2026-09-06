@@ -84,3 +84,18 @@ After documentation changes:
 - Open Market Summary with empty and populated watchlists; verify featured BTC/ETH/SOL highlights always render, saved and featured markets use one deduplicated metadata request, and provider failures do not hide the rest of the page.
 - Verify only the latest four active announcements appear as sanitized excerpts, expanding an unread update marks it read once, the rotating tip and quick actions work, and the empty-watchlist Workspace CTA is visible.
 - Check the compact Market Summary overview at desktop/mobile widths in dark and light themes, including skeleton and partial-error states.
+
+# Subscription tier regression checks
+
+- With no subscription and no trial, confirm every gated route returns 402 and not 200: playbooks, risk settings, report export, imported trades, share links, Cross evaluate, training challenges. These were all reachable without any entitlement before tiers existed, so this is the check that proves the paywall gap stayed closed.
+- On Starter, confirm replay, simulated trading, journal, basic report and training challenges all work, and that playbooks/analytics/export return 402 naming Pro.
+- On Pro, confirm Cross Margin, Monte Carlo, imported trades and share links return 402 naming Elite — and that placing an order with `margin_mode: cross` is rejected server-side even if the UI toggle is forced.
+- Confirm the report page renders locked placeholders (not empty stat cards) for withheld analytics, and that `advanced`/`monteCarlo` come back `null` rather than computed-then-hidden.
+- As a superadmin with no subscription at all, confirm every gated route is reachable.
+- Point a route's middleware at a misspelled capability and confirm the route locks rather than opening.
+- Start a trial, then buy a plan on day two: the trial must not shorten, the paid window must start at the trial's end, and the effective tier must stay Elite until the trial lapses.
+- With a live Starter window, confirm Monthly and Yearly are selectable in the modal and Weekly is not, that the CTA reads "Upgrade to …", and that remaining days carry over after payment.
+- With a live Yearly window, confirm every plan is locked and the modal explains that another can be chosen after expiry.
+- Exceed the playbook, share-link and alert quotas and confirm 422 with the upgrade tier named; then downgrade and confirm existing rows survive and only creation is refused.
+- Open a mentor review link, drop the owner below Elite, and confirm the link returns 410; restore Elite and confirm the same link resolves again with its original token.
+- Request `/api/klines?max_candles=20000` anonymously and as Starter — both must be capped at 5,000 and still return data, never an error. As Pro, confirm the full history is served.
