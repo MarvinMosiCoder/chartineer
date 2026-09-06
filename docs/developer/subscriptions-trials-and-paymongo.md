@@ -197,3 +197,15 @@ The card mirrors the customer's plan card: the same check rows, the same "Everyt
 The `features` JSON editor remains, relabelled "Extra copy" and rendered *beneath* the derived capabilities in both surfaces. It is supplementary marketing text and grants nothing on its own — the page says so inline, so a future admin does not mistake it for an entitlement control again.
 
 `updatePlans()`'s response goes through the same `planPayload()` helper as `plans()`. It previously returned raw models, so saving left the admin editor without `capabilities`/`tier_name` until a full page reload — changing a plan's tier appeared to do nothing.
+
+## Gated-error presentation (`AccessNotice`)
+
+A 402 from `EnsureReplayAccess` or a 422 `tier_quota_reached` used to render as a bare red bar containing only the server's sentence — "Your replay access has expired." — with no icon and no way to act on it. `Components/Subscriptions/AccessNotice.jsx` is now the single error surface for every gated feature.
+
+`accessError.js`'s `toAccessError(err, fallback)` normalizes a failed request: it returns a **plain string** for ordinary failures, preserving the shape each caller's `error` state already held, and an **object** carrying `code`/`requiredTier`/`requiredTierName`/`trialAvailable` for gated ones. `AccessNotice` renders the familiar red bar (now with an `AlertTriangle`) for the first and a locked state for the second — heading, what the plan unlocks, the server's own reason kept underneath so "expired" stays distinguishable from "never subscribed", and a CTA to `/subscription`.
+
+The CTA adapts: `Start free trial` when `trialAvailable`, otherwise `Get {tier}`. This is why the 402 body carries `requiredTier`/`requiredTierName` at all — without them the notice could only say "subscribe", not which plan.
+
+Wired into `TradeReport.jsx`, `TradeCalendar.jsx`, `StrategyPlaybooks.jsx` (both the load error and the create error, where a `tier_quota_reached` 422 lands), `ShareLinkManager.jsx`, `TrainingChallengeCatalog.jsx`, and `RiskGuardrailSettings.jsx`. Any new gated surface should use it rather than printing `err.response.data.message` into a red div.
+
+**`RiskGuardrailSettings.jsx`'s loader previously swallowed the error entirely** (`.catch(() => setMessage('Unable to load risk guardrails.'))`), so a tier refusal read as a generic load failure. It now normalizes the real error and routes a gated one to `AccessNotice`.

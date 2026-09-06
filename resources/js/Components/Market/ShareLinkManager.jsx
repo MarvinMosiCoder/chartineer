@@ -5,6 +5,8 @@ import { useTheme } from '../../Context/ThemeContext';
 import { useConfirm } from '../../Hooks/useConfirm';
 import ToggleSwitch from './ToggleSwitch';
 
+import AccessNotice from '../Subscriptions/AccessNotice';
+import { toAccessError } from '../Subscriptions/accessError';
 const EMPTY_FORM = {
   label: '',
   scopeType: 'session',
@@ -70,7 +72,7 @@ export default function ShareLinkManager() {
       setShareLinks(response.data?.shareLinks ?? []);
       setError('');
     } catch (err) {
-      setError(err.response?.data?.message ?? 'Unable to load share links.');
+      setError(toAccessError(err, 'Unable to load share links.'));
     } finally {
       setLoading(false);
     }
@@ -128,7 +130,7 @@ export default function ShareLinkManager() {
       await axios.delete(`/market-backtest/share-links/${shareLink.id}`);
       await load();
     } catch (err) {
-      setError(err.response?.data?.message ?? 'Unable to revoke share link.');
+      setError(toAccessError(err, 'Unable to revoke share link.'));
     }
   };
 
@@ -158,7 +160,7 @@ export default function ShareLinkManager() {
         </div>
       </div>
 
-      {error && <div className="mb-3 rounded border border-red-800 bg-red-950/50 p-2 text-xs text-red-200">{error}</div>}
+      <AccessNotice error={error} feature="mentor review share links" className="mb-3" />
 
       {revealedLink && (
         <div className={`mb-4 rounded-lg border p-3 ${isDark ? 'border-amber-600 bg-amber-950/30' : 'border-amber-400 bg-amber-50'}`}>

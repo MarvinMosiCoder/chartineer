@@ -14,6 +14,8 @@ import {
 import { useTheme } from '../../Context/ThemeContext';
 import ToggleSwitch from './ToggleSwitch';
 
+import AccessNotice from '../Subscriptions/AccessNotice';
+import { toAccessError, isGatedError } from '../Subscriptions/accessError';
 const EMPTY = {
   mode: 'warning', maxDailyLoss: '', maxTradesPerDay: '',
   maxConcurrentPositions: '', maxConsecutiveLosses: '', isEnabled: false,
@@ -38,6 +40,8 @@ export default function RiskGuardrailSettings() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
+  const [accessError, setAccessError] = useState(null);
+
   useEffect(() => {
     axios.get('/market-backtest/risk-settings').then((response) => {
       const settings = response.data?.settings ?? {};
@@ -49,13 +53,20 @@ export default function RiskGuardrailSettings() {
         maxConsecutiveLosses: settings.maxConsecutiveLosses ?? '',
         isEnabled: Boolean(settings.isEnabled),
       });
-    }).catch(() => setMessage('Unable to load risk guardrails.'));
+    }).catch((err) => {
+      // Discarding the error here hid the reason entirely: a tier refusal
+      // read as a generic load failure with no way to act on it.
+      const normalized = toAccessError(err, 'Unable to load risk guardrails.');
+      if (isGatedError(normalized)) setAccessError(normalized);
+      else setMessage(normalized);
+    });
   }, []);
 
   const save = async (event) => {
     event.preventDefault();
     setSaving(true);
     setMessage('');
+    setAccessError(null);
     const nullableNumber = (value) => value === '' ? null : Number(value);
     try {
       await axios.put('/market-backtest/risk-settings', {
@@ -69,7 +80,9 @@ export default function RiskGuardrailSettings() {
       setMessage('Risk guardrails saved.');
     } catch (err) {
       const errors = err.response?.data?.errors;
-      setMessage(errors ? Object.values(errors).flat()[0] : (err.response?.data?.message ?? 'Unable to save risk guardrails.'));
+      const normalized = toAccessError(err, 'Unable to save risk guardrails.');
+      if (isGatedError(normalized)) setAccessError(normalized);
+      else setMessage(errors ? Object.values(errors).flat()[0] : normalized);
     } finally {
       setSaving(false);
     }
@@ -163,6 +176,8 @@ export default function RiskGuardrailSettings() {
           {saving ? 'Saving…' : 'Save guardrails'}
         </button>
       </div>
+
+      <AccessNotice error={accessError} isDark={isDark} feature="risk guardrails" className="mt-3" />
 
       {message && (
         <div

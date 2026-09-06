@@ -10,6 +10,8 @@ import {
 import { useTheme } from '../../Context/ThemeContext';
 import { IconTooltipButton } from '../Tooltip/AnchoredTooltip';
 
+import AccessNotice from '../Subscriptions/AccessNotice';
+import { toAccessError } from '../Subscriptions/accessError';
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_LABELS = [
   'January',
@@ -146,7 +148,7 @@ export default function TradeCalendar() {
         trades: Array.isArray(response.data?.trades) ? response.data.trades : [],
       });
     } catch (err) {
-      setError(err.response?.data?.message ?? err.message ?? 'Failed to load trade calendar');
+      setError(toAccessError(err, 'Failed to load trade calendar'));
     } finally {
       setLoading(false);
     }
@@ -314,11 +316,7 @@ export default function TradeCalendar() {
         </div>
       </div>
 
-      {error && (
-        <div className="mx-4 mt-4 rounded-md border border-red-900 bg-red-950/60 px-3 py-2 text-xs text-red-200">
-          {error}
-        </div>
-      )}
+      <AccessNotice error={error} isDark={isDark} feature="the trade calendar" className="mx-4 mt-4" />
 
       <div className="p-4">
         <div className={`rounded-lg border ${sectionClass}`}>

@@ -4,6 +4,8 @@ import { useTheme } from '../../Context/ThemeContext';
 import { useConfirm } from '../../Hooks/useConfirm';
 import StatCard from './StatCard';
 
+import AccessNotice from '../Subscriptions/AccessNotice';
+import { toAccessError } from '../Subscriptions/accessError';
 const VIOLATION_LABELS = {
   risk_percent: 'Over-risked trade',
   missing_playbook: 'No playbook attached',
@@ -58,7 +60,7 @@ export default function TrainingChallengeCatalog() {
       setChallenges(response.data?.challenges ?? []);
       setError('');
     } catch (err) {
-      setError(err.response?.data?.message ?? 'Unable to load training challenges.');
+      setError(toAccessError(err, 'Unable to load training challenges.'));
     } finally {
       setLoading(false);
     }
@@ -73,7 +75,7 @@ export default function TrainingChallengeCatalog() {
       await axios.post(`/training-challenges/${challenge.id}/attempts`);
       await load();
     } catch (err) {
-      setError(err.response?.data?.message ?? 'Unable to start this challenge.');
+      setError(toAccessError(err, 'Unable to start this challenge.'));
     } finally {
       setBusyId(null);
     }
@@ -105,7 +107,7 @@ export default function TrainingChallengeCatalog() {
         <h2 className="text-sm font-semibold">Training Challenges</h2>
         <p className={`mt-1 text-xs ${muted}`}>Measurable practice exercises scored on both profitability and rule adherence. Progress is computed from your closed trades since the attempt started.</p>
       </div>
-      {error && <div className="mb-3 rounded border border-red-800 bg-red-950/50 p-2 text-xs text-red-200">{error}</div>}
+      <AccessNotice error={error} feature="training challenges" className="mb-3" />
       <div data-tour="training-list">
       {loading ? (
         <p className={`text-xs ${muted}`}>Loading challenges…</p>

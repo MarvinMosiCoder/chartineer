@@ -18,6 +18,8 @@ import { useTheme } from '../../Context/ThemeContext';
 import StatCard from './StatCard';
 import TierLockedPanel from '../Subscriptions/TierLockedPanel';
 
+import AccessNotice from '../Subscriptions/AccessNotice';
+import { toAccessError } from '../Subscriptions/accessError';
 const DEFAULT_TRADES_PER_PAGE = 10;
 
 function formatMoney(value, digits = 2) {
@@ -202,7 +204,7 @@ export default function TradeReport({ refreshKey = 0 }) {
         lockedCapabilities: Array.isArray(response.data?.lockedCapabilities) ? response.data.lockedCapabilities : [],
       });
     } catch (err) {
-      setError(err.response?.data?.message ?? err.message ?? 'Failed to load trade report');
+      setError(toAccessError(err, 'Failed to load trade report'));
     } finally {
       setLoading(false);
     }
@@ -380,7 +382,7 @@ export default function TradeReport({ refreshKey = 0 }) {
 
       cancelJournalEdit();
     } catch (err) {
-      setError(err.response?.data?.message ?? err.message ?? 'Failed to save journal');
+      setError(toAccessError(err, 'Failed to save journal'));
     } finally {
       setJournalSaving(false);
     }
@@ -398,7 +400,7 @@ export default function TradeReport({ refreshKey = 0 }) {
       await axios.post('/market-backtest/report/export', { format, limit: 5000 });
       setExportNotice("Export started — you'll get a notification with a download link when it's ready.");
     } catch (err) {
-      setError(err.response?.data?.message ?? err.message ?? 'Failed to start export');
+      setError(toAccessError(err, 'Failed to start export'));
     } finally {
       setExportingFormat(null);
     }
@@ -537,11 +539,7 @@ export default function TradeReport({ refreshKey = 0 }) {
         </div>
       </div>
 
-      {error && (
-        <div className="mx-4 mt-4 rounded-md border border-red-900 bg-red-950/60 px-3 py-2 text-xs text-red-200">
-          {error}
-        </div>
-      )}
+      <AccessNotice error={error} isDark={isDark} feature="the trade journal and reports" className="mx-4 mt-4" />
 
       {exportNotice && (
         <div className="mx-4 mt-4 rounded-md border border-teal-900 bg-teal-950/60 px-3 py-2 text-xs text-teal-200">
