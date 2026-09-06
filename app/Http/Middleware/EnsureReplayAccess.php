@@ -40,9 +40,11 @@ class EnsureReplayAccess
         $required = $this->tiers->requiredTier($capability);
 
         // An unknown capability name fails closed. A typo in a route's
-        // middleware argument locks that route rather than opening it.
+        // middleware argument locks that route rather than opening it, and it
+        // denies against the highest configured tier so the refusal cannot be
+        // satisfied by whatever tier some unrelated capability happens to use.
         if ($required === null) {
-            return $this->denied($user, $this->tiers->requiredTier('cross_margin') ?? 3,
+            return $this->denied($user, $this->tiers->maxTier(),
                 'This feature is unavailable on your current plan.');
         }
 

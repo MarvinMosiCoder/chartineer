@@ -190,6 +190,12 @@ class SubscriptionTierService
         ];
     }
 
+    /** Highest configured tier. Callers that must fail closed deny against this. */
+    public function maxTier(): int
+    {
+        return $this->maxLevel();
+    }
+
     private function maxLevel(): int
     {
         $names = config('subscription_tiers.names', []);

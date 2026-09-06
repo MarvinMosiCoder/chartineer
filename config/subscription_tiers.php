@@ -36,10 +36,18 @@ return [
     */
     'capabilities' => [
         // Starter — the core practice loop.
+        //
+        // Cross Margin sits here rather than in a paid-up tier on purpose: it is
+        // a market mechanic, not a feature. Real venues let anyone toggle
+        // Isolated/Cross, so a practice simulator that hides it trains people
+        // for conditions they will not actually face. It costs a
+        // `cross-margin:monitor` worker regardless of tier — that cost buys
+        // faithful simulation, which is the product.
         'replay'          => 1,
         'backtest'        => 1,
         'journal'         => 1,
         'challenges'      => 1,
+        'cross_margin'    => 1,
 
         // Pro — systematic practice.
         'playbooks'       => 2,
@@ -49,8 +57,7 @@ return [
         'export'          => 2,
         'deep_history'    => 2,
 
-        // Elite — advanced instruments, real trades, and coaching.
-        'cross_margin'    => 3,
+        // Elite — genuinely additive: analysis, real money, and coaching.
         'monte_carlo'     => 3,
         'imported_trades' => 3,
         'mentor_share'    => 3,

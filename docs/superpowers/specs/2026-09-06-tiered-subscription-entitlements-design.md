@@ -284,3 +284,15 @@ Stage 1 precedes stage 2, which has no tier to compare against without it. Stage
 - Transactional email on tier change — the app has no confirmed production sender, so tier changes use the existing `AdmNotifications` in-app pattern.
 - Downgrade requests. Access simply lapses; the user picks a new plan afterward.
 - Any new feature built specifically to fill a tier. The ladder is allocated entirely from what already exists.
+
+## Amendment — 2026-09-06: Cross Margin moved from Elite to Starter
+
+The allocation above places Cross Margin in Elite. It shipped that way and was moved to tier 1 (every paid plan) the same day. The section above is left as written so the original reasoning stays legible; this amendment is the current behavior.
+
+**Why the original call was wrong.** The Elite placement reasoned from two true facts — Cross is advanced, and it carries an ongoing `cross-margin:monitor` cost — but neither makes it a *feature*. Cross versus Isolated is a market mechanic that Binance and Bybit expose to every account. This product is a practice simulator, so withholding it means a Starter or Pro user rehearses against a risk model their real account will not use, which undermines the reason to practise at all. Withholding it also does not remove the monitor's cost; it only makes the cheaper tiers less faithful.
+
+The Elite exclusives that survive the same test are Monte Carlo, imported real trades, and mentor share links. Each is additive analysis or collaboration on top of trading, not a rule of how trading works.
+
+**Rejected alternative:** running the liquidation monitor only for Elite while letting every tier place Cross orders. That splits the mechanic from its cost, but a lower tier would then be liquidated late or never — a silently wrong simulation, worse than not offering Cross at all.
+
+Consequences: `config/subscription_tiers.php` has `cross_margin => 1`; `EnsureReplayAccess`'s unknown-capability fallback now denies against `SubscriptionTierService::maxTier()` rather than borrowing `cross_margin`'s level, which would otherwise have silently become tier 1; and the tier tests use `monte_carlo` as their Elite example.

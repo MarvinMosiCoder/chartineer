@@ -134,8 +134,12 @@ class SubscriptionTierServiceTest extends TestCase
         $this->assertEmpty(array_diff($pro, $elite));
         $this->assertContains('playbooks', $pro);
         $this->assertNotContains('playbooks', $starter);
-        $this->assertContains('cross_margin', $elite);
-        $this->assertNotContains('cross_margin', $pro);
+        $this->assertContains('monte_carlo', $elite);
+        $this->assertNotContains('monte_carlo', $pro);
+        // Cross Margin is a market mechanic, not a paid feature: every paid
+        // tier gets it, so a simulator never trains against a risk model the
+        // user's real account will not use.
+        $this->assertContains('cross_margin', $starter);
     }
 
     public function test_lowest_tier_allowing_finds_the_cheapest_upgrade(): void

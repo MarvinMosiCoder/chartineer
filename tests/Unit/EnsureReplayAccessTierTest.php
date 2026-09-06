@@ -88,7 +88,7 @@ class EnsureReplayAccessTierTest extends TestCase
 
     public function test_pro_is_refused_an_elite_capability(): void
     {
-        $response = $this->dispatch($this->middleware(), $this->userAtTier(2), 'cross_margin');
+        $response = $this->dispatch($this->middleware(), $this->userAtTier(2), 'monte_carlo');
 
         $this->assertSame(402, $response->getStatusCode());
         $this->assertSame(3, $response->getData(true)['requiredTier']);
@@ -111,7 +111,7 @@ class EnsureReplayAccessTierTest extends TestCase
         $noAccess = $this->userAtTier(null);
 
         $this->assertSame(200, $this->dispatch($middleware, $noAccess)->getStatusCode());
-        $this->assertSame(200, $this->dispatch($middleware, $noAccess, 'cross_margin')->getStatusCode());
+        $this->assertSame(200, $this->dispatch($middleware, $noAccess, 'monte_carlo')->getStatusCode());
     }
 
     /** A typo in a route's middleware argument must lock the route, never open it. */
@@ -129,6 +129,6 @@ class EnsureReplayAccessTierTest extends TestCase
         $user = new AdmUser();
         $user->forceFill(['replay_trial_ends_at' => now()->addDays(4)]);
 
-        $this->assertSame(200, $this->dispatch($this->middleware(), $user, 'cross_margin')->getStatusCode());
+        $this->assertSame(200, $this->dispatch($this->middleware(), $user, 'monte_carlo')->getStatusCode());
     }
 }
