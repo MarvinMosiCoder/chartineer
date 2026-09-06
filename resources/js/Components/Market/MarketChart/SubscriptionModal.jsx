@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Check, ChevronRight, Crown, ExternalLink, Lock, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useTheme } from '../../../Context/ThemeContext';
 import { useToast } from '../../../Context/ToastContext';
+import { capabilityLabel } from '../../Subscriptions/tierCapabilities';
 
 const token = () => {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -22,8 +23,15 @@ export default function SubscriptionModal({ onClose, onTrialActivated }) {
   const [saving, setSaving] = useState(false), [status, setStatus] = useState('');
   const [submissionToken] = useState(token);
   const selected = plans.find(plan => plan.code === selectedCode) ?? plans[0];
-  const readOnly = Boolean(activeAccess);
-  const weeklyTrialEligible = selected?.code === 'weekly' && trialAvailable && !readOnly;
+  // Only a *paid* window restricts what can be bought. A running trial does not:
+  // the whole point of the Elite preview is that a convinced user can pay during
+  // it rather than waiting it out. Mirrors the server's checkout guard.
+  const paidTier = Number(activeAccess?.paidTier ?? 0);
+  const planLocked = plan => paidTier > 0 && Number(plan.tier_level ?? 1) <= paidTier;
+  const isUpgrade = paidTier > 0;
+  // Read-only only when nothing at all is purchasable — i.e. already at the top.
+  const readOnly = plans.length > 0 && plans.every(planLocked);
+  const weeklyTrialEligible = selected?.code === 'weekly' && trialAvailable && paidTier === 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -36,6 +44,15 @@ export default function SubscriptionModal({ onClose, onTrialActivated }) {
     }).catch(() => setStatus('Unable to load subscription information.')).finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
   }, []);
+
+  // Never leave a locked plan selected: the default pick (featured, i.e.
+  // Monthly) is already owned by anyone upgrading from it, which would otherwise
+  // land them on a disabled CTA with no obvious reason why.
+  useEffect(() => {
+    if (!plans.length || !selected || !planLocked(selected)) return;
+    const firstOpen = plans.find(plan => !planLocked(plan) && plan.price !== null && Number(plan.price) > 0);
+    if (firstOpen) setSelectedCode(firstOpen.code);
+  }, [plans, paidTier, selectedCode]);
 
   const activateTrial = async () => {
     setSaving(true); setStatus('');
@@ -51,7 +68,9 @@ export default function SubscriptionModal({ onClose, onTrialActivated }) {
     finally { setSaving(false); }
   };
   const startCheckout = async () => {
-    if (!selected || readOnly) return;
+    // Guard per plan, not per modal — an upgrade is purchasable while a lower
+    // paid tier is still running.
+    if (!selected || planLocked(selected)) return;
     setSaving(true); setStatus('');
     try {
       const response = await axios.post('/subscription-checkouts', { plan: selected.code, submission_token: submissionToken });
@@ -73,23 +92,35 @@ export default function SubscriptionModal({ onClose, onTrialActivated }) {
       </div>}
       {(trialAvailable || activeAccess?.kind === 'trial') && <div className="mx-4 mt-3 flex shrink-0 flex-col justify-between gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2.5 sm:mx-5 sm:flex-row sm:items-center">
         <div><div className="text-[10px] font-bold uppercase text-emerald-500">{activeAccess ? 'Active free trial' : 'Free trial'}</div><div className="flex flex-wrap items-baseline gap-x-2"><h3 className="font-bold">7 days free</h3><p className="text-xs text-[#787b86]">{activeAccess ? `Active until ${new Date(activeAccess.endsAt).toLocaleString()}.` : 'Starts only after activation and can be used once.'}</p></div></div>
-        {!readOnly && <button disabled={saving} onClick={activateTrial} className="h-9 shrink-0 rounded-lg bg-emerald-500 px-4 text-xs font-bold text-white disabled:opacity-50">Activate free week</button>}
+        {trialAvailable && <button disabled={saving} onClick={activateTrial} className="h-9 shrink-0 rounded-lg bg-emerald-500 px-4 text-xs font-bold text-white disabled:opacity-50">Activate free week</button>}
       </div>}
       <div className="min-h-0 overflow-y-auto p-4 sm:p-5">
         {loading ? <div className="py-12 text-center text-[#787b86]">Loading plans…</div> : <div className="grid gap-2.5 md:grid-cols-3">{plans.map(plan => {
           const configured = plan.price !== null && Number(plan.price) > 0;
-          const chosen = activeAccess?.kind === 'paid' ? activeAccess.plan === plan.code : selectedCode === plan.code;
+          const locked = planLocked(plan);
+          const isCurrent = activeAccess?.kind === 'paid' && activeAccess.plan === plan.code;
+          const chosen = isCurrent || (!locked && selectedCode === plan.code);
           const Icon = plan.is_featured ? Crown : Sparkles;
-          return <button key={plan.id} type="button" disabled={!configured || readOnly} onClick={() => setSelectedCode(plan.code)} className={`relative rounded-xl border p-3 text-left disabled:opacity-70 ${chosen ? 'border-[#2dd4bf] bg-[#2dd4bf]/10 shadow-[0_0_0_1px_#2dd4bf]' : surface}`}>
-            {chosen && readOnly && <span className="absolute right-2 top-2 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[8px] font-bold text-white">ACTIVE</span>}
-            <div className="flex items-start gap-2"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2dd4bf]/10 text-[#5eead4]"><Icon size={15}/></span><div className="min-w-0"><h3 className="font-bold">{plan.name}</h3><p className="text-xl font-bold leading-tight">{configured ? `${plan.currency} ${Number(plan.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : 'Price pending'}</p></div></div><p className="mt-1 text-[11px] text-[#787b86]">{plan.duration_days} days · one-time payment</p><p className="mt-1 line-clamp-2 text-[11px] text-[#787b86]">{plan.description}</p><div className="mt-2 grid gap-1">{(plan.features ?? []).map(feature => <div key={feature} className="flex items-start gap-1.5 text-[11px]"><Check size={11} className="mt-0.5 shrink-0 text-emerald-500"/><span>{feature}</span></div>)}</div><div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-[#5eead4]"><Check size={12}/>{chosen ? (readOnly ? 'Active plan' : 'Selected') : 'Select plan'}</div>
+          // What this plan adds over the one below it, so two adjacent cards
+          // don't repeat the whole ladder. The bottom plan lists everything.
+          const shown = (plan.added_capabilities?.length ? plan.added_capabilities : plan.capabilities) ?? [];
+          return <button key={plan.id} type="button" disabled={!configured || locked} onClick={() => setSelectedCode(plan.code)} className={`relative rounded-xl border p-3 text-left disabled:opacity-60 ${chosen ? 'border-[#2dd4bf] bg-[#2dd4bf]/10 shadow-[0_0_0_1px_#2dd4bf]' : surface}`}>
+            {isCurrent && <span className="absolute right-2 top-2 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[8px] font-bold text-white">ACTIVE</span>}
+            {locked && !isCurrent && <span className="absolute right-2 top-2 rounded-full bg-[#787b86]/30 px-1.5 py-0.5 text-[8px] font-bold uppercase">Included</span>}
+            <div className="flex items-start gap-2"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2dd4bf]/10 text-[#5eead4]"><Icon size={15}/></span><div className="min-w-0"><h3 className="font-bold">{plan.name}</h3><p className="text-xl font-bold leading-tight">{configured ? `${plan.currency} ${Number(plan.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : 'Price pending'}</p></div></div><p className="mt-1 text-[11px] text-[#787b86]">{plan.duration_days} days · one-time payment</p><p className="mt-1 line-clamp-2 text-[11px] text-[#787b86]">{plan.description}</p>
+            {plan.added_capabilities?.length > 0 && Number(plan.tier_level) > 1 && <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-[#787b86]">Everything below, plus</p>}
+            <div className="mt-2 grid gap-1">{shown.map(capability => <div key={capability} className="flex items-start gap-1.5 text-[11px]"><Check size={11} className="mt-0.5 shrink-0 text-emerald-500"/><span>{capabilityLabel(capability)}</span></div>)}</div>
+            {(plan.features ?? []).length > 0 && <div className="mt-1.5 grid gap-1 border-t border-white/5 pt-1.5">{plan.features.map(feature => <div key={feature} className="flex items-start gap-1.5 text-[11px] text-[#787b86]"><Check size={11} className="mt-0.5 shrink-0 text-[#787b86]"/><span>{feature}</span></div>)}</div>}
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-[#5eead4]">{locked ? <><Lock size={12}/>{isCurrent ? 'Active plan' : 'Already included'}</> : <><Check size={12}/>{chosen ? 'Selected' : (isUpgrade ? 'Upgrade' : 'Select plan')}</>}</div>
           </button>;
         })}</div>}
-        {readOnly && <div className="mt-2.5 rounded-lg bg-emerald-500/10 p-2 text-xs text-emerald-500">Your {activeAccess.kind} access is active until {new Date(activeAccess.endsAt).toLocaleString()}. You can choose another plan after it expires.</div>}
+        {readOnly && <div className="mt-2.5 rounded-lg bg-emerald-500/10 p-2 text-xs text-emerald-500">Your {activeAccess.kind} access is active until {new Date(activeAccess.endsAt).toLocaleString()}. You are on the highest plan — you can choose another after it expires.</div>}
+        {!readOnly && isUpgrade && <div className="mt-2.5 rounded-lg bg-[#2dd4bf]/10 p-2 text-xs text-[#5eead4]">Your {activeAccess?.tierName ?? 'current'} access runs until {new Date(activeAccess.endsAt).toLocaleString()}. Upgrading keeps those remaining days and adds the new plan's full duration on top.</div>}
+        {!readOnly && paidTier === 0 && activeAccess?.kind === 'trial' && <div className="mt-2.5 rounded-lg bg-[#2dd4bf]/10 p-2 text-xs text-[#5eead4]">Your free trial runs until {new Date(activeAccess.endsAt).toLocaleString()}. Buying now does not cut it short — your paid plan starts the moment the trial ends.</div>}
         {status && <div className="mt-2.5 rounded-lg bg-red-500/10 p-2 text-xs text-red-500">{status}</div>}
         {!readOnly && <div className="mt-2.5 flex flex-col gap-2 rounded-xl border p-3 text-xs text-[#787b86] sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1">{weeklyTrialEligible ? <><div className="flex items-center gap-2 font-bold text-current"><ShieldCheck size={15}/>Free, one-time trial</div><p className="mt-0.5 truncate">No payment required for your first 7 days.</p></> : <><div className="flex items-center gap-2 font-bold text-current"><ShieldCheck size={15}/>Secure checkout</div><p className="mt-0.5 truncate">Methods: <span className="capitalize">{checkout.payment_methods?.join(' · ') || 'None'}</span></p></>}</div>
-          <button disabled={weeklyTrialEligible ? saving : (!selected?.price || !checkout.enabled || saving)} onClick={weeklyTrialEligible ? activateTrial : startCheckout} className="flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#2dd4bf] px-4 font-bold text-white disabled:opacity-50">{!weeklyTrialEligible && <Lock size={13}/>}{weeklyTrialEligible ? (saving ? 'Activating…' : 'Activate free trial') : (saving ? 'Opening secure checkout…' : `Continue securely with ${selected?.name ?? 'plan'}`)}{!weeklyTrialEligible && <ExternalLink size={14}/>}</button>
+          <button disabled={weeklyTrialEligible ? saving : (!selected?.price || !checkout.enabled || saving || (selected && planLocked(selected)))} onClick={weeklyTrialEligible ? activateTrial : startCheckout} className="flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#2dd4bf] px-4 font-bold text-white disabled:opacity-50">{!weeklyTrialEligible && <Lock size={13}/>}{weeklyTrialEligible ? (saving ? 'Activating…' : 'Activate free trial') : (saving ? 'Opening secure checkout…' : `${isUpgrade ? 'Upgrade to' : 'Continue securely with'} ${selected?.name ?? 'plan'}`)}{!weeklyTrialEligible && <ExternalLink size={14}/>}</button>
         </div>}
       </div>
     </section>

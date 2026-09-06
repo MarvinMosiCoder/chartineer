@@ -33,8 +33,27 @@ class ReplayAccessController extends Controller
         $query = SubscriptionPlan::whereIn('code', ['weekly', 'monthly', 'yearly'])->orderBy('sort_order');
         if (!$this->adminAccess->isSuperadmin($request->user())) $query->where('is_active', true);
 
+        // `capabilities` is derived from the plan's tier, not from the
+        // admin-authored `features` blurb, so what the modal advertises and what
+        // the middleware enforces come from the same map. Keeping the two
+        // separate is how all three plans ended up describing themselves
+        // identically in the first place.
+        $plans = $query->get()->map(function (SubscriptionPlan $plan) {
+            $tier = (int) ($plan->tier_level ?? 1);
+            $lower = $tier > 1 ? $this->tiers->capabilitiesFor($tier - 1) : [];
+
+            return array_merge($plan->toArray(), [
+                'tier_level' => $tier,
+                'tier_name' => $this->tiers->tierName($tier),
+                'capabilities' => $this->tiers->capabilitiesFor($tier),
+                // What this plan adds over the one below it — the only part a
+                // buyer comparing two cards actually needs to read.
+                'added_capabilities' => array_values(array_diff($this->tiers->capabilitiesFor($tier), $lower)),
+            ]);
+        });
+
         return response()->json([
-            'plans' => $query->get(),
+            'plans' => $plans,
             'checkout' => $this->checkouts->availability(),
         ]);
     }

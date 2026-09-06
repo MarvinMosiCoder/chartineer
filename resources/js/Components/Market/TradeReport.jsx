@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../../Context/ThemeContext';
 import StatCard from './StatCard';
+import TierLockedPanel from '../Subscriptions/TierLockedPanel';
 
 const DEFAULT_TRADES_PER_PAGE = 10;
 
@@ -160,7 +161,7 @@ export default function TradeReport({ refreshKey = 0 }) {
   const displayCurrencyStorageKey = `market-backtest-display-currency:${preferenceUserId}`;
   const phpRateStorageKey = `market-backtest-php-rate:${preferenceUserId}`;
   const isDark = adminTheme === 'bg-skin-black';
-  const [report, setReport] = useState({ summary: {}, trades: [], insights: null, playbookPerformance: [], advanced: {}, monteCarlo: {} });
+  const [report, setReport] = useState({ summary: {}, trades: [], insights: null, playbookPerformance: [], advanced: {}, monteCarlo: {}, lockedCapabilities: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [displayCurrency, setDisplayCurrency] = useState(() => (
@@ -198,6 +199,7 @@ export default function TradeReport({ refreshKey = 0 }) {
         playbookPerformance: response.data?.playbookPerformance ?? [],
         advanced: response.data?.advanced ?? {},
         monteCarlo: response.data?.monteCarlo ?? {},
+        lockedCapabilities: Array.isArray(response.data?.lockedCapabilities) ? response.data.lockedCapabilities : [],
       });
     } catch (err) {
       setError(err.response?.data?.message ?? err.message ?? 'Failed to load trade report');
@@ -231,6 +233,12 @@ export default function TradeReport({ refreshKey = 0 }) {
   const playbookPerformance = report.playbookPerformance ?? [];
   const advanced = report.advanced ?? {};
   const monteCarlo = report.monteCarlo ?? {};
+  // The server omits these from the payload rather than sending them and
+  // trusting the client to hide them, so a lock here means there is genuinely
+  // nothing to draw.
+  const lockedCapabilities = report.lockedCapabilities ?? [];
+  const analyticsLocked = lockedCapabilities.includes('analytics');
+  const monteCarloLocked = lockedCapabilities.includes('monte_carlo');
   // Sorted by real creation time (when the trade was actually entered in the
   // browser), not `closedAtTime` (the simulated backtest/candle date) — a user
   // can replay old historical dates today and recent ones tomorrow, so the
@@ -603,7 +611,18 @@ export default function TradeReport({ refreshKey = 0 }) {
         </div>
       )}
 
-      {Number(summary.totalTrades ?? 0) > 0 && (
+      {Number(summary.totalTrades ?? 0) > 0 && analyticsLocked && (
+        <div className="px-4 pb-4">
+          <TierLockedPanel
+            title="Advanced analytics"
+            description="Expectancy, profit factor, max drawdown, win/loss streaks, and MAE/MFE edge ratios across your closed trades."
+            requiredTier={2}
+            isDark={isDark}
+          />
+        </div>
+      )}
+
+      {Number(summary.totalTrades ?? 0) > 0 && !analyticsLocked && (
         <div className="px-4 pb-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Expectancy" value={formatReportMoney(advanced.expectancy)} tone={Number(advanced.expectancy) >= 0 ? 'win' : 'loss'} isDark={isDark} />
@@ -626,6 +645,17 @@ export default function TradeReport({ refreshKey = 0 }) {
         </div>
       )}
 
+      {monteCarloLocked && Number(summary.totalTrades ?? 0) > 0 && (
+        <div className="px-4 pb-4">
+          <TierLockedPanel
+            title="Monte Carlo risk"
+            description="Resamples your trade sequence 500 times to estimate balance percentiles, median drawdown, and the odds of halving your account."
+            requiredTier={3}
+            isDark={isDark}
+          />
+        </div>
+      )}
+
       {monteCarlo.eligible && (
         <div className="px-4 pb-4">
           <div className={`rounded-lg border p-3 ${sectionClass}`}>
@@ -642,7 +672,7 @@ export default function TradeReport({ refreshKey = 0 }) {
         </div>
       )}
 
-      {Number(summary.totalTrades ?? 0) > 0 && (
+      {Number(summary.totalTrades ?? 0) > 0 && !analyticsLocked && (
         <div className="px-4 pb-4">
           <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${mutedTextClass}`}>Performance Breakdown</div>
           <div className="grid gap-3 sm:grid-cols-1 lg:grid-cols-3">
