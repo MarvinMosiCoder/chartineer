@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { usePage } from '@inertiajs/react';
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Download,
   Lightbulb,
   Pencil,
@@ -182,6 +184,10 @@ export default function TradeReport({ refreshKey = 0 }) {
   const [resultFilter, setResultFilter] = useState('all');
   const [journalFilter, setJournalFilter] = useState('all');
   const [tradesPerPage, setTradesPerPage] = useState(DEFAULT_TRADES_PER_PAGE);
+  // Tracks which ID was most recently copied (e.g. "id:104" or "session:45") so its button
+  // can flash a checkmark. Mirrors ShareLinkManager's own copy-link affordance — these IDs are
+  // exactly what its "Session ID" and "Trade IDs" share-link fields ask the trader to type in.
+  const [copiedField, setCopiedField] = useState(null);
 
   const loadReport = async () => {
     setLoading(true);
@@ -343,6 +349,15 @@ export default function TradeReport({ refreshKey = 0 }) {
   const cancelJournalEdit = () => {
     setEditingTradeId(null);
     setJournalDraft({});
+  };
+
+  const copyIdValue = async (field, value) => {
+    try {
+      await navigator.clipboard.writeText(String(value));
+      setCopiedField(field);
+    } catch {
+      setCopiedField(null);
+    }
   };
 
   const updateJournalDraft = (field, value) => {
@@ -732,6 +747,7 @@ export default function TradeReport({ refreshKey = 0 }) {
               <thead className={`sticky top-0 z-10 text-[10px] uppercase tracking-wide ${tableHeadClass}`}>
                 <tr>
                   <th className="px-3 py-2">Closed</th>
+                  <th className="px-3 py-2" title="Trade and session identifiers, for mentor review share links">ID / Session</th>
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Mode</th>
                   <th className="px-3 py-2">Side</th>
@@ -756,6 +772,30 @@ export default function TradeReport({ refreshKey = 0 }) {
                       <React.Fragment key={trade.id}>
                         <tr className={rowHoverClass}>
                           <td className={`whitespace-nowrap px-3 py-2 ${bodyTextClass}`}>{formatTradeDate(trade)}</td>
+                          <td className="whitespace-nowrap px-3 py-2">
+                            <div className="flex flex-col items-start gap-1">
+                              <button
+                                type="button"
+                                onClick={() => copyIdValue(`id:${trade.id}`, trade.id)}
+                                title="Copy trade ID — use it under 'Specific trades' when creating a mentor share link"
+                                className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] ${isDark ? 'bg-black-table-color text-gray-300 hover:bg-skin-black-light' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-100'}`}
+                              >
+                                {copiedField === `id:${trade.id}` ? <Check size={10} /> : <Copy size={10} />}
+                                #{trade.id}
+                              </button>
+                              {trade.sessionId != null && (
+                                <button
+                                  type="button"
+                                  onClick={() => copyIdValue(`session:${trade.sessionId}`, trade.sessionId)}
+                                  title="Copy session ID — use it under 'Session' when creating a mentor share link"
+                                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] ${inactivePillClass}`}
+                                >
+                                  {copiedField === `session:${trade.sessionId}` ? <Check size={10} /> : <Copy size={10} />}
+                                  S#{trade.sessionId}
+                                </button>
+                              )}
+                            </div>
+                          </td>
                           <td className={`whitespace-nowrap px-3 py-2 font-semibold ${valueTextClass}`}>{trade.symbol}</td>
                           <td className="whitespace-nowrap px-3 py-2">
                             {trade.marginMode === 'cross' ? (
@@ -838,7 +878,7 @@ export default function TradeReport({ refreshKey = 0 }) {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={13} className={`px-3 py-10 text-center text-sm ${faintTextClass}`}>
+                    <td colSpan={15} className={`px-3 py-10 text-center text-sm ${faintTextClass}`}>
                       {allTradesCount
                         ? 'No trades match your search and filters.'
                         : 'No closed trades yet. Close a replay position to populate the report.'}
