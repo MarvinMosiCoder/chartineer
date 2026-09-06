@@ -211,17 +211,17 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // action and must stay possible after an entitlement lapses.
     Route::delete('/market-replay-progress', [MarketReplayProgressController::class, 'destroy'])->name('market-replay-progress.destroy');
     Route::get('/market-backtest/account', [MarketBacktestController::class, 'show'])->middleware(['replay.access', 'throttle:backtest-read'])->name('market-backtest.show');
-    Route::get('/market-backtest/playbooks', [MarketBacktestPlaybookController::class, 'index'])->middleware('throttle:backtest-read')->name('market-backtest.playbooks.index');
-    Route::post('/market-backtest/playbooks', [MarketBacktestPlaybookController::class, 'store'])->middleware('throttle:backtest-write')->name('market-backtest.playbooks.store');
-    Route::put('/market-backtest/playbooks/{playbook}', [MarketBacktestPlaybookController::class, 'update'])->middleware('throttle:backtest-write')->name('market-backtest.playbooks.update');
-    Route::delete('/market-backtest/playbooks/{playbook}', [MarketBacktestPlaybookController::class, 'destroy'])->middleware('throttle:backtest-write')->name('market-backtest.playbooks.destroy');
-    Route::get('/market-backtest/risk-settings', [MarketBacktestRiskSettingController::class, 'show'])->middleware('throttle:backtest-read')->name('market-backtest.risk-settings.show');
-    Route::put('/market-backtest/risk-settings', [MarketBacktestRiskSettingController::class, 'update'])->middleware('throttle:backtest-write')->name('market-backtest.risk-settings.update');
-    Route::get('/market-backtest/report', [MarketBacktestController::class, 'report'])->middleware('throttle:backtest-read')->name('market-backtest.report');
-    Route::get('/market-backtest/report/insights', [MarketBacktestController::class, 'reportInsightsSummary'])->middleware('throttle:backtest-read')->name('market-backtest.report.insights');
-    Route::get('/market-backtest/order-history', [MarketBacktestController::class, 'orderHistory'])->middleware('throttle:backtest-read')->name('market-backtest.order-history');
-    Route::post('/market-backtest/report/export', [MarketBacktestController::class, 'requestReportExport'])->middleware('throttle:backtest-heavy')->name('market-backtest.report.export');
-    Route::get('/market-backtest/report/export/{export}/download', [MarketBacktestController::class, 'downloadReportExport'])->middleware('throttle:backtest-read')->name('market-backtest.report.export.download');
+    Route::get('/market-backtest/playbooks', [MarketBacktestPlaybookController::class, 'index'])->middleware(['replay.access:playbooks', 'throttle:backtest-read'])->name('market-backtest.playbooks.index');
+    Route::post('/market-backtest/playbooks', [MarketBacktestPlaybookController::class, 'store'])->middleware(['replay.access:playbooks', 'throttle:backtest-write'])->name('market-backtest.playbooks.store');
+    Route::put('/market-backtest/playbooks/{playbook}', [MarketBacktestPlaybookController::class, 'update'])->middleware(['replay.access:playbooks', 'throttle:backtest-write'])->name('market-backtest.playbooks.update');
+    Route::delete('/market-backtest/playbooks/{playbook}', [MarketBacktestPlaybookController::class, 'destroy'])->middleware(['replay.access:playbooks', 'throttle:backtest-write'])->name('market-backtest.playbooks.destroy');
+    Route::get('/market-backtest/risk-settings', [MarketBacktestRiskSettingController::class, 'show'])->middleware(['replay.access:risk_guardrails', 'throttle:backtest-read'])->name('market-backtest.risk-settings.show');
+    Route::put('/market-backtest/risk-settings', [MarketBacktestRiskSettingController::class, 'update'])->middleware(['replay.access:risk_guardrails', 'throttle:backtest-write'])->name('market-backtest.risk-settings.update');
+    Route::get('/market-backtest/report', [MarketBacktestController::class, 'report'])->middleware(['replay.access', 'throttle:backtest-read'])->name('market-backtest.report');
+    Route::get('/market-backtest/report/insights', [MarketBacktestController::class, 'reportInsightsSummary'])->middleware(['replay.access', 'throttle:backtest-read'])->name('market-backtest.report.insights');
+    Route::get('/market-backtest/order-history', [MarketBacktestController::class, 'orderHistory'])->middleware(['replay.access', 'throttle:backtest-read'])->name('market-backtest.order-history');
+    Route::post('/market-backtest/report/export', [MarketBacktestController::class, 'requestReportExport'])->middleware(['replay.access:export', 'throttle:backtest-heavy'])->name('market-backtest.report.export');
+    Route::get('/market-backtest/report/export/{export}/download', [MarketBacktestController::class, 'downloadReportExport'])->middleware(['replay.access:export', 'throttle:backtest-read'])->name('market-backtest.report.export.download');
     Route::post('/market-backtest/reset', [MarketBacktestController::class, 'reset'])->middleware(['replay.access', 'throttle:backtest-heavy'])->name('market-backtest.reset');
     Route::post('/market-backtest/sessions', [MarketBacktestController::class, 'startSession'])->middleware(['replay.access', 'throttle:backtest-write'])->name('market-backtest.sessions.start');
     Route::post('/market-backtest/sessions/{session}/end', [MarketBacktestController::class, 'endSession'])->middleware(['replay.access', 'throttle:backtest-write'])->name('market-backtest.sessions.end');
@@ -232,27 +232,27 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::post('/market-backtest/positions/{position}/close', [MarketBacktestController::class, 'closePosition'])->middleware(['replay.access', 'throttle:backtest-write'])->name('market-backtest.positions.close');
     Route::post('/market-backtest/positions/{position}/process-candle', [MarketBacktestController::class, 'processPositionCandle'])->middleware(['replay.access', 'throttle:backtest-write'])->name('market-backtest.positions.process-candle');
     Route::post('/market-backtest/positions/{position}/snapshot', [MarketBacktestController::class, 'uploadPositionSnapshot'])->middleware(['replay.access', 'throttle:backtest-heavy'])->name('market-backtest.positions.snapshot');
-    Route::post('/market-backtest/cross/evaluate', [MarketBacktestController::class, 'evaluateCrossPortfolio'])->middleware(['replay.access', 'throttle:backtest-write'])->name('market-backtest.cross.evaluate');
-    Route::put('/market-backtest/trades/{position}/journal', [MarketBacktestController::class, 'updateTradeJournal'])->middleware('throttle:backtest-write')->name('market-backtest.trades.journal');
+    Route::post('/market-backtest/cross/evaluate', [MarketBacktestController::class, 'evaluateCrossPortfolio'])->middleware(['replay.access:cross_margin', 'throttle:backtest-write'])->name('market-backtest.cross.evaluate');
+    Route::put('/market-backtest/trades/{position}/journal', [MarketBacktestController::class, 'updateTradeJournal'])->middleware(['replay.access', 'throttle:backtest-write'])->name('market-backtest.trades.journal');
 
     // Imported (real) trades — a separate dataset from simulated backtest trades.
-    Route::post('/imported-trades/batches/preview', [ImportedTradeController::class, 'preview'])->middleware('throttle:backtest-heavy')->name('imported-trades.preview');
-    Route::post('/imported-trades/batches/{batch}/commit', [ImportedTradeController::class, 'commit'])->middleware('throttle:backtest-heavy')->name('imported-trades.commit');
-    Route::get('/imported-trades/batches', [ImportedTradeController::class, 'batches'])->middleware('throttle:backtest-read')->name('imported-trades.batches');
-    Route::delete('/imported-trades/batches/{batch}', [ImportedTradeController::class, 'destroyBatch'])->middleware('throttle:backtest-write')->name('imported-trades.batches.destroy');
-    Route::get('/imported-trades/items', [ImportedTradeController::class, 'items'])->middleware('throttle:backtest-read')->name('imported-trades.items');
+    Route::post('/imported-trades/batches/preview', [ImportedTradeController::class, 'preview'])->middleware(['replay.access:imported_trades', 'throttle:backtest-heavy'])->name('imported-trades.preview');
+    Route::post('/imported-trades/batches/{batch}/commit', [ImportedTradeController::class, 'commit'])->middleware(['replay.access:imported_trades', 'throttle:backtest-heavy'])->name('imported-trades.commit');
+    Route::get('/imported-trades/batches', [ImportedTradeController::class, 'batches'])->middleware(['replay.access:imported_trades', 'throttle:backtest-read'])->name('imported-trades.batches');
+    Route::delete('/imported-trades/batches/{batch}', [ImportedTradeController::class, 'destroyBatch'])->middleware(['replay.access:imported_trades', 'throttle:backtest-write'])->name('imported-trades.batches.destroy');
+    Route::get('/imported-trades/items', [ImportedTradeController::class, 'items'])->middleware(['replay.access:imported_trades', 'throttle:backtest-read'])->name('imported-trades.items');
 
     // Shareable mentor review links (management side; public viewer route is registered above the auth group).
-    Route::get('/market-backtest/share-links', [MarketBacktestShareLinkController::class, 'index'])->middleware('throttle:backtest-read')->name('market-backtest.share-links.index');
-    Route::post('/market-backtest/share-links', [MarketBacktestShareLinkController::class, 'store'])->middleware('throttle:backtest-write')->name('market-backtest.share-links.store');
-    Route::delete('/market-backtest/share-links/{shareLink}', [MarketBacktestShareLinkController::class, 'destroy'])->middleware('throttle:backtest-write')->name('market-backtest.share-links.destroy');
+    Route::get('/market-backtest/share-links', [MarketBacktestShareLinkController::class, 'index'])->middleware(['replay.access:mentor_share', 'throttle:backtest-read'])->name('market-backtest.share-links.index');
+    Route::post('/market-backtest/share-links', [MarketBacktestShareLinkController::class, 'store'])->middleware(['replay.access:mentor_share', 'throttle:backtest-write'])->name('market-backtest.share-links.store');
+    Route::delete('/market-backtest/share-links/{shareLink}', [MarketBacktestShareLinkController::class, 'destroy'])->middleware(['replay.access:mentor_share', 'throttle:backtest-write'])->name('market-backtest.share-links.destroy');
 
     // Structured training challenges.
-    Route::get('/training-challenges/catalog', [TrainingChallengeController::class, 'index'])->middleware('throttle:backtest-read')->name('training-challenges.catalog');
-    Route::post('/training-challenges/{challenge}/attempts', [TrainingChallengeController::class, 'startAttempt'])->middleware('throttle:backtest-write')->name('training-challenges.attempts.start');
-    Route::get('/training-challenges/attempts', [TrainingChallengeController::class, 'listMyAttempts'])->middleware('throttle:backtest-read')->name('training-challenges.attempts.index');
-    Route::get('/training-challenges/attempts/{attempt}', [TrainingChallengeController::class, 'showAttempt'])->middleware('throttle:backtest-read')->name('training-challenges.attempts.show');
-    Route::post('/training-challenges/attempts/{attempt}/abandon', [TrainingChallengeController::class, 'abandonAttempt'])->middleware('throttle:backtest-write')->name('training-challenges.attempts.abandon');
+    Route::get('/training-challenges/catalog', [TrainingChallengeController::class, 'index'])->middleware(['replay.access:challenges', 'throttle:backtest-read'])->name('training-challenges.catalog');
+    Route::post('/training-challenges/{challenge}/attempts', [TrainingChallengeController::class, 'startAttempt'])->middleware(['replay.access:challenges', 'throttle:backtest-write'])->name('training-challenges.attempts.start');
+    Route::get('/training-challenges/attempts', [TrainingChallengeController::class, 'listMyAttempts'])->middleware(['replay.access:challenges', 'throttle:backtest-read'])->name('training-challenges.attempts.index');
+    Route::get('/training-challenges/attempts/{attempt}', [TrainingChallengeController::class, 'showAttempt'])->middleware(['replay.access:challenges', 'throttle:backtest-read'])->name('training-challenges.attempts.show');
+    Route::post('/training-challenges/attempts/{attempt}/abandon', [TrainingChallengeController::class, 'abandonAttempt'])->middleware(['replay.access:challenges', 'throttle:backtest-write'])->name('training-challenges.attempts.abandon');
 
     Route::post('/logout', [LoginController::class, 'logout']);
     Route::get('/sidebar', [MenusController::class, 'sidebarMenu'])->name('sidebar');

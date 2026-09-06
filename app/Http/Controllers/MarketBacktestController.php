@@ -19,6 +19,7 @@ use App\Services\MarketBacktestInsightService;
 use App\Services\MarketBacktestReportService;
 use App\Services\MarketBacktestRiskGuardrailService;
 use App\Services\MarketBacktestAdvancedAnalyticsService;
+use App\Services\SubscriptionTierService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -38,7 +39,8 @@ class MarketBacktestController extends Controller
         private CrossMarginService $crossMarginService,
         private CrossMarkService $crossMarkService,
         private CrossLiquidationService $crossLiquidationService,
-        private BacktestTradeNotificationService $tradeNotifications
+        private BacktestTradeNotificationService $tradeNotifications,
+        private SubscriptionTierService $tiers
     ) {
     }
 
@@ -305,6 +307,19 @@ class MarketBacktestController extends Controller
             ->sortByDesc('trades')
             ->values();
 
+        // Advanced analytics and Monte Carlo have no routes of their own — they
+        // are keys of this payload — so they gate here rather than in
+        // middleware. The computation is skipped rather than computed and
+        // stripped: monteCarlo() runs 500 iterations, and that cost is the
+        // thing being sold.
+        $user = $request->user();
+        $canAnalytics = $this->tiers->allows($user, 'analytics');
+        $canMonteCarlo = $this->tiers->allows($user, 'monte_carlo');
+        $locked = array_values(array_filter([
+            $canAnalytics ? null : 'analytics',
+            $canMonteCarlo ? null : 'monte_carlo',
+        ]));
+
         return response()->json([
             'success' => true,
             'account' => [
@@ -330,8 +345,13 @@ class MarketBacktestController extends Controller
             ],
             'insights' => $this->insightService->build($positions),
             'playbookPerformance' => $playbookPerformance,
-            'advanced' => $this->advancedAnalyticsService->build($positions, (float) $account->starting_balance),
-            'monteCarlo' => $this->advancedAnalyticsService->monteCarlo($positions, (float) $account->starting_balance),
+            'advanced' => $canAnalytics
+                ? $this->advancedAnalyticsService->build($positions, (float) $account->starting_balance)
+                : null,
+            'monteCarlo' => $canMonteCarlo
+                ? $this->advancedAnalyticsService->monteCarlo($positions, (float) $account->starting_balance)
+                : null,
+            'lockedCapabilities' => $locked,
             'trades' => $positions->map(fn (MarketBacktestPosition $position) => $this->reportService->serializeReportPosition($position))->values(),
         ]);
     }
@@ -546,6 +566,21 @@ class MarketBacktestController extends Controller
                     'success' => false,
                     'message' => 'Spot positions do not support Cross Margin.',
                 ], 422));
+            }
+
+            // Cross is an Elite capability, and margin mode is a field on the
+            // order rather than its own endpoint — so middleware cannot gate it
+            // and this check is the authority. The order ticket hides the
+            // toggle below tier 3, but never rely on that.
+            if ($marginMode === 'cross' && !$this->tiers->allows($request->user(), 'cross_margin')) {
+                $required = $this->tiers->requiredTier('cross_margin');
+                abort(response()->json([
+                    'success' => false,
+                    'message' => 'Cross Margin is included with the '.$this->tiers->tierName($required).' plan.',
+                    'code' => 'replay_subscription_required',
+                    'requiredTier' => $required,
+                    'requiredTierName' => $this->tiers->tierName($required),
+                ], 402));
             }
 
             $requestedMargin = round((float) $validated['notional'], 8);
