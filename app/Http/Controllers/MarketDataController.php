@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\MarketSymbol;
 use App\Services\MarketMetadataService;
 use App\Services\ExchangeMarketDataGateway;
+use App\Services\SubscriptionTierService;
 use App\Exceptions\ExchangeRateLimitedException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
@@ -22,7 +23,10 @@ class MarketDataController extends Controller
      */
     private const KLINE_CACHE_COMPRESSION_LEVEL = 1;
 
-    public function __construct(private readonly ExchangeMarketDataGateway $marketGateway)
+    public function __construct(
+        private readonly ExchangeMarketDataGateway $marketGateway,
+        private readonly SubscriptionTierService $tiers,
+    )
     {
     }
 
@@ -322,6 +326,16 @@ class MarketDataController extends Controller
 
         // total candles you want to return to frontend
         $maxCandles = (int) ($validated['max_candles'] ?? 5000);
+
+        // Deep history is a paid capability, but this endpoint is public — so a
+        // caller without the tier for it is *capped* rather than rejected,
+        // keeping the public contract returning usable data. A 20,000-candle
+        // load costs up to twenty pooled exchange requests, so this also cuts
+        // upstream cost from anonymous callers, which is worth doing on its own.
+        $publicCeiling = (int) config('subscription_tiers.public_max_candles', 5000);
+        if ($maxCandles > $publicCeiling && !$this->tiers->allows($request->user(), 'deep_history')) {
+            $maxCandles = $publicCeiling;
+        }
 
         $start = $validated['start'] ?? null;
         $end = $validated['end'] ?? null;

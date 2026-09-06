@@ -3,11 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\MarketBacktestPlaybook;
+use App\Services\SubscriptionTierService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class MarketBacktestPlaybookController extends Controller
 {
+    public function __construct(private readonly SubscriptionTierService $tiers)
+    {
+    }
+
     public function index(Request $request)
     {
         $validated = $request->validate([
@@ -27,6 +32,13 @@ class MarketBacktestPlaybookController extends Controller
 
     public function store(Request $request)
     {
+        // Counts only active playbooks: an archived one is not occupying a slot
+        // the user can actually use.
+        $this->tiers->assertWithinQuota($request->user(), 'playbooks', MarketBacktestPlaybook::query()
+            ->where('adm_user_id', $request->user()->id)
+            ->where('is_active', true)
+            ->count());
+
         $validated = $this->validatePlaybook($request);
         $playbook = MarketBacktestPlaybook::create([
             ...$validated,

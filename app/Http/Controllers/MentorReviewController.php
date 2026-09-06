@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AdmUser;
 use App\Models\MarketBacktestPosition;
 use App\Models\MarketBacktestShareLink;
 use App\Services\MarketBacktestAdvancedAnalyticsService;
 use App\Services\MarketBacktestReportService;
+use App\Services\SubscriptionTierService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -46,6 +48,7 @@ class MentorReviewController extends Controller
     public function __construct(
         private readonly MarketBacktestReportService $reportService,
         private readonly MarketBacktestAdvancedAnalyticsService $advancedAnalyticsService,
+        private readonly SubscriptionTierService $tiers,
     ) {
     }
 
@@ -57,6 +60,15 @@ class MentorReviewController extends Controller
 
         if ($shareLink->revoked_at !== null || ($shareLink->expires_at !== null && now()->gte($shareLink->expires_at))) {
             abort(410, 'This share link has expired or been revoked.');
+        }
+
+        // Sharing is a paid capability and these are public URLs serving traffic
+        // to third parties, so a link stops resolving once its owner drops below
+        // the tier that grants it. The row and its token are left intact — the
+        // link works again if the owner resubscribes — which is why this is a
+        // live tier check rather than a revoked_at write.
+        if (!$this->tiers->allows(AdmUser::find($shareLink->adm_user_id), 'mentor_share')) {
+            abort(410, 'This share link is not currently available.');
         }
 
         $positions = $this->resolveScopedPositions($shareLink);

@@ -108,6 +108,57 @@ class SubscriptionTierService
     }
 
     /**
+     * Refuses a creation that would take the user past their tier's quota.
+     *
+     * Checked at the point of creation only. A user who drops below the tier
+     * that granted their current count keeps every existing row — nothing is
+     * deleted on downgrade, they are simply refused new ones.
+     */
+    public function assertWithinQuota(?AdmUser $user, string $key, int $currentCount): void
+    {
+        $limit = $this->limit($user, $key);
+        if ($limit === null || $currentCount < $limit) {
+            return;
+        }
+
+        $upgrade = $this->lowestTierAllowing($key, $currentCount + 1);
+        $message = $limit === 0
+            ? 'This feature is not included with your current plan.'
+            : "You've reached your plan's limit of {$limit}.";
+
+        abort(response()->json([
+            'success' => false,
+            'message' => $upgrade === null
+                ? $message
+                : $message.' The '.$this->tierName($upgrade).' plan raises this limit.',
+            'code' => 'tier_quota_reached',
+            'limit' => $limit,
+            'currentTier' => $this->effectiveTier($user),
+            'requiredTier' => $upgrade,
+            'requiredTierName' => $upgrade === null ? null : $this->tierName($upgrade),
+        ], 422));
+    }
+
+    /**
+     * Lowest tier whose quota for $key admits $needed, or null when no
+     * configured tier does.
+     */
+    public function lowestTierAllowing(string $key, int $needed): ?int
+    {
+        $limits = config('subscription_tiers.limits', []);
+        ksort($limits);
+
+        foreach ($limits as $tier => $values) {
+            $limit = $values[$key] ?? null;
+            if ($limit === null || $needed <= $limit) {
+                return (int) $tier;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Every capability name a tier unlocks. Drives the plans modal's feature
      * list and the frontend's `can()` checks from the same map enforcement uses.
      *
