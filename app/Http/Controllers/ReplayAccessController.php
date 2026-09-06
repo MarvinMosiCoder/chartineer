@@ -14,6 +14,7 @@ use App\Services\SubscriptionTierService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use RuntimeException;
 use Throwable;
@@ -33,27 +34,8 @@ class ReplayAccessController extends Controller
         $query = SubscriptionPlan::whereIn('code', ['weekly', 'monthly', 'yearly'])->orderBy('sort_order');
         if (!$this->adminAccess->isSuperadmin($request->user())) $query->where('is_active', true);
 
-        // `capabilities` is derived from the plan's tier, not from the
-        // admin-authored `features` blurb, so what the modal advertises and what
-        // the middleware enforces come from the same map. Keeping the two
-        // separate is how all three plans ended up describing themselves
-        // identically in the first place.
-        $plans = $query->get()->map(function (SubscriptionPlan $plan) {
-            $tier = (int) ($plan->tier_level ?? 1);
-            $lower = $tier > 1 ? $this->tiers->capabilitiesFor($tier - 1) : [];
-
-            return array_merge($plan->toArray(), [
-                'tier_level' => $tier,
-                'tier_name' => $this->tiers->tierName($tier),
-                'capabilities' => $this->tiers->capabilitiesFor($tier),
-                // What this plan adds over the one below it — the only part a
-                // buyer comparing two cards actually needs to read.
-                'added_capabilities' => array_values(array_diff($this->tiers->capabilitiesFor($tier), $lower)),
-            ]);
-        });
-
         return response()->json([
-            'plans' => $plans,
+            'plans' => $query->get()->map(fn (SubscriptionPlan $plan) => $this->planPayload($plan)),
             'checkout' => $this->checkouts->availability(),
         ]);
     }
@@ -73,6 +55,10 @@ class ReplayAccessController extends Controller
             'plans.*.description' => 'nullable|string|max:160',
             'plans.*.features' => 'nullable|array|max:8',
             'plans.*.features.*' => 'required|string|max:80',
+            // Bounded to the configured ladder rather than an open integer: a
+            // tier with no entry in config/subscription_tiers.php would grant
+            // nothing and silently break every gate keyed to that plan.
+            'plans.*.tier_level' => ['required', 'integer', Rule::in(array_keys(config('subscription_tiers.names', [])))],
             'plans.*.is_featured' => 'required|boolean', 'plans.*.is_active' => 'required|boolean',
         ]);
         foreach ($data['plans'] as $item) {
@@ -80,7 +66,11 @@ class ReplayAccessController extends Controller
             SubscriptionPlan::whereKey($item['id'])->update($item);
         }
 
-        return response()->json(['success' => true, 'plans' => SubscriptionPlan::orderBy('sort_order')->get()]);
+        return response()->json([
+            'success' => true,
+            'plans' => SubscriptionPlan::orderBy('sort_order')->get()
+                ->map(fn (SubscriptionPlan $plan) => $this->planPayload($plan)),
+        ]);
     }
 
     public function userPage(Request $request)
@@ -407,6 +397,35 @@ class ReplayAccessController extends Controller
             $payload['refund_reason'] = $payment->refund_reason;
         }
         return $payload;
+    }
+
+    /**
+     * A plan plus the capabilities its tier actually grants.
+     *
+     * `capabilities` is derived from `tier_level`, never from the
+     * admin-authored `features` blurb, so what the plans modal advertises and
+     * what the middleware enforces come from one map — keeping those two
+     * separate is how all three plans ended up describing themselves
+     * identically in the first place.
+     *
+     * Both the read and the admin save response go through here; returning raw
+     * models from the save left the admin editor without tier data until a full
+     * page reload.
+     */
+    private function planPayload(SubscriptionPlan $plan): array
+    {
+        $tier = (int) ($plan->tier_level ?? 1);
+        $lower = $tier > 1 ? $this->tiers->capabilitiesFor($tier - 1) : [];
+
+        return array_merge($plan->toArray(), [
+            'tier_level' => $tier,
+            'tier_name' => $this->tiers->tierName($tier),
+            'capabilities' => $this->tiers->capabilitiesFor($tier),
+            // What this plan adds over the one below it — the only part a buyer
+            // comparing two cards actually needs to read.
+            'added_capabilities' => array_values(array_diff($this->tiers->capabilitiesFor($tier), $lower)),
+            'limits' => config('subscription_tiers.limits.'.$tier, []),
+        ]);
     }
 
     private function activeAccessPayload(AdmUser $user): ?array

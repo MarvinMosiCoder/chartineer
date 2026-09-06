@@ -187,3 +187,13 @@ The one exception is **mentor share links, which stop resolving below Elite** �
 - A plan retuned after checkout does not change what that transaction grants.
 - `restoreAccess()` restores the referenced transaction's tier, not the column's stale value.
 - Automated coverage: `tests/Unit/SubscriptionTierServiceTest.php`, `tests/Unit/EnsureReplayAccessTierTest.php` (both database-free), and `tests/Unit/SubscriptionEntitlementServiceTierTest.php` (isolated SQLite, self-skips without `pdo_sqlite`).
+
+## Admin pricing editor
+
+`Pages/Subscriptions/AdminPlans.jsx` sets each plan's price, duration, description, featured/active flags, and now its **tier**. Tier is a bounded select validated with `Rule::in(array_keys(config('subscription_tiers.names')))` rather than an open integer — a tier with no entry in that config would grant nothing and silently break every gate keyed to plans at that level.
+
+The card mirrors the customer's plan card: the same check rows, the same "Everything below, plus" framing, and the per-tier quota table. An admin picking a tier number otherwise has no way to know what it grants, which is the same information gap that let the three plans drift into describing themselves identically. **Capabilities are read-only here** — they come from `config/subscription_tiers.php` and are shown so the admin can see the consequence of the tier they picked, not edit it. Changing which tier owns a capability is a config edit, deliberately not an admin-UI action, since it changes what already-paid customers are entitled to.
+
+The `features` JSON editor remains, relabelled "Extra copy" and rendered *beneath* the derived capabilities in both surfaces. It is supplementary marketing text and grants nothing on its own — the page says so inline, so a future admin does not mistake it for an entitlement control again.
+
+`updatePlans()`'s response goes through the same `planPayload()` helper as `plans()`. It previously returned raw models, so saving left the admin editor without `capabilities`/`tier_name` until a full page reload — changing a plan's tier appeared to do nothing.
