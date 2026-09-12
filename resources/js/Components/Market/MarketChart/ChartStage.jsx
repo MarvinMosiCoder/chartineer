@@ -1636,6 +1636,7 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
 function TextInputPopover({
   textInput,
   textDraft,
+  chartTheme,
   overlaySize,
   onTextDraftChange,
   onSaveText,
@@ -1643,22 +1644,27 @@ function TextInputPopover({
 }) {
   if (!textInput) return null;
 
+  // `bg-skin-black` and `black-table-color` are fixed hexes in tailwind.config.js, not
+  // skin variables — they stay dark whatever theme is active, so this popover used to
+  // render as an opaque black card over the light chart.
+  const isDark = chartTheme?.mode !== 'light';
+
   return (
     <div
       data-chart-ui="text-input"
-      className="absolute z-20 w-56 rounded-lg border border-gray-700 bg-skin-black p-3 shadow-2xl"
+      className={`absolute z-20 w-56 rounded-lg border p-3 shadow-2xl ${isDark ? 'border-gray-700 bg-skin-black' : 'border-slate-200 bg-white'}`}
       style={{
         left: Math.min(textInput.x + 12, Math.max(overlaySize.width - 240, 12)),
         top: Math.max(textInput.y - 12, 12),
       }}
     >
-      <div className="mb-2 text-xs font-medium text-gray-300">{TEXT_MARKER_LABELS[textInput.type] ?? 'Text'} label</div>
+      <div className={`mb-2 text-xs font-medium ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>{TEXT_MARKER_LABELS[textInput.type] ?? 'Text'} label</div>
       <input
         value={textDraft}
         onChange={(e) => onTextDraftChange(e.target.value)}
         placeholder="Enter note"
         autoFocus
-        className="mb-2 w-full rounded border border-gray-700 bg-black-table-color px-3 py-2 text-sm text-white outline-none focus:border-gray-500"
+        className={`mb-2 w-full rounded border px-3 py-2 text-sm outline-none ${isDark ? 'border-gray-700 bg-black-table-color text-white focus:border-gray-500' : 'border-slate-300 bg-white text-slate-900 focus:border-slate-400'}`}
         onKeyDown={(e) => {
           if (e.key === 'Enter') onSaveText();
           if (e.key === 'Escape') onCancel();
@@ -1668,7 +1674,7 @@ function TextInputPopover({
         <button
           type="button"
           onClick={onSaveText}
-          className="inline-flex items-center gap-1.5 rounded bg-skin-black-light px-3 py-2 text-xs font-medium text-white hover:bg-skin-black"
+          className={`inline-flex items-center gap-1.5 rounded px-3 py-2 text-xs font-medium ${isDark ? 'bg-skin-black-light text-white hover:bg-skin-black' : 'bg-slate-200 text-slate-900 hover:bg-slate-300'}`}
         >
           <Save size={14} />
           Save
@@ -1676,7 +1682,7 @@ function TextInputPopover({
         <button
           type="button"
           onClick={onCancel}
-          className="inline-flex items-center gap-1.5 rounded bg-black-table-color px-3 py-2 text-xs font-medium text-white hover:bg-skin-black-light"
+          className={`inline-flex items-center gap-1.5 rounded px-3 py-2 text-xs font-medium ${isDark ? 'bg-black-table-color text-white hover:bg-skin-black-light' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
         >
           <X size={14} />
           Cancel
@@ -1924,8 +1930,8 @@ export default function ChartStage({
             style={{ left: replayPickPreviewX }}
           />
           <div
-            className="absolute bottom-0 right-0 top-0 bg-[#131722]/75"
-            style={{ left: replayPickPreviewX + 2 }}
+            className="absolute bottom-0 right-0 top-0"
+            style={{ left: replayPickPreviewX + 2, backgroundColor: chartTheme?.overlay ?? 'rgba(19, 23, 34, 0.75)' }}
           />
           <div
             className="absolute top-3 -translate-x-1/2 whitespace-nowrap rounded bg-[#2dd4bf] px-2 py-1 text-[11px] font-semibold text-white shadow-lg"
@@ -1998,6 +2004,7 @@ export default function ChartStage({
       <TextInputPopover
         textInput={textInput}
         textDraft={textDraft}
+        chartTheme={chartTheme}
         overlaySize={mainOverlaySize}
         onTextDraftChange={onTextDraftChange}
         onSaveText={onSaveText}

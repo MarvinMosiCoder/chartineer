@@ -281,7 +281,7 @@ function ChartSkeletonLoader({ isDark }) {
       <footer className="absolute inset-x-0 bottom-0 flex h-7 items-center justify-around border-t px-6" style={{ borderColor: grid }}>
         {[0, 1, 2, 3, 4, 5].map((item) => <span key={item} className={`h-1.5 w-10 animate-pulse rounded ${muted}`} />)}
       </footer>
-      <div className="absolute bottom-10 left-1/2 z-20 -translate-x-1/2 rounded-full border border-[#2dd4bf]/25 bg-[#2dd4bf]/10 px-3 py-1.5 text-[10px] font-semibold text-[#5eead4]">Loading chart data…</div>
+      <div className={`absolute bottom-10 left-1/2 z-20 -translate-x-1/2 rounded-full border border-[#2dd4bf]/25 bg-[#2dd4bf]/10 px-3 py-1.5 text-[10px] font-semibold ${isDark ? 'text-[#5eead4]' : 'text-teal-700'}`}>Loading chart data…</div>
     </div>
   );
 }
@@ -345,7 +345,7 @@ function ChartMarketLegend({ symbol, exchange, timeframe, candle, isTimeframeLoa
           onMouseLeave={settingsTooltip.hide}
           onFocus={settingsTooltip.show}
           onBlur={settingsTooltip.hide}
-          className={`ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded transition-opacity hover:bg-white/10 ${isActive ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
+          className={`ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded transition-opacity ${chartTheme.mode === 'dark' ? 'hover:bg-white/10' : 'hover:bg-black/10'} ${isActive ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
           aria-label="Chart settings"
         >
           <MoreHorizontal size={13} />
@@ -7885,7 +7885,7 @@ export default function MarketReplayChart({
           }}
           className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-xs font-semibold outline-none ${chartTheme.mode === 'dark' ? 'hover:bg-white/10 focus:bg-white/10' : 'hover:bg-slate-100 focus:bg-slate-100'}`}
         >
-          <Wallet size={15} className="text-[#5eead4]" />
+          <Wallet size={15} className={chartTheme.mode === 'dark' ? 'text-[#5eead4]' : 'text-teal-700'} />
           Trigger Position
         </button>
         <div className={`my-1 border-t ${chartTheme.mode === 'dark' ? 'border-[#363a45]' : 'border-slate-200'}`} />

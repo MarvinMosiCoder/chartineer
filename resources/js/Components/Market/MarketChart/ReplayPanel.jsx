@@ -2333,10 +2333,28 @@ export default function ReplayPanel({
     return TOOL_BUTTONS.find((item) => item.type === tool)?.icon ?? MousePointer2;
   }, [tool]);
 
+  // Deps stay keyed on the drawing/tool selection only. Adding `activeGroup` would make
+  // this re-fire on every group change and stomp the user straight back to 'tool-editor'
+  // the moment they open any other panel while a tool is active.
   useEffect(() => {
-    if (selectedDrawing || tool) {
-      setActiveGroup('tool-editor');
+    if (!selectedDrawing && !tool) return;
+    // Leaving 'backtest' has to be announced, not just done locally: MarketChart mounts
+    // the 336px order column off its own `isFullscreenEntryPanelOpen` flag and the chart
+    // resizes around it, so switching group silently left a reserved column with nothing
+    // portaled into it — chart squeezed, Enter Position gone. Same cleanup toggleGroup
+    // runs when it leaves 'backtest', including dropping the chart's draft order lines.
+    // Not just `activeGroup === 'backtest'`: in fullscreen, handleToolChange already
+    // nulled the group by the time this runs, so the parent's flag is the only thing
+    // still saying the column is mounted.
+    if (activeGroup === 'backtest' || (entryPanelControlledMode && fullscreenEntryPanelOpen)) {
+      setShowOrderDraft(false);
+      setOrderEntryPrice('');
+      resetTpSlDraft();
+      setTpSlEnabled(false);
+      onBacktestOrderDraftChange?.(null);
+      if (entryPanelControlledMode) onFullscreenEntryPanelOpenChange?.(false);
     }
+    setActiveGroup('tool-editor');
   }, [selectedDrawingId, selectedDrawing, tool]);
 
   useEffect(() => {
@@ -2984,7 +3002,7 @@ export default function ReplayPanel({
 
             <div className={`flex items-center justify-between gap-3 rounded-md border p-2.5 ${cardSurfaceClass}`}>
               <div className="flex min-w-0 items-center gap-2">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#2dd4bf]/15 text-[#5eead4]">
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${isDarkTheme ? 'bg-[#2dd4bf]/15 text-[#5eead4]' : 'bg-teal-100 text-teal-700'}`}>
                   <Wallet size={16} />
                 </span>
                 <div className="min-w-0">
@@ -3233,7 +3251,7 @@ export default function ReplayPanel({
                     <button
                       type="button"
                       onClick={() => setShowManagedExitsModal(true)}
-                      className="flex items-center gap-0.5 text-[11px] font-semibold text-[#5eead4] hover:underline"
+                      className={`flex items-center gap-0.5 text-[11px] font-semibold hover:underline ${isDarkTheme ? 'text-[#5eead4]' : 'text-teal-700'}`}
                     >
                       Managed Exits{managedExitCount ? ` (${managedExitCount})` : ''}
                       <ChevronRight size={12} />
@@ -3241,7 +3259,7 @@ export default function ReplayPanel({
                     <button
                       type="button"
                       onClick={() => setShowAdvancedTpSlModal(true)}
-                      className="flex items-center gap-0.5 text-[11px] font-semibold text-[#5eead4] hover:underline"
+                      className={`flex items-center gap-0.5 text-[11px] font-semibold hover:underline ${isDarkTheme ? 'text-[#5eead4]' : 'text-teal-700'}`}
                     >
                       Advanced
                       <ChevronRight size={12} />
@@ -3365,7 +3383,7 @@ export default function ReplayPanel({
                         <button
                           type="button"
                           onClick={fillLastPrice}
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-[#5eead4] hover:underline"
+                          className={`absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold hover:underline ${isDarkTheme ? 'text-[#5eead4]' : 'text-teal-700'}`}
                         >
                           Last
                         </button>
@@ -3447,7 +3465,7 @@ export default function ReplayPanel({
                         <span className={`text-xs font-semibold ${valueTextClass}`}>
                           {position.symbol} {position.side.toUpperCase()}
                           {position.marginMode === 'cross' && (
-                            <span className="ml-1 rounded bg-[#5eead4]/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#5eead4]">
+                            <span className={`ml-1 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${isDarkTheme ? 'bg-[#5eead4]/20 text-[#5eead4]' : 'bg-teal-100 text-teal-800'}`}>
                               Cross
                             </span>
                           )}
@@ -3496,7 +3514,7 @@ export default function ReplayPanel({
                           <span className={`text-xs font-semibold ${valueTextClass}`}>
                             {position.symbol} {position.side.toUpperCase()}
                             {position.marginMode === 'cross' && (
-                              <span className="ml-1 rounded bg-[#5eead4]/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#5eead4]">
+                              <span className={`ml-1 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${isDarkTheme ? 'bg-[#5eead4]/20 text-[#5eead4]' : 'bg-teal-100 text-teal-800'}`}>
                                 Cross
                               </span>
                             )}

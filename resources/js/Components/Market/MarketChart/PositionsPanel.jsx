@@ -373,7 +373,7 @@ export default function PositionsPanel({
                       <td className={`px-3 py-2.5 font-semibold ${cellClass}`}>{position.symbol}</td>
                       <td className="px-3 py-2.5">
                         {position.marginMode === 'cross' ? (
-                          <span className="rounded bg-[#5eead4]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5eead4]">Cross</span>
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isDark ? 'bg-[#5eead4]/20 text-[#5eead4]' : 'bg-teal-100 text-teal-800'}`}>Cross</span>
                         ) : (
                           <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
                         )}
@@ -447,7 +447,7 @@ export default function PositionsPanel({
                     <td className={`px-3 py-2.5 font-semibold ${cellClass}`}>{position.symbol}</td>
                     <td className="px-3 py-2.5">
                       {position.marginMode === 'cross' ? (
-                        <span className="rounded bg-[#5eead4]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5eead4]">Cross</span>
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isDark ? 'bg-[#5eead4]/20 text-[#5eead4]' : 'bg-teal-100 text-teal-800'}`}>Cross</span>
                       ) : (
                         <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
                       )}
@@ -521,7 +521,7 @@ export default function PositionsPanel({
                         <div className="mt-1 flex items-center gap-1 text-[10px]">
                           {!isSpotOrder && (
                             order.marginMode === 'cross' ? (
-                              <span className="rounded bg-[#5eead4]/20 px-1.5 py-0.5 font-bold uppercase tracking-wide text-[#5eead4]">Cross</span>
+                              <span className={`rounded px-1.5 py-0.5 font-bold uppercase tracking-wide ${isDark ? 'bg-[#5eead4]/20 text-[#5eead4]' : 'bg-teal-100 text-teal-800'}`}>Cross</span>
                             ) : (
                               <span className={`rounded px-1.5 py-0.5 ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
                             )
@@ -595,7 +595,7 @@ export default function PositionsPanel({
                         <div className="mt-1 flex items-center gap-1 text-[10px]">
                           {!isSpotOrder && (
                             order.marginMode === 'cross' ? (
-                              <span className="rounded bg-[#5eead4]/20 px-1.5 py-0.5 font-bold uppercase tracking-wide text-[#5eead4]">Cross</span>
+                              <span className={`rounded px-1.5 py-0.5 font-bold uppercase tracking-wide ${isDark ? 'bg-[#5eead4]/20 text-[#5eead4]' : 'bg-teal-100 text-teal-800'}`}>Cross</span>
                             ) : (
                               <span className={`rounded px-1.5 py-0.5 ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
                             )
@@ -647,7 +647,7 @@ export default function PositionsPanel({
                           {positionSideLabel(position)}
                         </span>
                         {position.marginMode === 'cross' ? (
-                          <span className="rounded bg-[#5eead4]/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5eead4]">Cross</span>
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isDark ? 'bg-[#5eead4]/20 text-[#5eead4]' : 'bg-teal-100 text-teal-800'}`}>Cross</span>
                         ) : (
                           <span className={`rounded px-1.5 py-0.5 text-[10px] ${isDark ? 'bg-white/10 text-gray-300' : 'bg-slate-100 text-slate-600'}`}>Isolated</span>
                         )}

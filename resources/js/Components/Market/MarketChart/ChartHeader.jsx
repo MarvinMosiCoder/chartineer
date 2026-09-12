@@ -342,7 +342,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
             {isAddOpen && symbolPickerTooltip.panelPos && typeof document !== 'undefined' && createPortal(
               <div data-chart-ui="symbol-search" className={`fixed z-[10021] w-96 max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border shadow-2xl ${isDark ? 'border-gray-700 bg-black-table-color text-white' : 'border-gray-200 bg-white text-slate-900'}`} style={{ top: symbolPickerTooltip.panelPos.top, left: symbolPickerTooltip.panelPos.left }}>
                 <div className={`flex items-center gap-2 rounded-full border mx-3 mt-3 px-3.5 py-2 transition-colors focus-within:border-[#2dd4bf] ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                  <Search size={14} className="text-gray-400" />
+                  <Search size={14} className={isDark ? 'text-gray-400' : 'text-slate-500'} />
                   <input autoFocus value={symbolSearch} onChange={(e) => setSymbolSearch(e.target.value)} placeholder="Search all symbols" style={{ outline: 'none' }} className="min-w-0 flex-1 bg-transparent text-xs uppercase placeholder:text-gray-500" />
                   <button type="button" onClick={() => setIsAddOpen(false)} className={`rounded p-1 ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}>
                     <X size={14} />
@@ -378,7 +378,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                       return (
                       <div key={buildSymbolKey(item)} className={`flex items-center gap-2 border-b px-3 py-2.5 last:border-b-0 ${isDark ? 'border-gray-700/50' : 'border-gray-100'}`}>
                         <span className={`flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
-                          {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className="text-[#5eead4]" />}
+                          {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className={isDark ? 'text-[#5eead4]' : 'text-teal-700'} />}
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-xs font-semibold text-emerald-500">{item.symbol}</div>
@@ -502,7 +502,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                     setIsIndicatorsOpen(false);
                   }} className={`flex w-full items-center justify-between gap-3 rounded-md border p-2 text-xs font-semibold ${isDark ? 'border-gray-700 bg-black-table-color hover:bg-[#25282e]' : 'border-gray-200 bg-slate-50 hover:bg-slate-100'}`}>
                     <span>{label}</span>
-                    <span className={indicators[key] ? 'text-emerald-400' : 'text-[#5eead4]'}>{indicators[key] ? 'Settings' : '+ Add'}</span>
+                    <span className={isDark ? (indicators[key] ? 'text-emerald-400' : 'text-[#5eead4]') : (indicators[key] ? 'text-emerald-700' : 'text-teal-700')}>{indicators[key] ? 'Settings' : '+ Add'}</span>
                   </button>
                 ))}
               </div>,
@@ -542,7 +542,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
           {isAddOpen && symbolPickerTooltip.panelPos && typeof document !== 'undefined' && createPortal(
             <div data-chart-ui="symbol-search" className={`fixed z-[10021] w-[28rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border shadow-xl ${isDark ? 'border-gray-700 bg-black-table-color' : 'border-gray-200 bg-white'}`} style={{ top: symbolPickerTooltip.panelPos.top, left: symbolPickerTooltip.panelPos.left }}>
               <div className={`flex items-center gap-2 rounded-full border mx-3 mt-3 px-3.5 py-2 transition-colors focus-within:border-[#2dd4bf] ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                <Search size={14} className="text-gray-400" />
+                <Search size={14} className={isDark ? 'text-gray-400' : 'text-slate-500'} />
                 <input autoFocus value={symbolSearch} onChange={(event) => setSymbolSearch(event.target.value)} placeholder="Search all symbols" style={{ outline: 'none' }} className={`min-w-0 flex-1 bg-transparent text-xs uppercase placeholder:text-gray-500 ${isDark ? 'text-white' : 'text-gray-800'}`} />
                 <IconTooltipButton
                   label="Close"
@@ -553,7 +553,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                     setSymbolSearch('');
                     setIsAddOpen(false);
                   }}
-                  className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
+                  className={`rounded p-1 ${isDark ? 'text-gray-400 hover:bg-gray-800 hover:text-white' : 'text-slate-500 hover:bg-black/5 hover:text-slate-900'}`}
                 >
                   <X size={14} />
                 </IconTooltipButton>
@@ -588,7 +588,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                     return (
                     <div key={buildSymbolKey(item)} className={`flex items-center gap-2 border-b px-3 py-2.5 last:border-b-0 ${isDark ? 'border-gray-800' : 'border-gray-100'}`}>
                       <span className={`flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
-                        {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className="text-[#5eead4]" />}
+                        {meta?.fundamentals?.logo_url ? <img src={meta.fundamentals.logo_url} alt="" className="h-full w-full object-contain" /> : <CandlestickChart size={12} className={isDark ? 'text-[#5eead4]' : 'text-teal-700'} />}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className={`truncate text-xs font-semibold ${isDark ? 'text-white' : 'text-gray-800'}`}>{item.symbol}</div>
@@ -716,7 +716,7 @@ export default function ChartHeader({ symbol, exchange, marketCategory, symbols,
                   setIsIndicatorsOpen(false);
                 }} className={`flex w-full items-center justify-between gap-3 rounded-lg border p-2.5 text-xs font-semibold ${isDark ? 'border-gray-700 bg-black-table-color hover:bg-[#25282e]' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'}`}>
                   <span>{label}</span>
-                  <span className={indicators[key] ? 'text-emerald-500' : 'text-[#2dd4bf]'}>{indicators[key] ? 'Settings' : '+ Add'}</span>
+                  <span className={isDark ? (indicators[key] ? 'text-emerald-400' : 'text-[#5eead4]') : (indicators[key] ? 'text-emerald-700' : 'text-teal-700')}>{indicators[key] ? 'Settings' : '+ Add'}</span>
                 </button>
               ))}
             </div>

@@ -190,7 +190,14 @@ export function IndicatorClickTargets({ indicators, paneTops, expandedIndicator,
   return (
     <>
       {mainIndicators.length > 0 && (
-        <div data-chart-ui className="pointer-events-auto absolute left-16 top-12 z-[54] flex flex-wrap gap-1">
+        // `-ml-1.5` cancels IndicatorLegendRow's own `px-1.5` so the colour dot lands on the
+        // same x as the symbol text in ChartMarketLegend (which pulls the identical trick with
+        // `-mx-1.5`), not 6px right of it. Change the two together or the legend columns drift.
+        // `items-start` is load-bearing: a flex column stretches its children by default, which
+        // would stretch every pill's background to the width of the widest label.
+        // ChartMarketLegend above is one 20px line ending at ~28px, but it wraps its OHLC values
+        // to a second line (~48px) once the chart is narrow — hence the tight top only at sm+.
+        <div data-chart-ui className="pointer-events-auto absolute left-2 top-12 z-[54] -ml-1.5 flex flex-col items-start gap-1 sm:left-3 sm:top-8">
           {mainIndicators.map((key) => {
             const meta = INDICATOR_META[key];
             // EMA is a list, so its pill names every configured period at once
@@ -218,7 +225,7 @@ export function IndicatorClickTargets({ indicators, paneTops, expandedIndicator,
         </div>
       )}
       {['volume', 'rsi', 'macd'].map((key) => indicators[key] && indicators[`${key}Visible`] !== false && Number.isFinite(Number(paneTops?.[key])) ? (
-        <div key={key} data-chart-ui className="pointer-events-auto absolute left-16 z-[54]" style={{ top: Number(paneTops[key]) + 8 }}>
+        <div key={key} data-chart-ui className="pointer-events-auto absolute left-2 z-[54] -ml-1.5 sm:left-3" style={{ top: Number(paneTops[key]) + 8 }}>
           <IndicatorLegendRow
             label={paneLabel(key)}
             dotColor={paneDotColor(key)}
