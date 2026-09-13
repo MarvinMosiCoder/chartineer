@@ -32,6 +32,18 @@ const EXCHANGE_INTERVALS = {
   },
 };
 
+// BingX Spot and BingX Perpetual are separate products that happen to share a
+// `symbol@kline_interval` subscription string, and their interval vocabularies do
+// not overlap: Spot rejects the `1m`/`4h` forms above outright with
+// `dataType is error: <symbol>@kline_1m` and wants these instead. Verified against
+// the live socket — `60min` is the only accepted spelling of one hour (`1h` and
+// `1hour` are both refused), while 2h-12h want the `Nhour` form.
+const BINGX_SPOT_INTERVALS = {
+  '1m': '1min', '3m': '3min', '5m': '5min', '15m': '15min', '30m': '30min',
+  '1h': '60min', '2h': '2hour', '4h': '4hour', '6h': '6hour', '12h': '12hour',
+  '1d': '1day', '1w': '1week', '1M': '1mon',
+};
+
 function candle(time, open, high, low, close, volume = 0) {
   const normalized = {
     time: Math.floor(Number(time) > 9999999999 ? Number(time) / 1000 : Number(time)),
@@ -104,14 +116,24 @@ function buildAdapter({ exchange, category, symbol, exchangeSymbol, timeframe })
     const bingxSymbol = nativeSymbol.includes('-')
       ? nativeSymbol
       : nativeSymbol.replace(/(USDT|USDC|USD)$/i, '-$1');
+    const isSpot = category === 'spot';
+    const bingxInterval = isSpot ? BINGX_SPOT_INTERVALS[timeframe] : interval;
+    if (!bingxInterval) return null;
+
     return {
-      url: category === 'spot'
+      url: isSpot
         ? 'wss://open-api-ws.bingx.com/market'
         : 'wss://open-api-swap.bingx.com/swap-market',
-      subscribe: { id: `kline-${Date.now()}`, reqType: 'sub', dataType: `${bingxSymbol}@kline_${interval}` },
+      subscribe: { id: `kline-${Date.now()}`, reqType: 'sub', dataType: `${bingxSymbol}@kline_${bingxInterval}` },
       parse: (message) => {
-        const row = message?.data?.data?.[0] ?? message?.data?.[0] ?? message?.data;
-        return row ? candle(row.time ?? row.openTime, row.open, row.high, row.low, row.close, row.volume) : null;
+        // Neither product sends `time`/`open`/`volume` keys. Spot nests a single
+        // object at `data.K` and stamps the bucket as `t`; the swap market sends a
+        // one-element `data` array that stamps it as `T`. Both use single-letter
+        // OHLC keys, so the previous shared shape matched neither and every
+        // message parsed to null — the socket looked connected and never ticked.
+        const row = isSpot ? message?.data?.K : message?.data?.[0];
+        if (!row) return null;
+        return candle(isSpot ? row.t : row.T, row.o, row.h, row.l, row.c, row.v);
       },
       error: (message) => message?.code != null && Number(message.code) !== 0 ? (message?.msg || 'BingX rejected the subscription.') : null,
     };
@@ -139,8 +161,12 @@ function buildAdapter({ exchange, category, symbol, exchangeSymbol, timeframe })
       url: 'wss://contract.mexc.com/edge',
       subscribe: { method: 'sub.kline', param: { symbol: nativeSymbol, interval: contractInterval } },
       parse: (message) => {
-        const row = message?.data;
-        return row ? candle(row.time, row.open, row.high, row.low, row.close, row.vol ?? row.amount) : null;
+        // `push.kline` is single-letter keyed — `t` is the bucket in seconds,
+        // `o/h/l/c` the prices and `q` the contract volume (`a` is quote turnover,
+        // and `ro/rh/rl/rc` repeat the prices unrounded). None of `time`, `open`,
+        // `vol` or `amount` exists on this payload.
+        const row = message?.channel === 'push.kline' ? message?.data : null;
+        return row ? candle(row.t, row.o, row.h, row.l, row.c, row.q) : null;
       },
       error: (message) => message?.success === false ? (message?.message || 'MEXC rejected the subscription.') : null,
     };

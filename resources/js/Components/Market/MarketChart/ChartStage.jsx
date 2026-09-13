@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Bookmark, Flag, FileText, MapPin, MessageCircle, Quote, Save, Signpost, StickyNote, Tag, Trash2, X } from 'lucide-react';
 import getAppLogo from '../../SystemSettings/ApplicationLogo';
-import { CHART_HEIGHT, DRAWING_COLOR, DRAWING_FILL, FILLED_GEOMETRY_TOOL_TYPES, GEOMETRY_BORDER_OPACITY, MIN_DRAWING_STROKE_WIDTH, MIN_PREVIEW_STROKE_WIDTH, TIMEFRAME_SECONDS } from './constants';
+import { CHART_HEIGHT, DRAWING_COLOR, DRAWING_FILL, FILLED_GEOMETRY_TOOL_TYPES, GEOMETRY_BORDER_OPACITY, MIN_DRAWING_STROKE_WIDTH, MIN_PREVIEW_STROKE_WIDTH, resolveFillOpacity, TIMEFRAME_SECONDS } from './constants';
 import {
   colorToRgba,
   CYCLE_TOOL_TYPES,
@@ -81,6 +81,22 @@ function formatDuration(seconds) {
 
 const FIB_RETRACEMENT_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const BOX_TOOL_TYPES = ['rect', 'circle', 'price-range', 'date-range', 'price-date-range'];
+// Free-angle lines that are worth telling apart from a level one. Horizontal/vertical
+// tools are level by construction, so a "you are aligned" cue on them says nothing.
+const ALIGNMENT_CUE_TOOL_TYPES = ['line', 'ray', 'extended-line', 'arrow', 'arrow-line'];
+// A hand-drawn line is level when both ends land on the same pixel row — anything
+// under a pixel is below what the chart can draw or the eye can read, and it is the
+// same test whether the line is 20px or the full pane wide. Nothing is snapped: the
+// prices stay exactly where they were put, the cue only reports on them.
+const ALIGNMENT_TOLERANCE_PX = 1;
+
+// A 1px line whose centre sits mid-pixel is anti-aliased into two grey rows. Pulling
+// the centre onto the pixel grid — half-pixel for odd widths, whole for even — draws
+// it as one clean row, which is the whole point of marking a line as level.
+function crispLineY(y, strokeWidth) {
+  const width = Math.max(Math.round(strokeWidth), 1);
+  return width % 2 === 0 ? Math.round(y) : Math.round(y) + 0.5;
+}
 const SHAPE_TOOL_TYPES = ['triangle', 'arc', 'curve', 'double-curve'];
 const THREE_POINT_TYPES = ['fib-extension', 'parallel-channel', 'triangle', 'curve', 'double-curve'];
 const TEXT_MARKER_TYPES = [
@@ -884,6 +900,11 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
           const fillEdgeOpacity = !isPreview && FILLED_GEOMETRY_TOOL_TYPES.includes(d.type)
             ? GEOMETRY_BORDER_OPACITY
             : 1;
+          // Border and body are independent: `color` is the edge, `fillColor` the
+          // body. Shapes saved before the body got its own color have no fillColor,
+          // so they fall back to the edge color and look unchanged.
+          const bodyColor = d.fillColor ?? drawingColor;
+          const bodyFill = colorToRgba(bodyColor, resolveFillOpacity(d, isPreview)) || DRAWING_FILL;
           const textWeight = getDrawingTextWeight(d);
           const textStyle = getDrawingTextStyle(d);
           const textSize = Number(d.textSize) || 12;
@@ -896,11 +917,7 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
             const pathData = buildPathData(pathPoints);
             const labelText = d.showText === false ? '' : d.labelText?.trim();
             const labelPosition = labelText ? getPathLabelPosition(d) : null;
-            const pathDashArray = d.id.startsWith('temp-')
-              ? '5,5'
-              : d.lineStyle === 'dashed'
-                ? '8,5'
-                : undefined;
+            const pathDashArray = d.lineStyle === 'dashed' ? '8,5' : undefined;
             // Brush/Highlighter are freehand ink, not a click-anchored path — hide the
             // per-vertex dots so they read as a stroke, not a connect-the-dots line.
             // Selection still shows drag handles at each point (separate, unconditional
@@ -984,15 +1001,33 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
             const labelText = d.showText === false ? '' : d.labelText?.trim();
             const labelPosition = labelText ? getLineLabelPosition(d) : null;
             const lineGapSegments = getLineLabelGapSegments(lineStart, lineEnd, labelText, d);
-            const lineDashArray = d.id.startsWith('temp-')
-              ? '5,5'
-              : d.type === 'forecast'
-                ? '8,5'
-                : d.type === 'measure'
-                  ? '4,4'
-                  : isDashedLine
-                    ? '8,5'
-                    : undefined;
+            const lineDashArray = d.type === 'forecast'
+              ? '8,5'
+              : d.type === 'measure'
+                ? '4,4'
+                : isDashedLine
+                  ? '8,5'
+                  : undefined;
+            // Perfectly level: paint it clear — solid (dash dropped), a touch heavier,
+            // over a soft halo — so a line meant to mark a level reads as locked in
+            // rather than "close enough".
+            // Measured across what is actually drawn, not the two anchors: a ray whose
+            // anchors sit 1px apart over 50px has drifted far more than a pixel by the
+            // time it reaches the edge of the pane, and it should not claim to be level.
+            const isPerfectlyLevel = ALIGNMENT_CUE_TOOL_TYPES.includes(d.type)
+              && Math.abs(lineStart.y - lineEnd.y) <= ALIGNMENT_TOLERANCE_PX;
+            // Level draws clear: solid, both ends on one crisp pixel row instead of
+            // smeared across two. The highlight on top of that is live feedback only —
+            // it is there while the line is still being plotted and gone once placed,
+            // leaving just the clean line.
+            const levelY = isPerfectlyLevel ? crispLineY((lineStart.y + lineEnd.y) / 2, strokeWidth) : null;
+            const levelStart = levelY == null ? lineStart : { ...lineStart, y: levelY };
+            const levelEnd = levelY == null ? lineEnd : { ...lineEnd, y: levelY };
+            const showLevelHighlight = isPerfectlyLevel && isPreview;
+            // The line keeps its own width while highlighted — the halo alone carries
+            // the cue, so levelling one out doesn't make it jump thicker under you.
+            const lineStrokeWidth = strokeWidth;
+            const lineStrokeDashArray = isPerfectlyLevel ? undefined : lineDashArray;
             const midpoint = {
               x: (lineStart.x + lineEnd.x) / 2,
               y: (lineStart.y + lineEnd.y) / 2,
@@ -1010,7 +1045,7 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
                     y2={d.screen.p2.y}
                     stroke={stroke}
                     strokeWidth={Math.max(strokeWidth, 1)}
-                    strokeDasharray={d.id.startsWith('temp-') ? '5,5' : '4,4'}
+                    strokeDasharray="4,4"
                     opacity="0.8"
                   />
                   {d.type === 'fib-extension' && d.screen.p3 && (
@@ -1034,13 +1069,7 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
                         y2={item.y}
                         stroke={item.color}
                         strokeWidth={strokeWidth}
-                        strokeDasharray={
-                          d.id.startsWith('temp-')
-                            ? '5,5'
-                            : isDashedLine
-                              ? '8,5'
-                              : undefined
-                        }
+                        strokeDasharray={isDashedLine ? '8,5' : undefined}
                         opacity={item.level === 0 || item.level === 1 ? 0.95 : 0.72}
                       />
                       {!d.id.startsWith('temp-') && (
@@ -1102,7 +1131,7 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
                     fill="none"
                     stroke={stroke}
                     strokeWidth={strokeWidth}
-                    strokeDasharray={d.id.startsWith('temp-') ? '5,5' : (d.lineStyle === 'dashed' ? '8,5' : undefined)}
+                    strokeDasharray={d.lineStyle === 'dashed' ? '8,5' : undefined}
                     strokeLinecap="round"
                   />
                 </g>
@@ -1145,13 +1174,11 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
                         stroke={stroke}
                         strokeWidth={isAnchor ? Math.max(strokeWidth, 1.5) : Math.max(strokeWidth - 0.5, 1)}
                         strokeDasharray={
-                          d.id.startsWith('temp-')
-                            ? '5,5'
-                            : isTimeCycles
-                              ? '2,5'
-                              : isAnchor
-                                ? (d.lineStyle === 'dashed' ? '8,5' : undefined)
-                                : '6,6'
+                          isTimeCycles
+                            ? '2,5'
+                            : isAnchor
+                              ? (d.lineStyle === 'dashed' ? '8,5' : undefined)
+                              : '6,6'
                         }
                         opacity={isAnchor ? 1 : 0.65}
                       />
@@ -1163,14 +1190,14 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
 
             if (SHAPE_TOOL_TYPES.includes(d.type)) {
               const { p1, p2, p3 } = d.screen;
-              const shapeDashArray = d.id.startsWith('temp-') ? '5,5' : (d.lineStyle === 'dashed' ? '8,5' : undefined);
+              const shapeDashArray = d.lineStyle === 'dashed' ? '8,5' : undefined;
 
               if (d.type === 'triangle' && p3) {
                 return (
                   <polygon
                     key={d.id}
                     points={`${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`}
-                    fill={colorToRgba(stroke, d.id.startsWith('temp-') ? 0.08 : 0.16) || DRAWING_FILL}
+                    fill={bodyFill}
                     stroke={stroke}
                     strokeWidth={strokeWidth}
                     strokeOpacity={fillEdgeOpacity}
@@ -1227,28 +1254,40 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
 
             return (
               <g key={d.id}>
+                {showLevelHighlight && (
+                  <line
+                    x1={levelStart.x}
+                    y1={levelStart.y}
+                    x2={levelEnd.x}
+                    y2={levelEnd.y}
+                    stroke={stroke}
+                    strokeWidth={lineStrokeWidth + 3}
+                    strokeOpacity={0.1}
+                    strokeLinecap="round"
+                  />
+                )}
                 {lineGapSegments ? (
                   lineGapSegments.map((segment, index) => (
                     <line
                       key={`${d.id}-line-segment-${index}`}
                       x1={segment.x1}
-                      y1={segment.y1}
+                      y1={levelY ?? segment.y1}
                       x2={segment.x2}
-                      y2={segment.y2}
+                      y2={levelY ?? segment.y2}
                       stroke={stroke}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray={lineDashArray}
+                      strokeWidth={lineStrokeWidth}
+                      strokeDasharray={lineStrokeDashArray}
                     />
                   ))
                 ) : (
                   <line
-                    x1={lineStart.x}
-                    y1={lineStart.y}
-                    x2={lineEnd.x}
-                    y2={lineEnd.y}
+                    x1={levelStart.x}
+                    y1={levelStart.y}
+                    x2={levelEnd.x}
+                    y2={levelEnd.y}
                     stroke={stroke}
-                    strokeWidth={strokeWidth}
-                    strokeDasharray={lineDashArray}
+                    strokeWidth={lineStrokeWidth}
+                    strokeDasharray={lineStrokeDashArray}
                   />
                 )}
                 {(d.type === 'forecast' || d.type === 'arrow' || d.type === 'arrow-line') && (
@@ -1439,14 +1478,8 @@ function DrawingOverlay({ renderedDrawings, selectedDrawingId, hoveredPositionDr
             const rect = normalizeVisibleRect(d.screen.p1, d.screen.p2);
             const labelText = d.showText === false ? '' : d.labelText?.trim();
             const labelPosition = labelText ? getBoxLabelPosition(rect, d) : null;
-            const rectDashArray = d.id.startsWith('temp-')
-              ? '5,5'
-              : d.lineStyle === 'dashed'
-                ? '8,5'
-                : undefined;
-            const shapeFill = d.id.startsWith('temp-')
-              ? colorToRgba(stroke, 0.08)
-              : colorToRgba(stroke, 0.16) || DRAWING_FILL;
+            const rectDashArray = d.lineStyle === 'dashed' ? '8,5' : undefined;
+            const shapeFill = bodyFill;
 
             return (
               <g key={d.id}>

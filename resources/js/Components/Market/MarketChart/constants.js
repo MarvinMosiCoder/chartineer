@@ -89,6 +89,26 @@ export const FILLED_GEOMETRY_TOOL_TYPES = [
 ];
 export const GEOMETRY_BORDER_OPACITY = 0.5;
 
+// Filled geometry carries two colors: `color` paints the border (and its label),
+// `fillColor` paints the body. A drawing with no explicit `fillColor` tints its
+// body with the border color, which is how every shape drawn before this existed
+// looked — so old drawings keep rendering exactly as they did.
+export const FILL_COLOR_TOOL_TYPES = [...FILLED_GEOMETRY_TOOL_TYPES];
+export const DEFAULT_FILL_OPACITY = 0.16;
+export const FILL_OPACITIES = [0, 0.08, 0.16, 0.3, 0.5, 0.75, 1];
+
+export function formatFillOpacityLabel(opacity) {
+  return Number(opacity) === 0 ? 'None' : `${Math.round(Number(opacity) * 100)}%`;
+}
+
+// The body tint while a shape is still being dragged out — half strength, so the
+// in-progress shape never hides the candles you are aiming it at.
+export function resolveFillOpacity(drawing, isPreview) {
+  const raw = Number(drawing?.fillOpacity);
+  const opacity = Number.isFinite(raw) ? Math.min(Math.max(raw, 0), 1) : DEFAULT_FILL_OPACITY;
+  return isPreview ? opacity / 2 : opacity;
+}
+
 // Arc/curve/double-curve are unfilled — the stroke *is* the drawing, not a border
 // around one — so they are excluded above and only join the list the settings
 // migration walks.

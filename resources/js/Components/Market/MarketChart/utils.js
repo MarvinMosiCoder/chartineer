@@ -678,3 +678,36 @@ export function drawingIntersectsRect(drawing, rect) {
   // Everything left is a two-point box tool (rect/circle/ranges).
   return rectsIntersect(getDrawingScreenBounds(drawing), rect);
 }
+
+// The live tick path's O(1) counterpart to `normalizeApiCandles`. That function
+// exists for batch history payloads: it copies every row, de-duplicates through a
+// Map and re-sorts, which is the right shape for a 5,000-20,000 candle REST
+// response but is wasted work several times a second when a WebSocket pushes a
+// single candle that, by definition, can only patch the last bar or append one
+// after it. Exchange front-ends never re-sort history on a tick — they compare the
+// incoming candle's bucket against the last bar and either replace it or push.
+// Anything older than the last bar is a late/out-of-order message and is dropped
+// rather than triggering a re-sort, matching what `normalizeApiCandles` would have
+// done for a duplicate timestamp (newest payload wins for the same bucket).
+export function mergeLiveCandle(candles, nextCandle) {
+  if (!nextCandle || !Number.isFinite(Number(nextCandle.time))) return candles;
+  if (!Array.isArray(candles) || !candles.length) return [nextCandle];
+
+  const lastIndex = candles.length - 1;
+  const lastTime = Number(candles[lastIndex].time);
+  const nextTime = Number(nextCandle.time);
+
+  if (nextTime === lastTime) {
+    const merged = candles.slice();
+    merged[lastIndex] = nextCandle;
+    return merged;
+  }
+
+  if (nextTime > lastTime) return [...candles, nextCandle];
+
+  // Older than the newest bar we hold. A stale duplicate is a no-op; a genuine
+  // backfill of an earlier bucket is rare enough to be worth the full re-sort.
+  return candles.some((candle) => Number(candle.time) === nextTime)
+    ? candles
+    : normalizeApiCandles([...candles, nextCandle]);
+}

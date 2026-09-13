@@ -85,7 +85,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react';
-import { DRAWING_COLORS, DRAWING_WIDTHS, formatStrokeWidthLabel, PLAYBACK_SPEEDS, TEXT_SIZES } from './constants';
+import { DEFAULT_FILL_OPACITY, DRAWING_COLORS, DRAWING_WIDTHS, FILL_COLOR_TOOL_TYPES, FILL_OPACITIES, formatFillOpacityLabel, formatStrokeWidthLabel, PLAYBACK_SPEEDS, TEXT_SIZES } from './constants';
 import { subscribeToChange } from '../../../utils/crossTabSync';
 
 const controlBaseClass =
@@ -498,6 +498,7 @@ function DrawingSettingsDialog({
   chartTheme,
   canUsePresets,
   canEditColor,
+  canEditFill,
   presetItems,
   onSaveTemplate,
   onDeleteToolPreset,
@@ -594,6 +595,7 @@ function DrawingSettingsDialog({
     setDraft((current) => ({
       ...current,
       ...(canEditColor ? { color: DRAWING_COLORS[0] } : {}),
+      ...(canEditFill ? { fillColor: DRAWING_COLORS[0], fillOpacity: DEFAULT_FILL_OPACITY } : {}),
       strokeWidth: 1,
       lineStyle: 'solid',
       textBold: false,
@@ -688,6 +690,23 @@ function DrawingSettingsDialog({
                     <input value={draft.color ?? ''} onChange={(event) => updateStyleDraft({ color: event.target.value })} className={`h-11 w-28 rounded-lg border px-3 font-mono text-sm outline-none ${fieldClass}`} aria-label="Line color value" />
                   </div>
                 </label>
+              )}
+              {canEditFill && (
+                <>
+                  <label className="flex items-center justify-between gap-4 text-sm font-medium">
+                    Background color
+                    <div className="flex items-center gap-2">
+                      <input type="color" value={normalizeHexColor(draft.fillColor ?? draft.color) ?? '#60a5fa'} onChange={(event) => updateStyleDraft({ fillColor: event.target.value })} className={`h-11 w-11 cursor-pointer rounded-lg border p-1 ${fieldClass}`} />
+                      <input value={draft.fillColor ?? draft.color ?? ''} onChange={(event) => updateStyleDraft({ fillColor: event.target.value })} className={`h-11 w-28 rounded-lg border px-3 font-mono text-sm outline-none ${fieldClass}`} aria-label="Background color value" />
+                    </div>
+                  </label>
+                  <label className="flex items-center justify-between gap-4 text-sm font-medium">
+                    Background opacity
+                    <select value={Number.isFinite(Number(draft.fillOpacity)) ? Number(draft.fillOpacity) : DEFAULT_FILL_OPACITY} onChange={(event) => updateStyleDraft({ fillOpacity: Number(event.target.value) })} className={`h-11 w-44 rounded-lg border px-3 outline-none ${fieldClass}`}>
+                      {FILL_OPACITIES.map((opacity) => <option key={opacity} value={opacity}>{formatFillOpacityLabel(opacity)}</option>)}
+                    </select>
+                  </label>
+                </>
               )}
               <label className="flex items-center justify-between gap-4 text-sm font-medium">
                 Line width
@@ -891,6 +910,9 @@ function TopToolEditorBar({
   canEditLabel,
   canEditText,
   canEditColor,
+  activeFillColor,
+  activeFillOpacity = DEFAULT_FILL_OPACITY,
+  canEditFill,
   canUsePresets,
   presetItems,
   presetNameDraft,
@@ -899,6 +921,7 @@ function TopToolEditorBar({
   openMenu,
   setOpenMenu,
   onDrawingColorChange,
+  onDrawingFillChange,
   onDrawingWidthChange,
   onDrawingLineStyleChange,
   onDrawingLabelChange,
@@ -913,6 +936,7 @@ function TopToolEditorBar({
   chartBoundsRef,
 }) {
   const [hexColorDraft, setHexColorDraft] = useState(activeColor ?? '');
+  const [hexFillDraft, setHexFillDraft] = useState(activeFillColor ?? '');
   const [showSaveAsDialog, setShowSaveAsDialog] = useState(false);
   const [pendingOverwriteName, setPendingOverwriteName] = useState(null);
   const gripTooltip = useAnchoredTooltip();
@@ -946,6 +970,7 @@ function TopToolEditorBar({
     if (canEditColor) onDrawingColorChange(DRAWING_COLORS[0], { skipDefaultSave: true });
     if (canEditWidth) onDrawingWidthChange(1, { skipDefaultSave: true });
     if (canEditLineStyle) onDrawingLineStyleChange('solid', { skipDefaultSave: true });
+    if (canEditFill) onDrawingFillChange({ fillColor: DRAWING_COLORS[0], fillOpacity: DEFAULT_FILL_OPACITY }, { skipDefaultSave: true });
     if (canEditLabel || canEditText) {
       onDrawingLabelChange({
         textBold: false,
@@ -976,11 +1001,16 @@ function TopToolEditorBar({
         : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
   );
   const displayColor = normalizeHexColor(activeColor) ?? activeColor ?? '#60a5fa';
+  const displayFillColor = normalizeHexColor(activeFillColor) ?? activeFillColor ?? displayColor;
   const EditorToolIcon = TOOL_BUTTONS.find((item) => item.type === editorType)?.icon ?? MousePointer2;
 
   useEffect(() => {
     setHexColorDraft(normalizeHexColor(activeColor) ?? activeColor ?? '');
   }, [activeColor]);
+
+  useEffect(() => {
+    setHexFillDraft(normalizeHexColor(activeFillColor) ?? activeFillColor ?? '');
+  }, [activeFillColor]);
 
   const handleHexColorChange = (value) => {
     const nextValue = value.startsWith('#') ? value : `#${value}`;
@@ -991,6 +1021,18 @@ function TopToolEditorBar({
     const normalizedColor = normalizeHexColor(nextValue);
     if (normalizedColor) {
       onDrawingColorChange(normalizedColor);
+    }
+  };
+
+  const handleHexFillChange = (value) => {
+    const nextValue = value.startsWith('#') ? value : `#${value}`;
+    if (!/^#[0-9a-fA-F]{0,6}$/.test(nextValue)) return;
+
+    setHexFillDraft(nextValue);
+
+    const normalizedColor = normalizeHexColor(nextValue);
+    if (normalizedColor) {
+      onDrawingFillChange({ fillColor: normalizedColor });
     }
   };
 
@@ -1172,7 +1214,7 @@ function TopToolEditorBar({
           <div className="relative order-3">
             <ToolEditorButton
               icon={PaintBucket}
-              title="Color"
+              title={canEditFill ? 'Border color' : 'Color'}
               active={openMenu === 'color'}
               onClick={() => toggleMenu('color')}
               chartTheme={chartTheme}
@@ -1181,7 +1223,7 @@ function TopToolEditorBar({
             </ToolEditorButton>
             {openMenu === 'color' && (
               <div className={menuPanelClass}>
-                <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${editorLabelClass}`}>Color</div>
+                <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${editorLabelClass}`}>{canEditFill ? 'Border' : 'Color'}</div>
                 <div className="mb-3 flex items-center gap-2">
                   <span
                     className="h-8 w-8 shrink-0 rounded-sm border border-gray-500"
@@ -1223,6 +1265,83 @@ function TopToolEditorBar({
                       />
                     );
                   })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {canEditFill && (
+          <div className="relative order-3">
+            <ToolEditorButton
+              icon={Palette}
+              title="Background color"
+              active={openMenu === 'fill'}
+              onClick={() => toggleMenu('fill')}
+              chartTheme={chartTheme}
+            >
+              <span
+                className="absolute bottom-1 left-3 right-3 h-0.5 rounded-full"
+                style={{ backgroundColor: displayFillColor, opacity: Math.max(activeFillOpacity, 0.25) }}
+              />
+            </ToolEditorButton>
+            {openMenu === 'fill' && (
+              <div className={menuPanelClass}>
+                <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${editorLabelClass}`}>Background</div>
+                <div className="mb-3 flex items-center gap-2">
+                  <span
+                    className="h-8 w-8 shrink-0 rounded-sm border border-gray-500"
+                    style={{ backgroundColor: displayFillColor }}
+                    aria-hidden="true"
+                  />
+                  <input
+                    value={hexFillDraft}
+                    onChange={(event) => handleHexFillChange(event.target.value)}
+                    onBlur={() => {
+                      const normalizedColor = normalizeHexColor(hexFillDraft);
+                      setHexFillDraft(normalizedColor ?? displayFillColor);
+                    }}
+                    maxLength={7}
+                    spellCheck={false}
+                    placeholder="#60a5fa"
+                    className={`h-8 min-w-0 flex-1 rounded border px-2 text-xs font-mono uppercase outline-none ${editorFieldClass}`}
+                    aria-label="Hex background color"
+                  />
+                </div>
+                <div className="mb-3 grid grid-cols-6 gap-1.5">
+                  {DRAWING_COLORS.map((color) => {
+                    const isActive = displayFillColor?.toLowerCase() === color.toLowerCase();
+
+                    return (
+                      <IconTooltipButton
+                        key={`fill-${color}`}
+                        label={color}
+                        isDark={isDark}
+                        ariaLabel={`Use background color ${color}`}
+                        onClick={() => {
+                          onDrawingFillChange({ fillColor: color });
+                          setOpenMenu(null);
+                        }}
+                        className={`h-8 w-8 rounded-sm border ${
+                          isActive ? 'border-white ring-2 ring-white' : 'border-gray-500'
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    );
+                  })}
+                </div>
+                <div className={`mb-2 text-xs font-semibold uppercase tracking-wide ${editorLabelClass}`}>Opacity</div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {FILL_OPACITIES.map((opacity) => (
+                    <button
+                      key={`fill-opacity-${opacity}`}
+                      type="button"
+                      onClick={() => onDrawingFillChange({ fillOpacity: opacity })}
+                      className={`h-8 rounded border text-[11px] font-medium ${editorOptionClass(Math.abs(activeFillOpacity - opacity) < 0.001)}`}
+                    >
+                      {formatFillOpacityLabel(opacity)}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -1392,6 +1511,7 @@ function TopToolEditorBar({
           chartTheme={chartTheme}
           canUsePresets={canUsePresets}
           canEditColor={canEditColor}
+          canEditFill={canEditFill}
           presetItems={presetItems}
           onSaveTemplate={onSaveSelectedToolPreset}
           onDeleteToolPreset={onDeleteToolPreset}
@@ -1399,6 +1519,13 @@ function TopToolEditorBar({
           onApply={(nextDrawing, applyOptions = {}) => {
             const skipDefaultSave = Boolean(applyOptions.skipDefaultSave);
             if (canEditColor && nextDrawing.color !== activeColor) onDrawingColorChange(nextDrawing.color, { skipDefaultSave });
+            if (canEditFill) {
+              const nextFillColor = nextDrawing.fillColor ?? activeFillColor;
+              const nextFillOpacity = Number.isFinite(Number(nextDrawing.fillOpacity)) ? Number(nextDrawing.fillOpacity) : DEFAULT_FILL_OPACITY;
+              if (nextFillColor !== activeFillColor || nextFillOpacity !== activeFillOpacity) {
+                onDrawingFillChange({ fillColor: nextFillColor, fillOpacity: nextFillOpacity }, { skipDefaultSave });
+              }
+            }
             if (canEditWidth && nextDrawing.strokeWidth !== activeStrokeWidth) onDrawingWidthChange(nextDrawing.strokeWidth, { skipDefaultSave });
             if (canEditLineStyle && nextDrawing.lineStyle !== activeLineStyle) onDrawingLineStyleChange(nextDrawing.lineStyle, { skipDefaultSave });
             onDrawingLabelChange({
@@ -2107,6 +2234,7 @@ export default function ReplayPanel({
   onToolChange,
   onReadyToolChange,
   onDrawingColorChange,
+  onDrawingFillChange,
   onDrawingWidthChange,
   onDrawingLineStyleChange,
   onDrawingLabelChange,
@@ -2334,6 +2462,12 @@ export default function ReplayPanel({
   const canEditLabel = LABEL_TOOL_TYPES.includes(editorType);
   const canEditText = TEXT_MARKER_TYPES.includes(editorType);
   const canEditColor = COLOR_TOOL_TYPES.includes(editorType);
+  const canEditFill = FILL_COLOR_TOOL_TYPES.includes(editorType);
+  // No explicit body color means the shape still tints itself with its border
+  // color, so that is what the picker shows as current.
+  const activeFillColor = selectedDrawing?.fillColor ?? editorSettings.fillColor ?? activeColor;
+  const rawFillOpacity = Number(selectedDrawing?.fillOpacity ?? editorSettings.fillOpacity);
+  const activeFillOpacity = Number.isFinite(rawFillOpacity) ? rawFillOpacity : DEFAULT_FILL_OPACITY;
   const hasToolEditor = Boolean(editorType);
   const activeToolIcon = useMemo(() => {
     return TOOL_BUTTONS.find((item) => item.type === tool)?.icon ?? MousePointer2;
@@ -2521,10 +2655,26 @@ export default function ReplayPanel({
   const isCrossMode = !isSpot && marginMode === 'cross';
   const crossMetrics = backtestAccount?.cross ?? null;
   const affordabilityCeiling = isCrossMode ? Number(crossMetrics?.availableMargin ?? 0) : backtestMetrics.cashBalance;
+  // The chart's draft entry/TP/SL lines used to appear only when the price came from
+  // the chart itself (right-click -> Trigger Position). Sizing the order here — typing
+  // a margin or tapping a % preset — is the same order being planned, so it previews
+  // on the chart from that moment too, at the live price for a market order.
+  const syncOrderDraftToAmount = (displayAmount) => {
+    if (Number(displayToQuoteAmount(displayAmount, displayCurrency, normalizedPhpRate)) > 0) {
+      setShowOrderDraft(true);
+      return;
+    }
+
+    // Amount cleared: the preview goes with it, unless an entry price set from the
+    // chart is what put the draft there to begin with.
+    if (getPositiveNumber(orderEntryPrice) == null) setShowOrderDraft(false);
+  };
   const handleMarginPercentClick = (pct) => {
     const displayAmount = quoteToDisplayAmount(affordabilityCeiling * pct, displayCurrency, normalizedPhpRate);
     if (displayAmount != null) {
-      setOrderNotional(String(Number(Math.max(displayAmount, 0).toFixed(2))));
+      const nextNotional = String(Number(Math.max(displayAmount, 0).toFixed(2)));
+      setOrderNotional(nextNotional);
+      syncOrderDraftToAmount(nextNotional);
     }
   };
   const currentExecutionPrice = getPositiveNumber(executionPrice);
@@ -3258,7 +3408,10 @@ export default function ReplayPanel({
               )}
               <input
                 value={orderNotional}
-                onChange={(event) => setOrderNotional(event.target.value)}
+                onChange={(event) => {
+                  setOrderNotional(event.target.value);
+                  syncOrderDraftToAmount(event.target.value);
+                }}
                 inputMode="decimal"
                 className={`h-8 w-full rounded border px-2 text-xs outline-none ${fieldClass}`}
                 placeholder={isSpot ? `${displayCurrency} amount` : `${displayCurrency} margin`}
@@ -3669,6 +3822,8 @@ export default function ReplayPanel({
           editorType={editorType}
           timeframe={timeframe}
           activeColor={activeColor}
+          activeFillColor={activeFillColor}
+          activeFillOpacity={activeFillOpacity}
           activeStrokeWidth={activeStrokeWidth}
           activeLineStyle={activeLineStyle}
           activeLabelText={activeLabelText}
@@ -3682,6 +3837,7 @@ export default function ReplayPanel({
           canEditLabel={canEditLabel}
           canEditText={canEditText}
           canEditColor={canEditColor}
+          canEditFill={canEditFill}
           canUsePresets={canUsePresets}
           presetItems={presetItems}
           presetNameDraft={presetNameDraft}
@@ -3690,6 +3846,7 @@ export default function ReplayPanel({
           openMenu={activeEditorMenu}
           setOpenMenu={setActiveEditorMenu}
           onDrawingColorChange={onDrawingColorChange}
+          onDrawingFillChange={onDrawingFillChange}
           onDrawingWidthChange={onDrawingWidthChange}
           onDrawingLineStyleChange={onDrawingLineStyleChange}
           onDrawingLabelChange={onDrawingLabelChange}

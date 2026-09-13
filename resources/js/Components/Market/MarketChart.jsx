@@ -37,6 +37,7 @@ import {
   DEFAULT_CANDLE_COLORS,
   DEFAULT_CANDLE_SIZE,
   DRAWING_COLOR,
+  FILL_COLOR_TOOL_TYPES,
   INTERVAL_MAP,
   MAX_CANDLE_SIZE,
   migrateToolSettings,
@@ -72,6 +73,7 @@ import {
   MULTI_POINT_PATTERN_LABELS,
   MULTI_POINT_PATTERN_TYPES,
   MULTI_POINT_TOOL_TYPES,
+  mergeLiveCandle,
   normalizeApiCandles,
   normalizeVisibleRect,
   offsetDrawing,
@@ -113,6 +115,61 @@ const POSITION_MONITOR_GAP_LIMIT = 500;
 // as drawing tool templates, rather than a second, parallel preset system.
 const CHART_SETTINGS_PRESET_TYPE = 'chartSettings';
 const MARKET_DATA_POLL_SECONDS = Math.max(5, Number(import.meta.env.VITE_MARKET_DATA_POLL_SECONDS ?? 10));
+
+// A WebSocket kline channel pushes several times a second on a liquid pair. The
+// chart series itself is updated from every one of those messages (see
+// `applyLiveCandleToSeries`), but React state is not: publishing `allCandles` per
+// message re-renders this whole component, re-runs every `visibleCandles`
+// consumer and recomputes each indicator over full history, all to move one bar.
+// Exchange front-ends coalesce ticks into a single paint per frame for the same
+// reason. This is the coalescing window for the React half of that split — long
+// enough to collapse a burst of trades into one render, short enough that the
+// last-price badge, legend and alert checks still read as live.
+const LIVE_TICK_FLUSH_MS = 250;
+
+// A fingerprint of what the candle/volume series currently hold. Only the bar
+// count and the last bar matter: the live tick path can only ever patch the last
+// bar or append one, so any other kind of change (history load, replay slice,
+// symbol switch) shows up as a count or last-bar mismatch and falls back to a
+// full `setData`. Volume bar colors are derived from `candleColors`, and a color
+// change repaints every bar rather than just the last one, so the active colors
+// are part of the fingerprint too.
+function liveSeriesSignature(candles, colors) {
+  if (!Array.isArray(candles) || !candles.length || !colors) return null;
+  const last = candles[candles.length - 1];
+  return {
+    count: candles.length,
+    time: Number(last.time),
+    open: Number(last.open),
+    high: Number(last.high),
+    low: Number(last.low),
+    close: Number(last.close),
+    volume: Number(last.volume),
+    up: colors.up,
+    down: colors.down,
+  };
+}
+
+function liveSeriesSignatureMatches(a, b) {
+  if (!a || !b) return false;
+  return a.count === b.count
+    && a.time === b.time
+    && a.open === b.open
+    && a.high === b.high
+    && a.low === b.low
+    && a.close === b.close
+    && a.volume === b.volume
+    && a.up === b.up
+    && a.down === b.down;
+}
+
+function liveVolumeBar(candle, colors) {
+  return {
+    time: Number(candle.time),
+    value: Number(candle.volume),
+    color: `${candle.close >= candle.open ? colors.up : colors.down}88`,
+  };
+}
 const WEBSOCKET_DELAY_SECONDS = 45;
 
 function movingAverage(candles, period) {
@@ -409,6 +466,14 @@ const TWO_POINT_TOOL_TYPES = [
 ];
 
 const BOX_TOOL_TYPES = ['rect', 'circle', 'price-range', 'date-range', 'price-date-range'];
+const POSITION_TOOL_TYPES = ['long-position', 'short-position'];
+// A position box is a risk/reward frame you nudge by its handles, not a shape you
+// size from nothing — so one click drops a whole one. The default is measured in
+// pixels rather than price so it lands the same size at any zoom or price scale:
+// the profit leg runs DEFAULT_POSITION_PROFIT_PX up (down for a short) from the
+// entry, the stop mirrors it, and the box runs DEFAULT_POSITION_WIDTH_PX right.
+const DEFAULT_POSITION_WIDTH_PX = 160;
+const DEFAULT_POSITION_PROFIT_PX = 72;
 const SHAPE_TOOL_TYPES = ['triangle', 'arc', 'curve', 'double-curve'];
 const THREE_POINT_SHAPE_TYPES = ['triangle', 'curve', 'double-curve'];
 const TEXT_MARKER_TYPES = [
@@ -1253,6 +1318,13 @@ export default function MarketReplayChart({
   const timeframeTransitionKeyRef = useRef(null);
   const pendingLiveCandlesRef = useRef([]);
   const alertCheckInFlightRef = useRef(false);
+  const liveTickBufferRef = useRef(null);
+  const liveTickFlushTimerRef = useRef(null);
+  const candleColorsRef = useRef(null);
+  // Describes the series content as the live tick path last left it, so the
+  // `setData` effect below can tell "the chart already shows this" from "the data
+  // genuinely changed" and skip a full rebuild in the former case.
+  const appliedLiveSeriesRef = useRef(null);
 
   const [symbol, setSymbol] = useState(initialSymbol);
   const [exchange, setExchange] = useState(initialExchange);
@@ -1524,6 +1596,90 @@ export default function MarketReplayChart({
   useEffect(() => {
     allCandlesRef.current = allCandles;
   }, [allCandles]);
+
+  useEffect(() => {
+    candleColorsRef.current = candleColors;
+  }, [candleColors]);
+
+  // The live half of the "never rebuild history on a tick" split. `allCandlesRef`
+  // is merged synchronously here so that anything reading the series imperatively
+  // (entering Replay, drawing projection, the position monitor) sees the newest
+  // bar immediately, and the two chart series are patched in place through
+  // `update()` rather than `setData()`. `update()` only repaints the affected bar
+  // and — unlike `setData()` — does not change the bar count when the tick merely
+  // patches the current bucket, so it never trips `shiftVisibleRangeOnNewBar`.
+  // React state is deliberately *not* written here; see `flushLiveTicks`.
+  const applyLiveCandleToSeries = useCallback((nextCandle) => {
+    const previous = allCandlesRef.current;
+    const merged = mergeLiveCandle(previous, nextCandle);
+    if (merged === previous) return previous;
+
+    allCandlesRef.current = merged;
+    if (replayModeRef.current) return merged;
+
+    const candleSeries = candleSeriesRef.current;
+    const volumeSeries = volumeSeriesRef.current;
+    const colors = candleColorsRef.current;
+    const lastBar = merged[merged.length - 1];
+
+    // Patch in place only when the merge was provably a last-bar patch or a single
+    // append *and* the series is still showing exactly what we last left it
+    // showing. Anything else (a re-sorted backfill, a series rebuilt underneath us,
+    // a color change) drops the fingerprint so the effect below does a full
+    // `setData` on the next flush.
+    const isIncremental = merged.length === previous.length || merged.length === previous.length + 1;
+    if (
+      !candleSeries
+      || !volumeSeries
+      || !colors
+      || !isIncremental
+      || Number(lastBar.time) !== Number(nextCandle.time)
+      || !liveSeriesSignatureMatches(appliedLiveSeriesRef.current, liveSeriesSignature(previous, colors))
+    ) {
+      appliedLiveSeriesRef.current = null;
+      return merged;
+    }
+
+    candleSeries.update({
+      time: lastBar.time,
+      open: lastBar.open,
+      high: lastBar.high,
+      low: lastBar.low,
+      close: lastBar.close,
+    });
+    volumeSeries.update(liveVolumeBar(lastBar, colors));
+    appliedLiveSeriesRef.current = liveSeriesSignature(merged, colors);
+
+    return merged;
+  }, []);
+
+  // Publishes the coalesced result of one or more ticks to React state. The array
+  // itself comes from `allCandlesRef`, which `applyLiveCandleToSeries` has already
+  // merged every buffered tick into — buffering the candles instead and replaying
+  // them here would drop the final close of a bucket whenever a burst spanned a
+  // bar boundary. The history-key guard keeps a tick captured against the previous
+  // symbol/timeframe from overwriting a history load that landed in between.
+  const flushLiveTicks = useCallback(() => {
+    window.clearTimeout(liveTickFlushTimerRef.current);
+    liveTickFlushTimerRef.current = null;
+
+    const pending = liveTickBufferRef.current;
+    if (!pending) return;
+    liveTickBufferRef.current = null;
+
+    if (historyReadyKeyRef.current !== pending.historyKey) return;
+
+    setLiveFeedInfo({ source: 'websocket', receivedAt: pending.receivedAt });
+    setFeedStatusClock(pending.receivedAt);
+    setAllCandles(allCandlesRef.current);
+  }, []);
+
+  const scheduleLiveTickFlush = useCallback(() => {
+    if (liveTickFlushTimerRef.current != null) return;
+    liveTickFlushTimerRef.current = window.setTimeout(flushLiveTicks, LIVE_TICK_FLUSH_MS);
+  }, [flushLiveTicks]);
+
+  useEffect(() => () => window.clearTimeout(liveTickFlushTimerRef.current), []);
 
   useEffect(() => {
     visibleCandlesRef.current = visibleCandles;
@@ -2193,6 +2349,14 @@ export default function MarketReplayChart({
 
     if (drawing.color) {
       settings.color = drawing.color;
+    }
+
+    if (drawing.fillColor) {
+      settings.fillColor = drawing.fillColor;
+    }
+
+    if (Number.isFinite(Number(drawing.fillOpacity))) {
+      settings.fillOpacity = Number(drawing.fillOpacity);
     }
 
     if (Number.isFinite(Number(drawing.strokeWidth))) {
@@ -3843,6 +4007,12 @@ export default function MarketReplayChart({
 
     isNarrowChartRef.current = containerRef.current.clientWidth > 0 && containerRef.current.clientWidth < NARROW_CHART_BREAKPOINT;
 
+    // The series about to be created are empty, so nothing the live tick path
+    // previously applied still holds. Without this reset the `setData` effect could
+    // match its own stale fingerprint against unchanged candles and skip the
+    // initial fill, leaving a blank chart.
+    appliedLiveSeriesRef.current = null;
+
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth || 800,
       height: containerRef.current.clientHeight || 0,
@@ -4060,6 +4230,7 @@ export default function MarketReplayChart({
       if (dragDrawingRef.current) return;
       if (!param?.point) return;
 
+      flushLiveTicks();
       setReplayPointFromCoordinates(param.point.x, param.point.y, true);
       setReplayMode(true);
       setIsReplayPricePickActive(false);
@@ -4404,7 +4575,7 @@ export default function MarketReplayChart({
       macdSignalSeriesRef.current = null;
       macdHistogramSeriesRef.current = null;
     };
-  }, [scheduleOverlayRender, selectedPriceAutoscaleInfoProvider, setReplayPointFromCoordinates]);
+  }, [flushLiveTicks, scheduleOverlayRender, selectedPriceAutoscaleInfoProvider, setReplayPointFromCoordinates]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -4768,6 +4939,37 @@ export default function MarketReplayChart({
 
     if (!chart || !candleSeries || !volumeSeries) return;
 
+    // A live tick has already patched both series in place through `update()`
+    // (see applyLiveCandleToSeries) by the time its coalesced React state flush
+    // reaches this effect, so rebuilding from scratch here would be pure waste —
+    // and would reintroduce the viewport reflow described below. The fingerprint
+    // says whether the series already hold exactly this data; it only ever matches
+    // for the live tick path, because every other producer of `visibleCandles`
+    // (history load, Replay slice, symbol/timeframe switch, a candle color change)
+    // changes the bar count, the last bar or the volume colors.
+    // `!replayMode` keeps the shortcut out of Replay entirely, and the
+    // `pendingBackToLiveRef` guard is what makes that safe at the boundary:
+    // leaving Replay from the very last bar produces a slice identical to the live
+    // series, so the fingerprint would match and the back-to-live scroll below
+    // would never run.
+    if (
+      !replayMode
+      && !pendingBackToLiveRef.current
+      && liveSeriesSignatureMatches(
+        appliedLiveSeriesRef.current,
+        liveSeriesSignature(visibleCandles, candleColorsRef.current),
+      )
+    ) {
+      previousVisibleCandleCountRef.current = visibleCandles.length;
+      scheduleOverlayRender();
+      return;
+    }
+
+    // Replay and every non-tick load still take the full path below. Replay in
+    // particular cannot use `update()` at all: stepping backward and scrubbing
+    // shrink `visibleCandles`, and lightweight-charts can only patch the last bar
+    // or append — it has no way to remove one.
+    //
     // Live streaming replaces the full series data on every tick (setAllCandles
     // gives visibleCandles a new array identity per WebSocket message, not only
     // when a bar completes) — unlike Replay, where visibleCandles only changes
@@ -4807,6 +5009,7 @@ export default function MarketReplayChart({
     }
 
     previousVisibleCandleCountRef.current = visibleCandles.length;
+    appliedLiveSeriesRef.current = liveSeriesSignature(visibleCandles, candleColorsRef.current);
 
     // Returning to Live expands visibleCandles from the Replay slice to the
     // complete series. Wait until that complete data has reached the chart
@@ -5183,15 +5386,17 @@ export default function MarketReplayChart({
 
         if (!event.repeat) {
           if (!replayMode) {
+            flushLiveTicks();
+            const liveCandles = allCandlesRef.current;
             const nextIndex = Math.min(
-              Math.max(0, Math.floor(allCandles.length * 0.3)),
-              Math.max(0, allCandles.length - 1)
+              Math.max(0, Math.floor(liveCandles.length * 0.3)),
+              Math.max(0, liveCandles.length - 1)
             );
 
             setReplayMode(true);
             setFollowReplay(true);
             setReplayIndex(nextIndex);
-            setSelectedReplayPrice(allCandles[nextIndex]?.close ?? null);
+            setSelectedReplayPrice(liveCandles[nextIndex]?.close ?? null);
             setIsReplayPricePickActive(false);
             setIsPlaying(true);
           } else if (replayIndex < allCandles.length - 1) {
@@ -5285,7 +5490,7 @@ export default function MarketReplayChart({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [allCandles, handleDeleteMultiSelectedDrawings, handleDuplicateSelectedDrawing, handleFinishPathDrawing, handleNudgeSelectedDrawing, handleRedoDrawings, handleUndoDrawings, marketCategory, pushDrawingUndoSnapshot, replayIndex, replayMode, saveDrawings]);
+  }, [allCandles, flushLiveTicks, handleDeleteMultiSelectedDrawings, handleDuplicateSelectedDrawing, handleFinishPathDrawing, handleNudgeSelectedDrawing, handleRedoDrawings, handleUndoDrawings, marketCategory, pushDrawingUndoSnapshot, replayIndex, replayMode, saveDrawings]);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -5455,6 +5660,8 @@ export default function MarketReplayChart({
               strokeWidth: savedToolSettings.strokeWidth ?? DEFAULT_FREEHAND_STROKE_WIDTH[toolRef.current] ?? 1,
               lineStyle: savedToolSettings.lineStyle ?? 'solid',
               color: savedToolSettings.color ?? drawingColorRef.current,
+              fillColor: savedToolSettings.fillColor,
+              fillOpacity: savedToolSettings.fillOpacity,
               labelText: '',
               labelVertical: savedToolSettings.labelVertical ?? 'top',
               labelHorizontal: savedToolSettings.labelHorizontal ?? 'center',
@@ -5484,6 +5691,54 @@ export default function MarketReplayChart({
 
         const currentTemp = tempDrawingRef.current;
 
+        if (POSITION_TOOL_TYPES.includes(toolRef.current) && !currentTemp) {
+          const isLongPosition = toolRef.current === 'long-position';
+          const targetCoords = getChartCoordinates(
+            x + DEFAULT_POSITION_WIDTH_PX,
+            y + (isLongPosition ? -DEFAULT_POSITION_PROFIT_PX : DEFAULT_POSITION_PROFIT_PX),
+          );
+          if (!targetCoords) return;
+
+          // Clicking near the bottom of the pane can extrapolate a short's target
+          // below zero — fall back to a 1% leg so the box is always a real range.
+          if (!Number.isFinite(targetCoords.price) || targetCoords.price <= 0) {
+            targetCoords.price = coords.price * (isLongPosition ? 1.01 : 0.99);
+          }
+
+          const savedToolSettings = getToolSettingsForType(toolRef.current);
+          const placed = {
+            id: `drawing-${Date.now()}`,
+            type: toolRef.current,
+            start: coords,
+            end: normalizePositionTarget(toolRef.current, coords, targetCoords),
+            strokeWidth: savedToolSettings.strokeWidth ?? 1,
+            lineStyle: savedToolSettings.lineStyle ?? 'solid',
+            color: savedToolSettings.color ?? drawingColorRef.current,
+            labelText: '',
+            labelVertical: savedToolSettings.labelVertical ?? 'top',
+            labelHorizontal: savedToolSettings.labelHorizontal ?? 'center',
+            textBold: Boolean(savedToolSettings.textBold),
+            textItalic: Boolean(savedToolSettings.textItalic),
+            textSize: savedToolSettings.textSize,
+            timeframe,
+          };
+          placed.stop = getDefaultPositionStop(placed.type, placed.start, placed.end);
+
+          appendDrawing(placed);
+          setTempDrawing(null);
+          setTool(null);
+
+          // Holding the button down and dragging still sizes the target leg, so the
+          // old click-drag gesture keeps working — it just starts from a whole box
+          // instead of nothing. A plain click leaves the default untouched, and
+          // commitPendingDrawingSnapshot no-ops when nothing actually moved.
+          setChartMouseInteractions(false);
+          pendingDrawingSnapshotRef.current = buildDrawingSnapshot(placed.id);
+          resizeDrawingRef.current = { drawingId: placed.id, handle: 'end', originalDrawing: placed };
+          dragDrawingRef.current = null;
+          return;
+        }
+
         if (!currentTemp) {
           const savedToolSettings = getToolSettingsForType(toolRef.current);
           setTempDrawing({
@@ -5494,6 +5749,8 @@ export default function MarketReplayChart({
             strokeWidth: savedToolSettings.strokeWidth ?? 1,
             lineStyle: savedToolSettings.lineStyle ?? 'solid',
             color: savedToolSettings.color ?? drawingColorRef.current,
+            fillColor: savedToolSettings.fillColor,
+            fillOpacity: savedToolSettings.fillOpacity,
             labelText: '',
             labelVertical: savedToolSettings.labelVertical ?? 'top',
             labelHorizontal: savedToolSettings.labelHorizontal ?? 'center',
@@ -5527,6 +5784,8 @@ export default function MarketReplayChart({
             strokeWidth: currentTemp.strokeWidth ?? 1,
             lineStyle: currentTemp.lineStyle ?? 'solid',
             color: currentTemp.color ?? drawingColorRef.current,
+            fillColor: currentTemp.fillColor,
+            fillOpacity: currentTemp.fillOpacity,
             labelText: currentTemp.labelText ?? '',
             labelVertical: currentTemp.labelVertical ?? 'top',
             labelHorizontal: currentTemp.labelHorizontal ?? 'center',
@@ -6079,6 +6338,13 @@ export default function MarketReplayChart({
       const isTimeframeTransition = timeframeTransitionKeyRef.current === historyKey;
       if (historyReadyKeyRef.current !== historyKey) {
         pendingLiveCandlesRef.current = [];
+        // Ticks buffered against the outgoing market must not be published, and
+        // the series is about to be rebuilt from this market's history, so the
+        // in-place-update fingerprint no longer describes anything.
+        liveTickBufferRef.current = null;
+        window.clearTimeout(liveTickFlushTimerRef.current);
+        liveTickFlushTimerRef.current = null;
+        appliedLiveSeriesRef.current = null;
         setLoading(!isTimeframeTransition);
       }
 
@@ -6465,13 +6731,21 @@ export default function MarketReplayChart({
   // leaves the message and the button on screen instead of blanking the chart.
   const retryCandleFetch = () => setCandleReloadNonce((nonce) => nonce + 1);
 
-  const startReplayMode = (startIndex = Math.max(0, Math.floor(allCandles.length * 0.3))) => {
-    const nextIndex = Math.min(Math.max(0, startIndex), Math.max(0, allCandles.length - 1));
+  const startReplayMode = (startIndex) => {
+    // A live tick that has been applied to `allCandlesRef` but whose coalesced
+    // React flush is still pending would otherwise make `allCandles` one bar short
+    // here, and both the default start index and the resume checkpoint are derived
+    // from that length. Flush first, then measure from the ref, so entering Replay
+    // mid-stream lands on the same bar it would have with no tick in flight.
+    flushLiveTicks();
+    const candles = allCandlesRef.current;
+    const resolvedStartIndex = startIndex ?? Math.max(0, Math.floor(candles.length * 0.3));
+    const nextIndex = Math.min(Math.max(0, resolvedStartIndex), Math.max(0, candles.length - 1));
 
     setReplayMode(true);
     setFollowReplay(true);
     setReplayIndex(nextIndex);
-    setSelectedReplayPrice(allCandles[nextIndex]?.close ?? null);
+    setSelectedReplayPrice(candles[nextIndex]?.close ?? null);
     setIsReplayPricePickActive(false);
   };
 
@@ -6621,7 +6895,7 @@ export default function MarketReplayChart({
     }
 
     setLiveConnectionStatus('connecting');
-    return createLiveCandleStream({
+    const stopLiveCandleStream = createLiveCandleStream({
       exchange,
       category: marketCategory,
       symbol,
@@ -6634,17 +6908,29 @@ export default function MarketReplayChart({
       },
       onCandle: (nextCandle) => {
         const receivedAt = Date.now();
-        setLiveFeedInfo({ source: 'websocket', receivedAt });
-        setFeedStatusClock(receivedAt);
         const historyKey = `${exchange}:${marketCategory}:${symbol}:${timeframe}`;
         if (historyReadyKeyRef.current !== historyKey) {
           pendingLiveCandlesRef.current = normalizeApiCandles([...pendingLiveCandlesRef.current, nextCandle]);
           return;
         }
-        setAllCandles((items) => normalizeApiCandles([...items, nextCandle]));
+
+        // Paint first, re-render later. The series is patched from every message
+        // so the candle moves at the exchange's cadence; React state — and with it
+        // the indicator recompute, the overlay pass and every `visibleCandles`
+        // consumer — is coalesced onto a `LIVE_TICK_FLUSH_MS` window.
+        applyLiveCandleToSeries(nextCandle);
+        liveTickBufferRef.current = { receivedAt, historyKey };
+        scheduleLiveTickFlush();
       },
     });
-  }, [activeExchangeSymbol, exchange, marketCategory, replayMode, symbol, timeframe]);
+
+    return () => {
+      stopLiveCandleStream();
+      window.clearTimeout(liveTickFlushTimerRef.current);
+      liveTickFlushTimerRef.current = null;
+      liveTickBufferRef.current = null;
+    };
+  }, [activeExchangeSymbol, applyLiveCandleToSeries, exchange, marketCategory, replayMode, scheduleLiveTickFlush, symbol, timeframe]);
 
   useEffect(() => {
     if (replayMode || liveConnectionStatus === 'live') return undefined;
@@ -6706,8 +6992,8 @@ export default function MarketReplayChart({
     if (!await requireReplayAccess({ showProgress: true })) return;
 
     if (!replayMode) {
-      const startIndex = Math.max(0, allCandles.length - 2);
-      startReplayMode(startIndex);
+      // startReplayMode flushes; the ref is already current either way.
+      startReplayMode(Math.max(0, allCandlesRef.current.length - 2));
       return;
     }
 
@@ -6749,10 +7035,12 @@ export default function MarketReplayChart({
   const resetReplay = () => {
     setIsPlaying(false);
     setFollowReplay(true);
-    const latestIndex = Math.max(0, allCandles.length - 1);
+    flushLiveTicks();
+    const liveCandles = allCandlesRef.current;
+    const latestIndex = Math.max(0, liveCandles.length - 1);
     setReplayMode(true);
     setReplayIndex(latestIndex);
-    setSelectedReplayPrice(allCandles[latestIndex]?.close ?? null);
+    setSelectedReplayPrice(liveCandles[latestIndex]?.close ?? null);
     setTool(null);
     setTempDrawing(null);
     setTextInput(null);
@@ -6966,6 +7254,34 @@ export default function MarketReplayChart({
     const next = drawingsRef.current.map((drawing) => (
       drawing.id === selectedId
         ? { ...drawing, color }
+        : drawing
+    ));
+
+    saveDrawings(next);
+  };
+
+  // Body color/opacity for filled geometry. Kept separate from handleDrawingColorChange
+  // so changing the border never repaints the body and vice versa.
+  const handleDrawingFillChange = (updates, options = {}) => {
+    const selectedId = selectedDrawingIdRef.current;
+    const selected = drawingsRef.current.find((drawing) => drawing.id === selectedId);
+    const targetType = selected?.type ?? tempDrawingRef.current?.type ?? toolRef.current;
+
+    if (!targetType || !FILL_COLOR_TOOL_TYPES.includes(targetType)) return;
+
+    if (!options.skipDefaultSave) {
+      saveToolSettingsForType(targetType, updates);
+    }
+
+    if (tempDrawingRef.current?.type === targetType) {
+      setTempDrawing((prev) => (prev ? { ...prev, ...updates } : prev));
+    }
+
+    if (!selectedId) return;
+
+    const next = drawingsRef.current.map((drawing) => (
+      drawing.id === selectedId && FILL_COLOR_TOOL_TYPES.includes(drawing.type)
+        ? { ...drawing, ...updates }
         : drawing
     ));
 
@@ -8503,6 +8819,7 @@ export default function MarketReplayChart({
             onToolChange={handleToolChange}
             onReadyToolChange={handleReadyToolChange}
             onDrawingColorChange={handleDrawingColorChange}
+            onDrawingFillChange={handleDrawingFillChange}
             onDrawingWidthChange={handleDrawingWidthChange}
             onDrawingLineStyleChange={handleDrawingLineStyleChange}
             onDrawingLabelChange={handleDrawingLabelChange}

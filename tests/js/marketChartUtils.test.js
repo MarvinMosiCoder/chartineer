@@ -6,6 +6,7 @@ import {
   estimateDrawingLogicalFromTime,
   estimateLogicalFromTime,
   estimateTradeMarkerLogicalFromTime,
+  mergeLiveCandle,
 } from '../../resources/js/Components/Market/MarketChart/utils.js';
 
 const FIFTEEN_MINUTES = 15 * 60;
@@ -212,4 +213,64 @@ test('rejects a trade marker with no usable execution time', () => {
   // executed_at_time = null, so MarketChart.jsx filters those out before
   // calling this rather than letting them resolve millions of bars in the past.
   assert.ok(estimateTradeMarkerLogicalFromTime(candles, Number(null)) < -1_000_000);
+});
+
+
+const ONE_MINUTE = 60;
+const liveBar = (time, close, volume = 1) => ({
+  time,
+  open: 1,
+  high: 2,
+  low: 0,
+  close,
+  volume,
+});
+const liveSeries = [
+  liveBar(baseTime, 10),
+  liveBar(baseTime + ONE_MINUTE, 11),
+  liveBar(baseTime + (2 * ONE_MINUTE), 12),
+];
+
+test('mergeLiveCandle replaces the last bar when the tick is the same bucket', () => {
+  const patched = liveBar(baseTime + (2 * ONE_MINUTE), 12.5, 4);
+  const merged = mergeLiveCandle(liveSeries, patched);
+
+  assert.equal(merged.length, liveSeries.length);
+  assert.deepEqual(merged[merged.length - 1], patched);
+  assert.notEqual(merged, liveSeries, 'returns a new array so React sees the change');
+  assert.equal(liveSeries[2].close, 12, 'does not mutate the array it was given');
+});
+
+test('mergeLiveCandle appends when the tick opens the next bucket', () => {
+  const opened = liveBar(baseTime + (3 * ONE_MINUTE), 13);
+  const merged = mergeLiveCandle(liveSeries, opened);
+
+  assert.equal(merged.length, liveSeries.length + 1);
+  assert.deepEqual(merged[merged.length - 1], opened);
+  assert.equal(merged[2].close, 12, 'the bucket that just closed keeps its final values');
+});
+
+test('mergeLiveCandle ignores a stale repeat of a bucket it already holds', () => {
+  const stale = liveBar(baseTime + ONE_MINUTE, 99);
+
+  assert.equal(mergeLiveCandle(liveSeries, stale), liveSeries);
+});
+
+test('mergeLiveCandle re-sorts a genuine backfill of an unseen earlier bucket', () => {
+  const backfill = liveBar(baseTime - ONE_MINUTE, 9);
+  const merged = mergeLiveCandle(liveSeries, backfill);
+
+  assert.equal(merged.length, liveSeries.length + 1);
+  assert.deepEqual(
+    merged.map((candle) => candle.time),
+    [baseTime - ONE_MINUTE, baseTime, baseTime + ONE_MINUTE, baseTime + (2 * ONE_MINUTE)]
+  );
+});
+
+test('mergeLiveCandle seeds an empty series and rejects an unusable tick', () => {
+  const first = liveBar(baseTime, 10);
+
+  assert.deepEqual(mergeLiveCandle([], first), [first]);
+  assert.equal(mergeLiveCandle(liveSeries, null), liveSeries);
+  assert.equal(mergeLiveCandle(liveSeries, { ...first, time: 'nope' }), liveSeries);
 });
