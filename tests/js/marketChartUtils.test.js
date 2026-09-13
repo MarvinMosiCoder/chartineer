@@ -5,6 +5,7 @@ import {
   estimateCandleInterval,
   estimateDrawingLogicalFromTime,
   estimateLogicalFromTime,
+  estimateTradeMarkerLogicalFromTime,
 } from '../../resources/js/Components/Market/MarketChart/utils.js';
 
 const FIFTEEN_MINUTES = 15 * 60;
@@ -164,4 +165,51 @@ test('reports the median interval, and stays correct when called repeatedly', ()
   assert.equal(estimateCandleInterval(candles), FIFTEEN_MINUTES);
   assert.equal(estimateCandleInterval([]), 60);
   assert.equal(estimateCandleInterval([{ time: 100 }]), 60);
+});
+
+// A trade marker is not a drawing anchor: it belongs to the one candle that
+// contains the fill, on every timeframe. estimateDrawingLogicalFromTime only
+// snaps at 15m and above, which used to make the badge's alignment depend on
+// the timeframe being viewed rather than on the trade.
+const series = (intervalSeconds, count = 600) =>
+  Array.from({ length: count }, (_, index) => ({ time: baseTime + (index * intervalSeconds) }));
+
+test('snaps a trade marker to its containing candle on every timeframe', () => {
+  // A fill recorded on the 5m chart, 100 bars in. 5m and 3m are the worst pair:
+  // coprime intervals, so the fill time lands on no shared bar boundary.
+  const fillTime = baseTime + (100 * 300);
+
+  for (const intervalSeconds of [60, 180, 300, 900, 1800, 3600, 14_400, 86_400]) {
+    const logical = estimateTradeMarkerLogicalFromTime(series(intervalSeconds), fillTime);
+
+    assert.equal(logical, Math.trunc(logical), `${intervalSeconds}s landed off-bar at ${logical}`);
+    assert.equal(logical, Math.floor((fillTime - baseTime) / intervalSeconds));
+  }
+
+  // The regression this replaces: the drawing helper's >= 900 gate leaves 3m
+  // interpolating, two thirds of a bar right of the candle the fill is in.
+  assert.equal(estimateDrawingLogicalFromTime(series(180), fillTime, 180), 500 / 3);
+});
+
+test('snaps a fill that lands mid-candle to that candle, not between bars', () => {
+  const candles5m = series(300);
+  const midCandle = candles5m[100].time + 137;
+
+  assert.equal(estimateTradeMarkerLogicalFromTime(candles5m, midCandle), 100);
+});
+
+test('extrapolates a trade marker that falls outside the loaded candles', () => {
+  // Older than the loaded history, or past the newest candle: stay off-screen
+  // and scroll in, rather than pinning to the first or last bar.
+  assert.equal(estimateTradeMarkerLogicalFromTime(candles, candles[0].time - FIFTEEN_MINUTES), -1);
+  assert.equal(estimateTradeMarkerLogicalFromTime(candles, candles[2].time + FIFTEEN_MINUTES), 3);
+});
+
+test('rejects a trade marker with no usable execution time', () => {
+  assert.equal(estimateTradeMarkerLogicalFromTime(candles, Number(undefined)), null);
+  assert.equal(estimateTradeMarkerLogicalFromTime([], candles[0].time), null);
+  // Number(null) is 0, which IS finite — every live-mode fill stores
+  // executed_at_time = null, so MarketChart.jsx filters those out before
+  // calling this rather than letting them resolve millions of bars in the past.
+  assert.ok(estimateTradeMarkerLogicalFromTime(candles, Number(null)) < -1_000_000);
 });

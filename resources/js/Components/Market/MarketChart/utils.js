@@ -289,6 +289,37 @@ export function estimateDrawingLogicalFromTime(candles, time, intervalSeconds = 
 }
 
 /**
+ * Logical bar position for a trade badge (the B/S square on the chart).
+ *
+ * Deliberately not estimateDrawingLogicalFromTime. A drawing anchor is a free
+ * point the user clicked, so interpolating it between two bar centres is
+ * correct, and that helper only snaps to the containing candle at 15m and
+ * above. A trade is the opposite: it happened inside exactly one candle of
+ * whichever series is on screen, so its badge belongs on that bar at every
+ * timeframe. Routing trades through the drawing helper made the badge's
+ * alignment depend on the timeframe you happened to be viewing — a fill
+ * recorded at 08:20 sits dead centre on its candle at 15m and above, but
+ * resolves to logical 166.67 on a 3m chart, two thirds of a bar to the right of
+ * the candle it belongs to.
+ */
+export function estimateTradeMarkerLogicalFromTime(candles, time) {
+  const numericTime = Number(time);
+  if (!Array.isArray(candles) || !candles.length || !Number.isFinite(numericTime)) return null;
+
+  if (numericTime <= Number(candles[candles.length - 1]?.time)) {
+    const containingIndex = findCandleIndexAtOrBefore(candles, numericTime);
+
+    if (containingIndex >= 0) {
+      return containingIndex;
+    }
+  }
+
+  // Older than the loaded history, or past the newest candle: extrapolate so the
+  // badge scrolls in from off-screen rather than pinning to an edge bar.
+  return estimateLogicalFromTime(candles, numericTime);
+}
+
+/**
  * Geometry for the "add this level" buttons that sit on a position's entry line
  * (`[LONG OPEN 7.056][TP][SL]`), replacing the free-floating SET SL / SET TP ghost
  * lines that used to hang 80px away with nothing tying them to the position.

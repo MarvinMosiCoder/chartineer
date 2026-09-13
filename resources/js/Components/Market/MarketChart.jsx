@@ -61,6 +61,7 @@ import {
   estimateDrawingLogicalFromTime,
   estimateLogicalFromTime,
   estimateTimeFromLogical,
+  estimateTradeMarkerLogicalFromTime,
   findNearestCandleIndex,
   ICON_ONLY_MARKER_TYPES,
   isHorizontalRayDrawing,
@@ -3344,7 +3345,6 @@ export default function MarketReplayChart({
     const chart = chartRef.current;
     const series = candleSeriesRef.current;
     if (!chart || !series || !allCandles.length || !visibleCandles.length) return [];
-    const intervalSeconds = TIMEFRAME_SECONDS[loadedTimeframe] ?? 60;
     const lastVisibleTime = Number(visibleCandles[visibleCandles.length - 1].time);
 
     return (backtestAccount?.trades ?? [])
@@ -3354,13 +3354,21 @@ export default function MarketReplayChart({
       // full unsliced `allCandles` timeline, so a future trade's marker still resolved
       // to a valid logical index and got extrapolated far past the last rendered
       // candle into empty chart space instead of disappearing with it.
-      .filter((trade) => Number.isFinite(lastVisibleTime) && Number(trade.executedAtTime) <= lastVisibleTime)
+      //
+      // `executedAtTime` is also null for every live-mode fill — only Replay sends a
+      // candle time, so `executed_at_time` stays null in the database (MarketBacktest
+      // Controller::openPosition()). Number(null) is 0, which is finite and below every
+      // real candle time, so those trades used to pass this filter and then resolve to
+      // a logical index tens of millions of bars in the past. They were invisible only
+      // because the overlay clips, and how far out of frame they landed depended on the
+      // timeframe's candle interval. Drop them explicitly instead.
+      .filter((trade) => {
+        const executedAt = Number(trade.executedAtTime);
+        return Number.isFinite(executedAt) && executedAt > 0
+          && Number.isFinite(lastVisibleTime) && executedAt <= lastVisibleTime;
+      })
       .map((trade) => {
-        const logical = estimateDrawingLogicalFromTime(
-          allCandles,
-          Number(trade.executedAtTime),
-          intervalSeconds
-        );
+        const logical = estimateTradeMarkerLogicalFromTime(allCandles, Number(trade.executedAtTime));
         const x = Number.isFinite(logical)
           ? chart.timeScale().logicalToCoordinate(logical)
           : chart.timeScale().timeToCoordinate(Number(trade.executedAtTime));
@@ -3369,7 +3377,7 @@ export default function MarketReplayChart({
         const isBuy = (trade.action === 'open' && trade.side === 'long') || (trade.action === 'close' && trade.side === 'short');
         return { id: trade.id, x, y, label: isBuy ? 'B' : 'S', color: isBuy ? '#16a34a' : '#dc2626' };
       }).filter(Boolean);
-  }, [allCandles, visibleCandles, backtestAccount?.trades, loadedTimeframe, overlayRenderVersion, symbol]);
+  }, [allCandles, visibleCandles, backtestAccount?.trades, overlayRenderVersion, symbol]);
 
   const swingPointMarkers = useMemo(() => {
     if (!isLegendActive) return [];

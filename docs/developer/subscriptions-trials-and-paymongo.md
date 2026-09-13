@@ -94,6 +94,8 @@ Each subscription plan owns a display-only `features` JSON list. Administrators 
 
 The admin pricing editor follows the shared application theme for cards, fields, borders, actions, loading text, and save feedback in both dark and light modes.
 
+**`SubscriptionModal.jsx` hoists its teal accent into one `accent` const rather than repeating a literal at each use site.** The modal already branched `shell` and `surface` on `dark`, but its accent was a hardcoded `text-[#5eead4]` in six places — the "Replay access" eyebrow, each plan's tier-name label and icon chip, the card CTA row, and the upgrade/trial notice banners. Teal-300 reads fine on the dark shell and drops to roughly 1.3:1 on the light one, where `shell` is white and `surface` is `slate-50`, so light now uses `text-teal-700` (with `bg-teal-100`/`bg-teal-50` behind the chip and banners). The plan-features divider was `border-white/5`, invisible on light, and now branches to `border-slate-200`. Add new accented elements through `accent`, not a fresh literal. This is one instance of a wider sweep — see [Trading chart](trading-chart.md) for the same fix across the chart chrome and the two traps behind it.
+
 ## Verification
 
 - Trial activates once under concurrent clicks.
