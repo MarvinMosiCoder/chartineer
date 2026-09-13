@@ -7,7 +7,8 @@
         "test:chart-utils": "node tests/js/marketChartUtils.test.js",
         "test:market-sessions": "node tests/js/marketSessions.test.js",
         "test:marquee-selection": "node tests/js/marqueeSelection.test.js",
-        "test:order-risk-lines": "node tests/js/orderRiskLines.test.js"
+        "test:order-risk-lines": "node tests/js/orderRiskLines.test.js",
+        "test:drawing-history": "node tests/js/drawingHistory.test.js"
     },
     "devDependencies": {
         "autoprefixer": "^10.4.19",

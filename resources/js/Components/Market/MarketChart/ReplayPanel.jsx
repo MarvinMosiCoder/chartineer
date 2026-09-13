@@ -54,6 +54,7 @@ import {
   Pencil,
   Quote,
   Radical,
+  Redo2,
   Repeat,
   Repeat2,
   Route,
@@ -76,6 +77,7 @@ import {
   TrendingUp,
   Triangle,
   Type,
+  Undo2,
   Unlock,
   Wallet,
   Waves,
@@ -2112,6 +2114,10 @@ export default function ReplayPanel({
   onApplyToolPreset,
   onDeleteToolPreset,
   onClearDrawings,
+  onUndoDrawings,
+  onRedoDrawings,
+  canUndoDrawings = false,
+  canRedoDrawings = false,
   onDuplicateSelectedDrawing,
   onDeleteSelectedDrawing,
   allDrawingsLocked,
@@ -2772,6 +2778,28 @@ export default function ReplayPanel({
         {(fullscreenDrawingOnly || groupedWorkspaceRail) && (
           <div className="flex w-12 items-center justify-center">
             <RailButton
+              icon={Undo2}
+              disabled={!canUndoDrawings}
+              title="Undo (Ctrl+Z)"
+              onClick={onUndoDrawings}
+              chartTheme={chartTheme}
+            />
+          </div>
+        )}
+        {(fullscreenDrawingOnly || groupedWorkspaceRail) && (
+          <div className="flex w-12 items-center justify-center">
+            <RailButton
+              icon={Redo2}
+              disabled={!canRedoDrawings}
+              title="Redo (Ctrl+Shift+Z)"
+              onClick={onRedoDrawings}
+              chartTheme={chartTheme}
+            />
+          </div>
+        )}
+        {(fullscreenDrawingOnly || groupedWorkspaceRail) && (
+          <div className="flex w-12 items-center justify-center">
+            <RailButton
               icon={Trash2}
               disabled={!drawings.length}
               title="Clear Drawings"
@@ -2906,6 +2934,26 @@ export default function ReplayPanel({
             </div>
 
             <div className={`space-y-2 border-t pt-3 ${sectionBorderClass}`}>
+              <div className="grid grid-cols-2 gap-2">
+                <ControlButton
+                  icon={Undo2}
+                  onClick={onUndoDrawings}
+                  disabled={!canUndoDrawings}
+                  className="w-full"
+                  chartTheme={chartTheme}
+                >
+                  Undo
+                </ControlButton>
+                <ControlButton
+                  icon={Redo2}
+                  onClick={onRedoDrawings}
+                  disabled={!canRedoDrawings}
+                  className="w-full"
+                  chartTheme={chartTheme}
+                >
+                  Redo
+                </ControlButton>
+              </div>
               <ControlButton
                 icon={allDrawingsLocked ? Lock : Unlock}
                 onClick={onToggleLockAllDrawings}

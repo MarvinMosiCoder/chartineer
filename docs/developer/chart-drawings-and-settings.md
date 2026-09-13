@@ -68,6 +68,74 @@ Two deliberate asymmetries with `hitTestDrawing`:
 
 `handleContextMenu` (the price-anchored Set Alarm/Trigger Position menu — see [Trading chart](trading-chart.md)) therefore bails whenever `ctrlKey`/`metaKey` is held. Because the modifier can be released before the drag ends, mouseup also stamps `marqueeEndedAtRef` and the menu suppresses anything arriving within `MARQUEE_CONTEXT_MENU_GRACE_MS` (300ms). **This is a time window rather than a "suppress the next one" flag on purpose** — a sticky flag can outlive the gesture that set it and swallow a later, deliberate right-click instead.
 
+# Pointer cursor over the chart
+
+**The default cursor on the chart surface is `crosshair`, not the arrow.** The chart already paints lightweight-charts' own crosshair lines (`CrosshairMode.Normal`), so an arrow pointer sitting on top of them was the odd one out — reading a price off the candles is the default act here, and the default cursor is now the one that aims.
+
+Everything is ranked in a single ternary chain on `ChartStage.jsx`'s wrapper, most specific first. `MarketChart.jsx` supplies one prop, `chartPointerCursor`, computed in the existing `handleMouseMove` from whatever is under the pointer:
+
+| Under the pointer | Cursor |
+|---|---|
+| Plain candles / empty chart | `crosshair` |
+| A drawing's body | `move` |
+| Box side edge (`start-time`/`end-time`) | `ew-resize` |
+| Box top/bottom edge (`start-price`/`end-price`), position entry/target/stop | `ns-resize` |
+| Box off-diagonal corner (`start-x-end-y`/`end-x-start-y`) | `nesw-resize` |
+| Line endpoint, path point, three-point anchor | `move` |
+| Right price scale / bottom time axis | `ns-resize` / `ew-resize` |
+
+**Only constrained handles get a directional cursor** (`resizeHandleCursor`, module scope in `MarketChart.jsx`). A box's side edge really does move on one axis and a position's entry/target/stop really are price levels, so an arrow there is a promise the code keeps. A line endpoint, path point or anchor moves freely in both axes, so it gets plain `move` — the same cursor as the body. That is deliberate: a diagonal arrow would advertise a constraint that does not exist, and "the cursor cannot distinguish endpoint from body" is the honest outcome, not a gap to paper over.
+
+## Four rules that keep it from lying
+
+- **An in-flight gesture outranks the hit-tests.** While dragging or resizing, the pointer routinely runs ahead of the shape and off its handle. Reading the hit-test there would flip the cursor back mid-drag, which reads as the grab having been dropped — so `resizeDrawingRef`/`dragDrawingRef` are checked first. They need no lock check: a locked drawing's gesture could not have started.
+- **A locked drawing offers no move/resize cursor.** Both hit-tests still return it, but mousedown refuses the gesture (`drawing.locked || allDrawingsLockedRef.current`) and lets the chart pan instead. It falls through to `crosshair`, which is what that drag actually does. If you add a new gesture guard, add the matching cursor guard or the cursor starts promising things mousedown refuses.
+- **`isChartDragging` stays *above* `chartPointerCursor` in the chain, and a drawing/axis gesture never sets it.** `ChartStage.jsx`'s `onMouseDown` returns early when `chartPointerCursor` is set, because pressing on a drawing or an axis starts a move/resize/rescale, not a pan. That ordering is what stops a pan that sweeps across a drawing from flickering to `move`, while still letting the drawing's own cursor show through for the whole drag.
+- **The two axes need their own entry.** They live inside the same wrapper, so without one they would inherit the default crosshair — wrong, because a drag there rescales along one axis rather than reading a price. Their bounds come from `priceScale('right').width()` and `timeScale().height()`, the same measurements `handlePriceScaleWheel` already uses.
+
+Unchanged and still ranked above all of this: `crosshair` while a marquee is open or a drawing tool is armed, `grabbing`/`grab` for panning, `pointer` on order-line buttons, `ns-resize` on order lines. Chrome *inside* the wrapper is unaffected — Tailwind's preflight sets `cursor: pointer` on every `button`, and the UA stylesheet sets `text` on inputs, so neither inherits the crosshair.
+
+# Undo and redo
+
+**The stack rules are a pure module, not component state.** `MarketChart/drawingHistory.js` owns a plain `{ undo: [], redo: [] }` and exports `createDrawingHistory`, `pushSnapshot`, `undo`, `redo`, `canUndo`, `canRedo`, `clearScope`, none of which touch React. It was extracted because the logic previously lived as two closures inside `MarketChart.jsx` — ~8,400 lines, no test could reach them. `tests/js/drawingHistory.test.js` (`npm run test:drawing-history`) pins ordering, redo invalidation, scope isolation, the 25-step cap on *both* stacks, and that no exported function mutates the history it was handed.
+
+A snapshot is the whole `drawings` array, not a diff. At a 25-step cap that costs little, and it is what makes a gesture touching several drawings at once (marquee delete, Clear all) restore as one step.
+
+## What is undoable
+
+Every mutation of the `drawings` collection:
+
+| Action | Where the snapshot is taken |
+|---|---|
+| Create (any type, incl. text markers and multi-point paths) | `appendDrawing` — the single funnel all four creation call sites go through |
+| Duplicate (Ctrl/Cmd + D) | `handleDuplicateSelectedDrawing` |
+| Move (drag) and resize (handle drag) | mousedown → `pendingDrawingSnapshotRef`, committed on mouseup |
+| Nudge (arrow keys) | `handleNudgeSelectedDrawing`, coalesced — see below |
+| Delete single (key or toolbar), marquee bulk delete, Clear all | unchanged, already covered |
+
+**Style, colour, width and text edits are deliberately outside it.** The settings panel previews live, so covering them needs a commit-vs-preview split or every slider tick becomes a step. If that is added later, debounce it rather than calling `pushDrawingUndoSnapshot` from the panel's onChange.
+
+## Three rules that are load-bearing
+
+- **Redo is cleared inside `pushSnapshot`, not at the call sites.** Any new edit makes every redo entry a state that can no longer be reached. Putting the invalidation in the one function every mutation already calls means a future call site cannot forget it.
+- **Drag and resize snapshot at mousedown, commit at mouseup, and only if something changed.** Mousemove writes `drawingsRef.current` directly, so by mouseup the pre-gesture state is gone and must have been captured earlier. The changed-check (a `JSON.stringify` compare in `commitPendingDrawingSnapshot`) matters because mousedown also fires for a plain click that just selects a drawing — recording that would leave an undo step that visibly does nothing.
+- **Nudges coalesce into one step per burst** (`NUDGE_UNDO_COALESCE_MS`, 600ms, same idea as a text editor coalescing a run of typing). Key repeat fires every ~30ms, so one snapshot per repeat would flush all 25 steps in under a second. `lastNudgeUndoRef` tracks the run; `pushDrawingUndoSnapshot` and every history step reset it, so any other action ends the run.
+
+## The buttons force one thing the keyboard never did
+
+The history has to stay a **ref** — the mouse handlers read and write it mid-gesture and would capture a stale copy from state. But a ref never re-renders, so the rail's buttons cannot read their own `disabled` off it. `canUndoDrawings`/`canRedoDrawings` mirror it into state, written only by `syncDrawingHistoryAvailability()`, and are display-only. **If you add a path that writes the history ref, call that sync or the buttons go stale.**
+
+They mirror `canUndo(history, scope)`, not "the stack is non-empty" — undo is scope-matched, so the button must be too.
+
+`Undo2`/`Redo2` rail buttons sit above Clear in `ReplayPanel.jsx`, in both the workspace and fullscreen rails (`groupedWorkspaceRail`/`fullscreenDrawingOnly`), plus a two-up pair at the top of the expanded Tools flyout's action block. The rail container is already `overflow-y-auto`, so the two extra buttons extend its scroll rather than clipping on a short viewport. Keys: **Ctrl/Cmd + Z** undo, **Ctrl/Cmd + Shift + Z** and **Ctrl + Y** redo. Each handler returns whether it had anything to do, so on an empty stack the key falls through to the browser instead of being swallowed.
+
+## Two prior bugs this fixed
+
+- **`pushDrawingUndoSnapshot` used to open with `if (!drawingsRef.current.length) return;`** — an empty chart could never be recorded, so drawing your first shape could not be undone back to nothing. Removed; an empty array is a legitimate snapshot.
+- **Move, resize, nudge, create and duplicate recorded nothing at all.** Drag and resize committed straight through `saveDrawings(drawingsRef.current)` on mouseup, so Ctrl+Z after dragging a trendline did nothing (or, worse, reverted an *older* delete instead).
+
+`getDrawingScope()` returns `exchange:marketCategory:symbol`, which is exactly what the history-clearing effect keys on — so in practice every stored entry already matches the live scope and the filtering in `drawingHistory.js` can never fail to match. It is kept as defensive, and because it is what lets `canUndo`/`canRedo` answer "for *this* market" rather than "the stack is non-empty". Do not read it as load-bearing isolation.
+
 ## Maintenance
 
 - Add a new tool in constants/tool menus, creation state, rendering, hit testing, movement, resizing, serialization, and validation.
@@ -79,6 +147,11 @@ Two deliberate asymmetries with `hitTestDrawing`:
 ## Verification
 
 - Every drawing type create/select/move/resize/delete.
+- Cursor: crosshair over bare candles (not an arrow); `move` over a drawing's body; the matching directional arrow over a box's edges and off-diagonal corners and over a position's entry/target/stop; `ns-resize` over the right price scale and `ew-resize` over the bottom time axis. Drag a drawing well past the pointer and confirm the cursor holds the whole way instead of snapping back. Lock all drawings and confirm hovering one shows crosshair, not `move`. Pan across a drawing and confirm it stays `grabbing` without flickering.
+- Undo/redo, keyboard and buttons: draw a shape and Ctrl+Z it back to an empty chart (the first drawing must undo too). Drag one and Ctrl+Z the move. Resize one and Ctrl+Z the resize. Hold an arrow key for a second and confirm one Ctrl+Z reverts the whole run, not thirty presses' worth. Duplicate, delete, marquee-delete and Clear all, each one step. Ctrl+Shift+Z and Ctrl+Y redo each of them.
+- Click a drawing to select it **without moving it**, then Ctrl+Z: the previous action must undo, not a no-op step from the click.
+- Undo something, then make a new edit, then try to redo: nothing should happen, and the Redo button must be disabled.
+- The rail's Undo/Redo buttons enable and disable in step with the stack, and do so per market — switch symbol and confirm both go disabled with a cleared history. Check both the workspace rail and fullscreen, plus the expanded Tools flyout's pair.
 - Reload and market switching.
 - With several labelled drawings on screen (e.g. horizontal levels with `BOS`/`FVG` text), pan the chart right until those drawings run off the left edge. Confirm each label disappears whole as it reaches the boundary — never sliced into a partial word, and never a stack of fragments beside the tool rail — while the drawings' own lines/boxes still extend off-screen as before. Repeat toward the right edge, where the boundary is the price scale, not the window.
 - Create on 5m, switch to 1h and back to 5m, and confirm geometry and selection remain available.

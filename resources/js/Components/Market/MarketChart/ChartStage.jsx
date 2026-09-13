@@ -1837,6 +1837,7 @@ export default function ChartStage({
   isReplayPricePickActive,
   isHoveringBacktestOrderButton,
   isHoveringBacktestOrderLine,
+  chartPointerCursor,
   tool,
   chartTheme,
   overlaySize,
@@ -1896,6 +1897,10 @@ export default function ChartStage({
       ref={wrapperRef}
       onMouseDown={(event) => {
         if (event.button !== 0 || event.target?.closest?.('button, input, textarea, select, [data-chart-ui]')) return;
+        // Pressing on a drawing or an axis starts a move/resize/rescale, not a
+        // chart pan. Without this the wrapper would claim the gesture and paint
+        // `grabbing` over that cursor for its whole duration.
+        if (chartPointerCursor) return;
         setIsChartDragging(true);
       }}
       onMouseMove={handleReplayPickPreviewMove}
@@ -1906,6 +1911,11 @@ export default function ChartStage({
       style={{
         backgroundColor: chartTheme?.background ?? '#151617',
         height: isFullscreen ? '100%' : `min(${CHART_HEIGHT}px, max(420px, calc(100dvh - 220px)))`,
+        // Ranked most-specific first. `isChartDragging` stays above
+        // `chartPointerCursor` so a pan that sweeps the pointer across a drawing
+        // does not flicker to `move` — a drawing's or axis's own gesture never
+        // sets that flag (see onMouseDown above), so it still shows through for
+        // the whole drag.
         cursor: marqueeRect
           ? 'crosshair'
           : isChartDragging
@@ -1918,7 +1928,13 @@ export default function ChartStage({
             ? 'ns-resize'
           : tool || isReplayPricePickActive
             ? 'crosshair'
-            : 'default',
+          : chartPointerCursor
+            ? chartPointerCursor
+            // The chart already paints lightweight-charts' own crosshair lines
+            // (CrosshairMode.Normal); an arrow pointer on top of them was the
+            // odd one out. Reading a price off the candles is the default act
+            // here, so the default cursor is the one that aims.
+            : 'crosshair',
       }}
     >
       <div ref={containerRef} className="absolute inset-0 z-0" />

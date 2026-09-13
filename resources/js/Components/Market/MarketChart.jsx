@@ -76,8 +76,30 @@ import {
   normalizeVisibleRect,
   offsetDrawing,
 } from './MarketChart/utils';
+import * as drawingHistory from './MarketChart/drawingHistory';
 
-const MAX_DRAWING_UNDO_STEPS = 25;
+// One undo step per burst of held arrow keys, the way a text editor coalesces a
+// run of typing. Key repeat fires every ~30ms, so without this a second of
+// nudging would flush the whole 25-step stack.
+const NUDGE_UNDO_COALESCE_MS = 600;
+
+/**
+ * Cursor for a resize handle, by what that handle is actually allowed to move.
+ *
+ * Only the constrained handles get a directional cursor, because only they can
+ * honour it: a box's side edges move along one axis, and a position drawing's
+ * entry/target/stop are price levels that move vertically. A line endpoint, a
+ * path point or a three-point anchor moves freely in both axes, so it gets
+ * `move` — the same cursor as the drawing's body, which is honest. A diagonal
+ * arrow there would promise a constraint that does not exist.
+ */
+function resizeHandleCursor(handle) {
+  if (handle === 'start-time' || handle === 'end-time') return 'ew-resize';
+  if (handle === 'start-price' || handle === 'end-price' || handle === 'stop') return 'ns-resize';
+  if (handle === 'start-x-end-y' || handle === 'end-x-start-y') return 'nesw-resize';
+
+  return 'move';
+}
 // Below this the ctrl+left-drag is treated as a click (deselect) rather than a
 // marquee, so a stray twitch while ctrl+clicking can't look like a failed box.
 const MARQUEE_MIN_DRAG_PX = 4;
@@ -1209,7 +1231,18 @@ export default function MarketReplayChart({
   const cancelBacktestPositionRef = useRef(null);
   const triggerBacktestPositionRef = useRef(null);
   const closeBacktestPositionRef = useRef(null);
-  const drawingUndoStackRef = useRef([]);
+  const drawingHistoryRef = useRef(drawingHistory.createDrawingHistory());
+  // The history stays a ref: the mouse handlers below read and write it
+  // mid-gesture and would capture a stale copy from state. But a ref never
+  // re-renders, so the rail's Undo/Redo buttons cannot read their own disabled
+  // state off it — these two mirror it, for display only.
+  const [canUndoDrawings, setCanUndoDrawings] = useState(false);
+  const [canRedoDrawings, setCanRedoDrawings] = useState(false);
+  // Holds the pre-gesture state while a drag/resize is in flight. Committed on
+  // mouseup only if the gesture actually changed something, so a click that
+  // merely selects a drawing leaves no dead undo step behind.
+  const pendingDrawingSnapshotRef = useRef(null);
+  const lastNudgeUndoRef = useRef({ drawingId: null, at: 0 });
   const drawingSaveQueueRef = useRef(Promise.resolve());
   const drawingSaveVersionRef = useRef(0);
   const restoredReplayProgressKeyRef = useRef(null);
@@ -1427,6 +1460,10 @@ export default function MarketReplayChart({
   const [hoveredPositionDrawingId, setHoveredPositionDrawingId] = useState(null);
   const [isHoveringBacktestOrderButton, setIsHoveringBacktestOrderButton] = useState(false);
   const [isHoveringBacktestOrderLine, setIsHoveringBacktestOrderLine] = useState(false);
+  // The cursor the chart surface itself wants, from whatever is under the
+  // pointer: a drawing, a resize handle, or one of the two axes. Null means the
+  // plain candle area, which falls through to the default crosshair.
+  const [chartPointerCursor, setChartPointerCursor] = useState(null);
   const [toolSettings, setToolSettings] = useState({});
   const [backtestAccount, setBacktestAccount] = useState(null);
   const [isBacktestLoading, setIsBacktestLoading] = useState(false);
@@ -2424,59 +2461,105 @@ export default function MarketReplayChart({
     return `${exchange}:${marketCategory}:${symbol}`;
   }, [exchange, marketCategory, symbol]);
 
-  const pushDrawingUndoSnapshot = useCallback((selectedId = selectedDrawingIdRef.current) => {
-    if (!drawingsRef.current.length) return;
-
-    drawingUndoStackRef.current = [
-      ...drawingUndoStackRef.current,
-      {
-        scope: getDrawingScope(),
-        drawings: cloneDrawingsForHistory(drawingsRef.current),
-        selectedDrawingId: selectedId,
-      },
-    ].slice(-MAX_DRAWING_UNDO_STEPS);
+  const syncDrawingHistoryAvailability = useCallback(() => {
+    const scope = getDrawingScope();
+    setCanUndoDrawings(drawingHistory.canUndo(drawingHistoryRef.current, scope));
+    setCanRedoDrawings(drawingHistory.canRedo(drawingHistoryRef.current, scope));
   }, [getDrawingScope]);
 
-  const handleUndoDrawings = useCallback(() => {
-    const currentScope = getDrawingScope();
-    const stack = drawingUndoStackRef.current;
-    let snapshotIndex = -1;
+  const buildDrawingSnapshot = useCallback((selectedId = selectedDrawingIdRef.current) => ({
+    scope: getDrawingScope(),
+    drawings: cloneDrawingsForHistory(drawingsRef.current),
+    selectedDrawingId: selectedId,
+  }), [getDrawingScope]);
 
-    for (let index = stack.length - 1; index >= 0; index -= 1) {
-      if (stack[index].scope === currentScope) {
-        snapshotIndex = index;
-        break;
-      }
-    }
+  /**
+   * Record the state *before* a change. Every mutation of `drawings` that a user
+   * would expect Ctrl+Z to reverse calls this first.
+   *
+   * There is deliberately no "skip when the chart is empty" guard: an empty
+   * chart is a real state to come back to, and the old guard is exactly why
+   * drawing your first shape could never be undone.
+   */
+  const pushDrawingUndoSnapshot = useCallback((selectedId = selectedDrawingIdRef.current) => {
+    drawingHistoryRef.current = drawingHistory.pushSnapshot(
+      drawingHistoryRef.current,
+      buildDrawingSnapshot(selectedId)
+    );
+    lastNudgeUndoRef.current = { drawingId: null, at: 0 };
+    syncDrawingHistoryAvailability();
+  }, [buildDrawingSnapshot, syncDrawingHistoryAvailability]);
 
-    if (snapshotIndex === -1) return false;
+  /**
+   * Close out a drag/resize gesture. Pushes the snapshot taken at mousedown, but
+   * only when the geometry actually changed — mousedown also fires for a plain
+   * click that selects a drawing, and recording that would leave an undo step
+   * that visibly does nothing.
+   */
+  const commitPendingDrawingSnapshot = useCallback(() => {
+    const pending = pendingDrawingSnapshotRef.current;
+    pendingDrawingSnapshotRef.current = null;
+    if (!pending) return;
 
-    const [snapshot] = stack.splice(snapshotIndex, 1);
-    drawingUndoStackRef.current = stack;
+    if (JSON.stringify(pending.drawings) === JSON.stringify(drawingsRef.current)) return;
 
-    saveDrawings(snapshot.drawings);
-    const restoredSelectedId = snapshot.drawings.some((drawing) => drawing.id === snapshot.selectedDrawingId)
-      ? snapshot.selectedDrawingId
+    drawingHistoryRef.current = drawingHistory.pushSnapshot(drawingHistoryRef.current, pending);
+    lastNudgeUndoRef.current = { drawingId: null, at: 0 };
+    syncDrawingHistoryAvailability();
+  }, [syncDrawingHistoryAvailability]);
+
+  const applyDrawingHistoryStep = useCallback((step) => {
+    const scope = getDrawingScope();
+    const result = step(drawingHistoryRef.current, scope, buildDrawingSnapshot());
+
+    // Nothing recorded for this market: report it so the caller leaves the
+    // browser's own Ctrl+Z alone instead of swallowing the key.
+    if (!result) return false;
+
+    drawingHistoryRef.current = result.history;
+    lastNudgeUndoRef.current = { drawingId: null, at: 0 };
+    saveDrawings(result.snapshot.drawings);
+
+    const restoredSelectedId = result.snapshot.drawings.some((drawing) => drawing.id === result.snapshot.selectedDrawingId)
+      ? result.snapshot.selectedDrawingId
       : null;
 
     setSelectedDrawingId(restoredSelectedId);
+    setMultiSelectedDrawingIds([]);
     setTempDrawing(null);
     setTextInput(null);
     setTool(null);
+    syncDrawingHistoryAvailability();
 
     return true;
-  }, [getDrawingScope, saveDrawings]);
+  }, [buildDrawingSnapshot, getDrawingScope, saveDrawings, syncDrawingHistoryAvailability]);
+
+  const handleUndoDrawings = useCallback(
+    () => applyDrawingHistoryStep(drawingHistory.undo),
+    [applyDrawingHistoryStep]
+  );
+
+  const handleRedoDrawings = useCallback(
+    () => applyDrawingHistoryStep(drawingHistory.redo),
+    [applyDrawingHistoryStep]
+  );
 
   useEffect(() => {
-    drawingUndoStackRef.current = [];
+    drawingHistoryRef.current = drawingHistory.createDrawingHistory();
+    pendingDrawingSnapshotRef.current = null;
+    lastNudgeUndoRef.current = { drawingId: null, at: 0 };
+    setCanUndoDrawings(false);
+    setCanRedoDrawings(false);
   }, [exchange, marketCategory, symbol]);
 
   const appendDrawing = useCallback((drawing) => {
+    // Every drawing type is created through here, so one snapshot covers them all.
+    pushDrawingUndoSnapshot();
     const next = [...drawingsRef.current, drawing];
     saveToolSettingsForType(drawing.type, buildToolSettingsFromDrawing(drawing));
     saveDrawings(next);
     setSelectedDrawingId(drawing.id);
-  }, [buildToolSettingsFromDrawing, saveDrawings, saveToolSettingsForType]);
+  }, [buildToolSettingsFromDrawing, pushDrawingUndoSnapshot, saveDrawings, saveToolSettingsForType]);
 
   const loadStoredDrawings = useCallback(async () => {
     let localDrawings = [];
@@ -4985,6 +5068,17 @@ export default function MarketReplayChart({
 
     if (!deltaTime && !deltaPrice && !deltaLogical) return false;
 
+    // Key repeat fires continuously while an arrow is held, so snapshot only the
+    // start of a run: a later nudge of the same drawing within the coalesce
+    // window rides on the step already recorded. `pushDrawingUndoSnapshot` and
+    // every history step reset this marker, so any other action ends the run.
+    const now = Date.now();
+    const lastNudge = lastNudgeUndoRef.current;
+    if (lastNudge.drawingId !== selectedId || now - lastNudge.at > NUDGE_UNDO_COALESCE_MS) {
+      pushDrawingUndoSnapshot(selectedId);
+    }
+    lastNudgeUndoRef.current = { drawingId: selectedId, at: now };
+
     const next = drawingsRef.current.map((drawing) => (
       drawing.id === selectedId
         ? offsetDrawing(drawing, deltaTime, deltaPrice, deltaLogical)
@@ -4994,7 +5088,7 @@ export default function MarketReplayChart({
     saveDrawings(next);
     setSelectedDrawingId(selectedId);
     return true;
-  }, [getKeyboardPriceStep, saveDrawings, timeframe]);
+  }, [getKeyboardPriceStep, pushDrawingUndoSnapshot, saveDrawings, timeframe]);
 
   // Deletes everything the marquee caught, in one undoable step. Matches the
   // single-drawing Delete in ignoring `locked`/allDrawingsLocked — the existing
@@ -5032,6 +5126,7 @@ export default function MarketReplayChart({
     );
     const next = [...drawingsRef.current, duplicate];
 
+    pushDrawingUndoSnapshot(selectedId);
     saveDrawings(next);
     setSelectedDrawingId(duplicate.id);
     setTool(null);
@@ -5113,8 +5208,18 @@ export default function MarketReplayChart({
         }
       }
 
+      // Ctrl/Cmd+Shift+Z and Ctrl+Y both redo, matching the two conventions
+      // users arrive with. Each handler reports whether it had anything to do,
+      // so with an empty stack the key falls through to the browser untouched.
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
-        if (handleUndoDrawings()) {
+        const handled = event.shiftKey ? handleRedoDrawings() : handleUndoDrawings();
+        if (handled) {
+          event.preventDefault();
+        }
+      }
+
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'y') {
+        if (handleRedoDrawings()) {
           event.preventDefault();
         }
       }
@@ -5180,7 +5285,7 @@ export default function MarketReplayChart({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [allCandles, handleDeleteMultiSelectedDrawings, handleDuplicateSelectedDrawing, handleFinishPathDrawing, handleNudgeSelectedDrawing, handleUndoDrawings, marketCategory, pushDrawingUndoSnapshot, replayIndex, replayMode, saveDrawings]);
+  }, [allCandles, handleDeleteMultiSelectedDrawings, handleDuplicateSelectedDrawing, handleFinishPathDrawing, handleNudgeSelectedDrawing, handleRedoDrawings, handleUndoDrawings, marketCategory, pushDrawingUndoSnapshot, replayIndex, replayMode, saveDrawings]);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -5314,6 +5419,10 @@ export default function MarketReplayChart({
         event.preventDefault();
         event.stopPropagation();
         setChartMouseInteractions(false);
+        // Mousemove mutates drawingsRef directly, so the pre-gesture state has to
+        // be taken now — by mouseup it is already gone. Committed there, and only
+        // if something actually moved.
+        pendingDrawingSnapshotRef.current = buildDrawingSnapshot(resizeHit.drawingId);
         resizeDrawingRef.current = {
           ...resizeHit,
           originalDrawing: drawing,
@@ -5506,6 +5615,7 @@ export default function MarketReplayChart({
             anchor = drawing.point;
           }
 
+          pendingDrawingSnapshotRef.current = buildDrawingSnapshot(hitId);
           dragDrawingRef.current = {
             drawingId: hitId,
             startMouse: coords,
@@ -5553,6 +5663,49 @@ export default function MarketReplayChart({
         ? drawingsRef.current.find((drawing) => drawing.id === hoveredDrawingId)
         : null;
       setHoveredPositionDrawingId(isPositionDrawing(hoveredDrawing) ? hoveredDrawingId : null);
+
+      // An in-flight gesture outranks the hit-test: while dragging or resizing,
+      // the pointer routinely runs ahead of the shape (and off its handle), and
+      // the cursor flipping back mid-drag reads as the grab having been dropped.
+      // hitTestResizeHandle returns immediately unless something is selected, so
+      // this costs nothing on the common path.
+      const activeResize = resizeDrawingRef.current;
+      const resizeHoverHit = isInsideChart && !activeResize ? hitTestResizeHandle(x, y) : null;
+
+      // The two axes live inside this same wrapper, so without their own entry
+      // they would inherit the default crosshair — wrong, because what a drag
+      // does there is rescale along one axis, not read a price.
+      const hoverChart = chartRef.current;
+      const priceAxisWidth = Number(hoverChart?.priceScale?.('right')?.width?.()) || 0;
+      const timeAxisHeight = Number(hoverChart?.timeScale?.()?.height?.()) || 0;
+      const isOnPriceAxis = priceAxisWidth > 0 && x >= bounds.width - priceAxisWidth && x <= bounds.width;
+      const isOnTimeAxis = timeAxisHeight > 0 && y >= bounds.height - timeAxisHeight && y <= bounds.height;
+
+      // A locked drawing still answers both hit-tests, but mousedown refuses to
+      // drag or resize it and lets the chart pan instead — so it must not offer
+      // a move/resize cursor promising a gesture that will not happen. It falls
+      // through to the default crosshair, which is what that drag really does.
+      const isLockedForGestures = (drawing) => Boolean(drawing?.locked) || allDrawingsLockedRef.current;
+      const resizeHoverDrawing = resizeHoverHit
+        ? drawingsRef.current.find((drawing) => drawing.id === resizeHoverHit.drawingId)
+        : null;
+
+      setChartPointerCursor(
+        // An in-flight gesture needs no lock check: it could not have started.
+        activeResize
+          ? resizeHandleCursor(activeResize.handle)
+          : dragDrawingRef.current
+            ? 'move'
+            : resizeHoverHit && !isLockedForGestures(resizeHoverDrawing)
+              ? resizeHandleCursor(resizeHoverHit.handle)
+              : hoveredDrawingId && !isLockedForGestures(hoveredDrawing)
+                ? 'move'
+                : isOnPriceAxis
+                  ? 'ns-resize'
+                  : isOnTimeAxis
+                    ? 'ew-resize'
+                    : null
+      );
 
       const backtestOrderHoverHit = isInsideChart ? hitTestBacktestOrder(x, y) : null;
       // Any clickable control sitting on an order line takes the pointer cursor —
@@ -5819,12 +5972,14 @@ export default function MarketReplayChart({
       }
 
       if (resizeDrawingRef.current) {
+        commitPendingDrawingSnapshot();
         saveDrawings(drawingsRef.current);
         resizeDrawingRef.current = null;
         restoreChartMouseInteractions();
       }
 
       if (dragDrawingRef.current) {
+        commitPendingDrawingSnapshot();
         saveDrawings(drawingsRef.current);
         dragDrawingRef.current = null;
         restoreChartMouseInteractions();
@@ -5899,7 +6054,7 @@ export default function MarketReplayChart({
       window.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [addBacktestPositionLevel, appendDrawing, getChartCoordinates, getDefaultPositionStop, getToolSettingsForType, handleFinishPathDrawing, handleUpdateBacktestPositionRisk, hitTestBacktestOrder, hitTestDrawing, hitTestDrawingsInRect, hitTestResizeHandle, saveDrawings, updateLocalBacktestPositionLine]);
+  }, [addBacktestPositionLevel, appendDrawing, buildDrawingSnapshot, commitPendingDrawingSnapshot, getChartCoordinates, getDefaultPositionStop, getToolSettingsForType, handleFinishPathDrawing, handleUpdateBacktestPositionRisk, hitTestBacktestOrder, hitTestDrawing, hitTestDrawingsInRect, hitTestResizeHandle, saveDrawings, updateLocalBacktestPositionLine]);
 
   useEffect(() => {
     async function fetchKlines() {
@@ -7981,6 +8136,7 @@ export default function MarketReplayChart({
             isReplayPricePickActive={isReplayPricePickActive}
             isHoveringBacktestOrderButton={isHoveringBacktestOrderButton}
             isHoveringBacktestOrderLine={isHoveringBacktestOrderLine}
+            chartPointerCursor={chartPointerCursor}
             tool={tool}
             chartTheme={chartTheme}
             overlaySize={overlaySize}
@@ -8354,6 +8510,10 @@ export default function MarketReplayChart({
             onApplyToolPreset={handleApplyToolPreset}
             onDeleteToolPreset={handleDeleteToolPreset}
             onClearDrawings={handleClearDrawings}
+            onUndoDrawings={handleUndoDrawings}
+            onRedoDrawings={handleRedoDrawings}
+            canUndoDrawings={canUndoDrawings}
+            canRedoDrawings={canRedoDrawings}
             onDuplicateSelectedDrawing={handleDuplicateSelectedDrawing}
             onDeleteSelectedDrawing={handleDeleteSelectedDrawing}
             allDrawingsLocked={allDrawingsLocked}
