@@ -198,7 +198,7 @@ export const DEFAULT_CANDLE_COLORS = {
   up: '#089981',
   down: '#f23645',
 };
-export const DEFAULT_CANDLE_SIZE = 24;
+export const DEFAULT_CANDLE_SIZE = 8;
 export const MIN_CANDLE_SIZE = 3;
 export const MAX_CANDLE_SIZE = 24;
 

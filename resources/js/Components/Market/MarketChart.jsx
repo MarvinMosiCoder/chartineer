@@ -79,6 +79,8 @@ import {
   offsetDrawing,
 } from './MarketChart/utils';
 import * as drawingHistory from './MarketChart/drawingHistory';
+import { createIndicatorRenderer } from './MarketChart/indicatorRenderer';
+import { frameRecentCandles } from './MarketChart/chartViewport';
 
 // One undo step per burst of held arrow keys, the way a text editor coalesces a
 // run of typing. Key repeat fires every ~30ms, so without this a second of
@@ -171,63 +173,6 @@ function liveVolumeBar(candle, colors) {
   };
 }
 const WEBSOCKET_DELAY_SECONDS = 45;
-
-function movingAverage(candles, period) {
-  return candles.map((candle, index) => {
-    if (index + 1 < period) return null;
-    const window = candles.slice(index + 1 - period, index + 1);
-    return { time: candle.time, value: window.reduce((sum, item) => sum + Number(item.close), 0) / period };
-  }).filter(Boolean);
-}
-
-function exponentialMovingAverage(candles, period) {
-  if (!candles.length) return [];
-  const multiplier = 2 / (period + 1); let value = Number(candles[0].close);
-  return candles.map((candle) => { value = (Number(candle.close) * multiplier) + (value * (1 - multiplier)); return { time: candle.time, value }; });
-}
-
-function relativeStrengthIndex(candles, period) {
-  let gains = 0; let losses = 0;
-  return candles.map((candle, index) => {
-    if (!index) return null;
-    const delta = Number(candle.close) - Number(candles[index - 1].close);
-    const gain = Math.max(delta, 0); const loss = Math.max(-delta, 0);
-    if (index <= period) { gains += gain; losses += loss; if (index < period) return null; }
-    else { gains = ((gains * (period - 1)) + gain) / period; losses = ((losses * (period - 1)) + loss) / period; }
-    const rs = losses === 0 ? 100 : gains / losses;
-    return { time: candle.time, value: 100 - (100 / (1 + rs)) };
-  }).filter(Boolean);
-}
-
-function movingAverageConvergenceDivergence(candles, fastPeriod, slowPeriod, signalPeriod) {
-  if (!candles.length) return { macd: [], signal: [], histogram: [] };
-
-  const fastMultiplier = 2 / (fastPeriod + 1);
-  const slowMultiplier = 2 / (slowPeriod + 1);
-  const signalMultiplier = 2 / (signalPeriod + 1);
-  let fastEma = Number(candles[0].close);
-  let slowEma = fastEma;
-  let signalEma = 0;
-
-  const macd = [];
-  const signal = [];
-  const histogram = [];
-
-  candles.forEach((candle, index) => {
-    const close = Number(candle.close);
-    fastEma = index === 0 ? close : (close * fastMultiplier) + (fastEma * (1 - fastMultiplier));
-    slowEma = index === 0 ? close : (close * slowMultiplier) + (slowEma * (1 - slowMultiplier));
-    const macdValue = fastEma - slowEma;
-    signalEma = index === 0 ? macdValue : (macdValue * signalMultiplier) + (signalEma * (1 - signalMultiplier));
-    const signalValue = signalEma;
-
-    macd.push({ time: candle.time, value: macdValue });
-    signal.push({ time: candle.time, value: signalValue });
-    histogram.push({ time: candle.time, value: macdValue - signalValue });
-  });
-
-  return { macd, signal, histogram };
-}
 
 /**
  * Re-enables autoscale on every pane's price scale (main + any visible indicator pane).
@@ -1325,6 +1270,8 @@ export default function MarketReplayChart({
   // `setData` effect below can tell "the chart already shows this" from "the data
   // genuinely changed" and skip a full rebuild in the former case.
   const appliedLiveSeriesRef = useRef(null);
+  const indicatorRendererRef = useRef(null);
+  const publishedLiveCandlesRef = useRef(new WeakSet());
 
   const [symbol, setSymbol] = useState(initialSymbol);
   const [exchange, setExchange] = useState(initialExchange);
@@ -1570,21 +1517,6 @@ export default function MarketReplayChart({
     return allCandles.slice(0, replayIndex + 1);
   }, [allCandles, replayMode, replayIndex]);
 
-  const visibleVolume = useMemo(() => {
-    return visibleCandles.reduce((volume, c) => {
-      const time = Number(c.time);
-      const value = Number(c.volume);
-      if (!Number.isFinite(time) || !Number.isFinite(value)) return volume;
-
-      volume.push({
-        time,
-        value,
-        color: `${c.close >= c.open ? candleColors.up : candleColors.down}88`,
-      });
-      return volume;
-    }, []);
-  }, [candleColors.down, candleColors.up, visibleCandles]);
-
   useEffect(() => {
     indicatorsRef.current = indicators;
   }, [indicators]);
@@ -1594,7 +1526,9 @@ export default function MarketReplayChart({
   }, [allDrawingsLocked]);
 
   useEffect(() => {
-    allCandlesRef.current = allCandles;
+    // React may commit a coalesced snapshot after a newer socket tick has already
+    // updated the series. Never replace that newer imperative history with it.
+    if (!publishedLiveCandlesRef.current.has(allCandles)) allCandlesRef.current = allCandles;
   }, [allCandles]);
 
   useEffect(() => {
@@ -1671,6 +1605,7 @@ export default function MarketReplayChart({
 
     setLiveFeedInfo({ source: 'websocket', receivedAt: pending.receivedAt });
     setFeedStatusClock(pending.receivedAt);
+    publishedLiveCandlesRef.current.add(allCandlesRef.current);
     setAllCandles(allCandlesRef.current);
   }, []);
 
@@ -4020,7 +3955,8 @@ export default function MarketReplayChart({
         background: { color: chartTheme.background },
         textColor: chartTheme.text,
         attributionLogo: false,
-        fontSize: isNarrowChartRef.current ? 9 : 10,
+        fontSize: isNarrowChartRef.current ? 10 : 11,
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
         panes: {
           enableResize: true,
           separatorColor: chartTheme.paneSeparator,
@@ -4033,6 +3969,8 @@ export default function MarketReplayChart({
       },
       crosshair: {
         mode: CrosshairMode.Normal,
+        vertLine: { width: 1, style: LineStyle.Dashed, color: '#64748b', labelBackgroundColor: '#334155' },
+        horzLine: { width: 1, style: LineStyle.Dashed, color: '#64748b', labelBackgroundColor: '#334155' },
       },
       rightPriceScale: {
         borderColor: chartTheme.border,
@@ -4047,6 +3985,7 @@ export default function MarketReplayChart({
         secondsVisible: false,
         rightOffset: 8,
         barSpacing: candleSize,
+        rightBarStaysOnScroll: true,
       },
       handleScroll: true,
       handleScale: true,
@@ -4236,6 +4175,8 @@ export default function MarketReplayChart({
       setIsReplayPricePickActive(false);
     };
 
+    let crosshairFrame = null;
+    let pendingLegendCandle = null;
     const handleCrosshairMove = (param) => {
       const candle = param?.time != null ? param?.seriesData?.get(candleSeries) : null;
       const nextCandle = candle && [candle.open, candle.high, candle.low, candle.close].every((value) => Number.isFinite(Number(value)))
@@ -4248,19 +4189,25 @@ export default function MarketReplayChart({
           }
         : null;
 
-      setHoveredLegendCandle((current) => {
-        if (!nextCandle) return current === null ? current : null;
-        if (
-          current?.time === nextCandle.time
-          && current?.open === nextCandle.open
-          && current?.high === nextCandle.high
-          && current?.low === nextCandle.low
-          && current?.close === nextCandle.close
-        ) {
-          return current;
-        }
+      pendingLegendCandle = nextCandle;
+      if (crosshairFrame !== null) return;
+      crosshairFrame = requestAnimationFrame(() => {
+        crosshairFrame = null;
+        const nextCandle = pendingLegendCandle;
+        setHoveredLegendCandle((current) => {
+          if (!nextCandle) return current === null ? current : null;
+          if (
+            current?.time === nextCandle.time
+            && current?.open === nextCandle.open
+            && current?.high === nextCandle.high
+            && current?.low === nextCandle.low
+            && current?.close === nextCandle.close
+          ) {
+            return current;
+          }
 
-        return nextCandle;
+          return nextCandle;
+        });
       });
     };
 
@@ -4276,25 +4223,34 @@ export default function MarketReplayChart({
     macdSeriesRef.current = macdSeries;
     macdSignalSeriesRef.current = macdSignalSeries;
     macdHistogramSeriesRef.current = macdHistogramSeries;
+    indicatorRendererRef.current = createIndicatorRenderer();
 
+    let resizeFrame = null;
+    let lastChartWidth = containerRef.current.clientWidth;
+    let lastChartHeight = containerRef.current.clientHeight;
     resizeObserverRef.current = new ResizeObserver(() => {
-      if (!containerRef.current || !chartRef.current) return;
-      const width = containerRef.current.clientWidth;
-      const wasNarrow = isNarrowChartRef.current;
-      isNarrowChartRef.current = width > 0 && width < NARROW_CHART_BREAKPOINT;
-      chartRef.current.applyOptions({
-        width,
-        height: containerRef.current.clientHeight || CHART_HEIGHT,
-        ...(wasNarrow !== isNarrowChartRef.current
-          ? { layout: { fontSize: isNarrowChartRef.current ? 9 : 10 } }
-          : null),
+      if (resizeFrame !== null) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = null;
+        if (!containerRef.current || !chartRef.current) return;
+        const width = containerRef.current.clientWidth;
+        const height = containerRef.current.clientHeight || CHART_HEIGHT;
+        if (width <= 0 || (width === lastChartWidth && height === lastChartHeight)) return;
+        lastChartWidth = width;
+        lastChartHeight = height;
+        const wasNarrow = isNarrowChartRef.current;
+        isNarrowChartRef.current = width > 0 && width < NARROW_CHART_BREAKPOINT;
+        chartRef.current.applyOptions({
+          width,
+          height,
+          ...(wasNarrow !== isNarrowChartRef.current
+            ? { layout: { fontSize: isNarrowChartRef.current ? 10 : 11 } }
+            : null),
+        });
+        // Chart resizing can redistribute pane heights; restore user proportions.
+        applyIndicatorPaneHeightsRef.current();
+        scheduleOverlayRender();
       });
-      // Changing the chart's total height can silently reset/redistribute
-      // per-pane heights set by the indicators effect (observed: volume's
-      // explicit setHeight() gets wiped out, main pane fills the gap) -
-      // reassert them right after any chart-level resize.
-      applyIndicatorPaneHeightsRef.current();
-      scheduleOverlayRender();
     });
 
     resizeObserverRef.current.observe(containerRef.current);
@@ -4534,6 +4490,9 @@ export default function MarketReplayChart({
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
       chart.unsubscribeClick(handleChartClick);
       chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      if (crosshairFrame !== null) cancelAnimationFrame(crosshairFrame);
+      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+      indicatorRendererRef.current = null;
 
       if (containerRef.current) {
         containerRef.current.removeEventListener('wheel', handlePriceScaleWheel, { capture: true });
@@ -4596,7 +4555,7 @@ export default function MarketReplayChart({
         background: { color: chartTheme.background },
         textColor: chartTheme.text,
         attributionLogo: false,
-        fontSize: isNarrowChartRef.current ? 9 : 10,
+        fontSize: isNarrowChartRef.current ? 10 : 11,
         // Must be re-applied here, not only at chart creation. The chart is
         // deliberately never rebuilt on a theme change (that would discard the
         // viewport), so a separator left at the creating theme's color survives
@@ -4739,30 +4698,22 @@ export default function MarketReplayChart({
   }, [indicatorStorageKey, indicators, overlaySize.height, scheduleOverlayRender, hiddenLayers.indicators]);
 
   useEffect(() => {
-    smaSeriesRef.current?.setData(indicators.sma ? movingAverage(visibleCandles, Number(indicators.smaPeriod) || 20) : []);
-    const emaLinesForData = normalizeEmaLines(indicators);
-    emaLinesForData.forEach((line) => {
-      emaSeriesMapRef.current.get(line.id)?.setData(
-        indicators.ema ? exponentialMovingAverage(visibleCandles, Number(line.period) || 20) : [],
-      );
-    });
-    rsiSeriesRef.current?.setData(indicators.rsi ? relativeStrengthIndex(visibleCandles, Number(indicators.rsiPeriod) || 14) : []);
     const macdFastPeriod = Math.max(2, Number(indicators.macdFastPeriod) || 12);
     const macdSlowPeriod = Math.max(macdFastPeriod + 1, Number(indicators.macdSlowPeriod) || 26);
-    const macdData = indicators.macd
-      ? movingAverageConvergenceDivergence(
-        visibleCandles,
-        macdFastPeriod,
-        macdSlowPeriod,
-        Math.max(2, Number(indicators.macdSignalPeriod) || 9)
-      )
-      : { macd: [], signal: [], histogram: [] };
-    macdSeriesRef.current?.setData(macdData.macd);
-    macdSignalSeriesRef.current?.setData(macdData.signal);
-    macdHistogramSeriesRef.current?.setData(macdData.histogram.map((point) => ({
-      ...point,
-      color: point.value >= 0 ? (indicators.macdUpColor ?? '#26a69a') : (indicators.macdDownColor ?? '#ef5350'),
-    })));
+    indicatorRendererRef.current?.sync(visibleCandles, [
+      { id: 'sma', type: 'sma', enabled: Boolean(indicators.sma), period: Number(indicators.smaPeriod) || 20, series: { main: smaSeriesRef.current } },
+      ...normalizeEmaLines(indicators).map((line) => ({
+        id: `ema:${line.id}`, type: 'ema', enabled: Boolean(indicators.ema), period: Number(line.period) || 20,
+        series: { main: emaSeriesMapRef.current.get(line.id) },
+      })),
+      { id: 'rsi', type: 'rsi', enabled: Boolean(indicators.rsi), period: Number(indicators.rsiPeriod) || 14, series: { main: rsiSeriesRef.current } },
+      {
+        id: 'macd', type: 'macd', enabled: Boolean(indicators.macd), fast: macdFastPeriod, slow: macdSlowPeriod,
+        signal: Math.max(2, Number(indicators.macdSignalPeriod) || 9),
+        upColor: indicators.macdUpColor ?? '#26a69a', downColor: indicators.macdDownColor ?? '#ef5350',
+        series: { macd: macdSeriesRef.current, signal: macdSignalSeriesRef.current, histogram: macdHistogramSeriesRef.current },
+      },
+    ]);
     scheduleOverlayRender();
   }, [indicators, scheduleOverlayRender, visibleCandles]);
 
@@ -4955,12 +4906,13 @@ export default function MarketReplayChart({
     if (
       !replayMode
       && !pendingBackToLiveRef.current
-      && liveSeriesSignatureMatches(
-        appliedLiveSeriesRef.current,
-        liveSeriesSignature(visibleCandles, candleColorsRef.current),
+      && (
+        liveSeriesSignatureMatches(appliedLiveSeriesRef.current, liveSeriesSignature(visibleCandles, candleColorsRef.current))
+        || (publishedLiveCandlesRef.current.has(visibleCandles)
+          && liveSeriesSignatureMatches(appliedLiveSeriesRef.current, liveSeriesSignature(allCandlesRef.current, candleColorsRef.current)))
       )
     ) {
-      previousVisibleCandleCountRef.current = visibleCandles.length;
+      previousVisibleCandleCountRef.current = appliedLiveSeriesRef.current.count;
       scheduleOverlayRender();
       return;
     }
@@ -5002,7 +4954,9 @@ export default function MarketReplayChart({
       }))
     );
 
-    volumeSeries.setData(visibleVolume);
+    volumeSeries.setData(visibleCandles
+      .filter((candle) => Number.isFinite(Number(candle.time)) && Number.isFinite(Number(candle.volume)))
+      .map((candle) => liveVolumeBar(candle, candleColorsRef.current)));
 
     if (!replayMode && priorVisibleRange && !wasPinnedToLiveEdge) {
       timeScale.setVisibleLogicalRange(priorVisibleRange);
@@ -5029,7 +4983,7 @@ export default function MarketReplayChart({
     }
 
     scheduleOverlayRender();
-  }, [replayMode, scheduleOverlayRender, visibleCandles, visibleVolume]);
+  }, [replayMode, scheduleOverlayRender, visibleCandles, candleColors]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -5053,14 +5007,14 @@ export default function MarketReplayChart({
     viewportInitializedKeyRef.current = viewportKey;
 
     isProgrammaticRangeChangeRef.current = true;
-    chart.timeScale().fitContent();
+    frameRecentCandles(chart, visibleCandlesRef.current.length, candleSize);
     resetPriceScalesToAutoScale(chart);
 
     requestAnimationFrame(() => {
       isProgrammaticRangeChangeRef.current = false;
       scheduleOverlayRender();
     });
-  }, [allCandles.length, exchange, marketCategory, scheduleOverlayRender, symbol, timeframe]);
+  }, [allCandles.length, candleSize, exchange, marketCategory, scheduleOverlayRender, symbol, timeframe]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -5099,7 +5053,7 @@ export default function MarketReplayChart({
     } else if (pendingView.timeRange?.from != null && pendingView.timeRange?.to != null) {
       chart.timeScale().setVisibleRange(pendingView.timeRange);
     } else {
-      chart.timeScale().fitContent();
+      frameRecentCandles(chart, visibleCandles.length, candleSize);
     }
     resetPriceScalesToAutoScale(chart);
 
@@ -7141,7 +7095,7 @@ export default function MarketReplayChart({
     if (!chart) return;
 
     isProgrammaticRangeChangeRef.current = true;
-    chart.timeScale().fitContent();
+    frameRecentCandles(chart, visibleCandlesRef.current.length, candleSize);
     resetPriceScalesToAutoScale(chart);
 
     requestAnimationFrame(() => {
