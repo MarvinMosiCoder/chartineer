@@ -80,7 +80,7 @@ Stop the Vite development server and remove a stale `public/hot` marker if Larav
 
 Configure only the integration being tested:
 
-- Google/Facebook: `GOOGLE_*` and `FACEBOOK_*`
+- Google/Apple: `GOOGLE_*` and `APPLE_*` (Apple needs a registered HTTPS callback domain, Services ID, and signing credentials; see [Authentication and OAuth](authentication-and-oauth.md#apple-configuration)).
 - Coin fundamentals: `COINMARKETCAP_API_KEY`; optional fallback `COINGECKO_API_KEY` and `COINGECKO_MODE`
 - Market-data hardening: local file cache works for one instance; production requires Redis and the `MARKET_DATA_*` limits documented in `.env.example`
 - PayMongo: `PAYMONGO_*`; keep disabled until configured

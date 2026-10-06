@@ -19,7 +19,7 @@ BacktradeLab is an educational simulation tool. It does not execute real trades,
 - Lightweight Charts
 - MySQL
 - Redis for production cache, sessions, queues, and rate limiting
-- Laravel Socialite for Google and Facebook authentication
+- Laravel Socialite for Google and Apple authentication
 
 ## Local setup
 
@@ -44,7 +44,7 @@ php artisan serve
 ## Public and authenticated entry points
 
 - `/` - public product page
-- `/login` - password, Google, and Facebook sign-in
+- `/login` - password, Google, and Apple sign-in
 - `/privacy-policy` - public privacy policy
 - `/terms-of-service` - public terms
 - `/market` - trader Market Summary
@@ -56,7 +56,7 @@ php artisan serve
 ## Security notes
 
 - Password login, password reset, OAuth entry points, APIs, and backtest actions use named rate limits.
-- Google, Facebook, mail, AWS, and optional Apple integration credentials are environment-backed.
+- Google, Apple, mail, AWS, and optional Apple integration credentials are environment-backed.
 - Runtime code reads environment-backed values through Laravel configuration so configuration caching remains safe.
 - Demo-account values are simulations and never represent custody of real user funds.
 - PayMongo secret and webhook keys must remain in deployment secrets and must never be exposed to frontend responses or committed to source control.

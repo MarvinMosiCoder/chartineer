@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Traders sign in at `/login` with email/password or Google/Facebook. Administrative accounts use the separate email/password-only `/admin/login`. Both use the same `adm_users` identity table and Laravel session guard; current database privileges determine authorization. Successful traders enter `/market`; administrators enter `/dashboard`.
+Traders sign in at `/login` with email/password or Google/Apple. Administrative accounts use the separate email/password-only `/admin/login`. Both use the same `adm_users` identity table and Laravel session guard; current database privileges determine authorization. Successful traders enter `/market`; administrators enter `/dashboard`.
 
 ## Routes and files
 
@@ -11,11 +11,14 @@ Traders sign in at `/login` with email/password or Google/Facebook. Administrati
 | `GET /login`, `POST /login-save` | Render and process password login |
 | `GET/POST /admin/login` | Render and process the admin-only password login |
 | `GET /auth/{provider}/redirect`, callback | Socialite OAuth flow |
+| `POST /auth/apple/callback` | Session-free Apple form callback; redirects to the session-bound GET callback |
 | `/reset_password*`, `/send_resetpass_email*` | Password-reset screens and actions |
 | `app/Http/Controllers/Auth/LoginController.php` | Authentication, OAuth account matching/creation, session setup, logout |
 | `app/Http/Controllers/Auth/ResetPasswordController.php` | Reset validation and password history |
 | `resources/js/Pages/Auth/*.jsx` | Login and reset UI |
 | `config/services.php` | OAuth provider configuration |
+| `app/Services/Auth/AppleProvider.php` | Apple code exchange, client-secret signing, identity-token verification |
+| `app/Http/Controllers/Auth/AppleCallbackController.php` | Short-lived, encrypted, single-use callback handoff |
 
 Login is throttled at the route:
 
@@ -45,11 +48,37 @@ Route::post('login-save', [LoginController::class, 'authenticate'])
 
 Logging out redirects by role: `LoginController::logout()` captures `adminAccess->isAdmin(Auth::user())` before calling `Auth::logout()`/invalidating the session, then sends admins to `route('admin.login')` and everyone else to `route('login')`.
 
-`ResetPasswordController::resetPassword()` sets `password_login_enabled = true` alongside the new password hash, so a social-only account (Google/Facebook, `password_login_enabled = false`) that completes the "forgot password" email flow gains password login the same way the in-app change-password form (`ForceChangePasswordController::postUpdatePassword()`) already did — otherwise the new password would be saved but still rejected at login.
+`ResetPasswordController::resetPassword()` sets `password_login_enabled = true` alongside the new password hash, so a social-only account (Google/Apple, `password_login_enabled = false`) that completes the "forgot password" email flow gains password login the same way the in-app change-password form (`ForceChangePasswordController::postUpdatePassword()`) already did — otherwise the new password would be saved but still rejected at login.
 
 The password-reset email (`app/Mail/Mailer.php`, the only Mailable in this app, sent from `ResetPasswordController.php:35`) sets its `from` name and its `resources/views/mailbody.blade.php` footer from `AdmSettings::where('name','appname')` — the same Settings-page value used everywhere else in the UI (navbar brand, browser tab title) — rather than `config('mail.from.name')`. `MAIL_FROM_NAME` in `.env` defaults to `${APP_NAME}`, which is a separate, easy-to-forget value that doesn't track the admin-configurable app name at all (it was still the Laravel default in this environment); the template also had a hardcoded "VRAM" leftover in its footer before this. If a dedicated payment/receipt Mailable is ever added, give it the same `AdmSettings`-sourced `from` rather than relying on `.env`. Note this doesn't affect PayMongo's own hosted checkout page or its `send_email_receipt: true` receipt email — the merchant/business name shown there comes entirely from the PayMongo account's own Business Profile settings in their dashboard; nothing in this codebase's checkout-session request controls it (see [Subscriptions, trials, and PayMongo](subscriptions-trials-and-paymongo.md)).
 
 ## Security and maintenance
+
+### Apple configuration
+
+Register a web Services ID for Sign in with Apple in the Apple Developer account, associate it with a primary App ID with Sign in with Apple enabled, and register the site's domain and exact return URL. The return URL is `https://your-domain/auth/apple/callback`; Apple requires HTTPS and rejects localhost/IP callbacks. Use a registered HTTPS tunnel domain for local testing. See [Apple's authorization documentation](https://developer.apple.com/documentation/signinwithapplerestapi/request-an-authorization-to-the-sign-in-with-apple-server.).
+
+Set these server-only environment values:
+
+```dotenv
+APPLE_CLIENT_ID=com.example.chartineer.web
+APPLE_TEAM_ID=your-team-id
+APPLE_KEY_ID=your-sign-in-key-id
+APPLE_PRIVATE_KEY_PATH="C:/private/apple/AuthKey_YOURKEY.p8"
+APPLE_REDIRECT_URI=https://your-domain/auth/apple/callback
+```
+
+Keep the downloaded `.p8` key outside the public directory and grant the PHP process read access. `.p8` files are ignored by Git. The provider generates an ES256 client-secret JWT valid for five minutes when exchanging each code. Alternatively, set `APPLE_CLIENT_SECRET` to a pre-generated Apple client-secret JWT; that takes precedence over the private-key settings and must be replaced before its expiry. After deployment or credential changes run `php artisan config:clear` (or rebuild the production config cache).
+
+`APPLE_*` sign-in settings are separate from the existing `APPLE_API_*` enterprise-device integration. Missing sign-in configuration produces a login error rather than a server error.
+
+Provider errors appear on either step of the login form, including the initial email step reached after an unsuccessful OAuth callback.
+
+Apple sends `name email` authorization results using `form_post`. Only the exact Apple POST route excludes the `web` middleware group, so it neither demands Laravel's CSRF form token nor creates a new session cookie. It stores an encrypted response in shared server cache for 60 seconds and sends a 303 redirect containing an opaque reference. The GET callback consumes that reference under a cache lock, restores the original SameSite=Lax session, and verifies its OAuth state. It then exchanges the one-time code and verifies Apple's RS256 signature, issuer, Services ID audience, expiry, issue time, subject, and session nonce. The authorization session expires after ten minutes. Do not replace this flow with stateless authentication or disable CSRF protection globally. Multiple application servers must share the configured cache and session storage.
+
+Use only the signed token's verified email for matching or registration, never the posted `user.email`. Hide My Email relay addresses are valid identities. Apple provides a display name only on initial consent; later sign-ins use the existing Apple identity and preserve the stored name. An existing Apple identity can sign in without another email/name response; an unknown identity needs a verified email. If the app sends mail to relay addresses, register its sending domains/addresses with Apple's private email relay service.
+
+Facebook login routes and configuration have been retired. Existing Facebook identity records are retained. Their owners can use password reset to enable password login, or Google/Apple with the same verified email to access the existing account. Choosing Hide My Email for an existing account with a different email creates a separate identity; use password reset to recover the original account. Do not reinterpret Facebook provider IDs as Apple IDs.
 
 - Keep OAuth secrets in `.env`; expose only callback URLs publicly.
 - Do not allow OAuth registration to choose superadmin privilege.
@@ -66,6 +95,7 @@ The password-reset email (`app/Mail/Mailer.php`, the only Mailable in this app, 
 - Inactive user rejection.
 - Known and unknown OAuth email behavior.
 - Provider callback error/cancel behavior.
+- Run `php vendor/phpunit/phpunit/phpunit tests/Feature/AppleLoginTest.php` with `pdo_sqlite` enabled. The tests use an isolated in-memory database and locally signed tokens, including invalid signatures/claims, state, nonce, replay, relay email, consent, and client-secret signing.
 - Normal-user versus superadmin redirect.
 - Reset token, password rules, and password-history rejection.
 - Password submission shows the theme-aware, accessible “Signing in” overlay until navigation or an authentication error; the email lookup retains its smaller button state.
@@ -79,4 +109,4 @@ After the email step, the login form retains the email internally and displays o
 
 `Login.jsx`'s email/password fields are plain `<div>` wrappers with a `<span>` caption, not `<label>` elements — a `<label>` wrapping more than one labelable element (inputs, buttons) makes the browser treat the first one as the label's implicit associated control, so clicking any other control inside it (e.g. the show/hide-password toggle) also synthetically clicks that first control. Keep new controls inside the password/email field blocks out of any shared `<label>`.
 
-Known Google/Facebook users sign in directly. Unknown identities are kept in the server session for up to 15 minutes and sent to `/social-registration/confirm`. No user is created until the visitor accepts the Terms and Privacy Policy and selects **Create account**. Acceptance timestamps and the configured legal effective date are stored. Cancel or expiry clears the pending identity.
+Known Google/Apple users sign in directly. Unknown identities are kept in the server session for up to 15 minutes and sent to `/social-registration/confirm`. No user is created until the visitor accepts the Terms and Privacy Policy and selects **Create account**. Acceptance timestamps and the configured legal effective date are stored. Cancel or expiry clears the pending identity.

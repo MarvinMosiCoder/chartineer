@@ -16,6 +16,7 @@ auth.json
 *.p12
 *.pfx
 *.key
+*.p8
 .secrets/
 credentials/
 service-account*.json

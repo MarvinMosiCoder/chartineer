@@ -247,11 +247,12 @@ const LoginPage = () => {
                                 {errors.password && (
                                     <span className={`mt-1 block text-sm ${isDark ? 'text-red-400' : 'text-red-600'}`}>{errors.password}</span>
                                 )}
-                                {errors.message && (
-                                    <span className={`mt-1 block text-sm ${isDark ? 'text-red-400' : 'text-red-600'}`}>{errors.message}</span>
-                                )}
                             </div>}
                             </div>
+
+                            {errors.message && (
+                                <p role="alert" className={`mt-2 text-sm ${isDark ? 'text-red-400' : 'text-red-600'}`}>{errors.message}</p>
+                            )}
 
                             <button
                                 type="submit"
@@ -284,11 +285,13 @@ const LoginPage = () => {
                                 Google
                             </a>
                             <a
-                                href="/auth/facebook/redirect"
-                                className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[#1877f2] bg-[#1877f2] px-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#166fe5] hover:bg-[#166fe5] hover:shadow-md"
+                                href="/auth/apple/redirect"
+                                className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-black bg-black px-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-neutral-800 hover:shadow-md"
                             >
-                                <span className="font-poppins text-base font-bold">f</span>
-                                Facebook
+                                <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                    <path d="M17.05 12.54c.03 3.24 2.84 4.32 2.87 4.33-.03.08-.45 1.54-1.48 3.05-.89 1.3-1.81 2.59-3.26 2.62-1.43.03-1.89-.85-3.52-.85-1.62 0-2.13.82-3.48.88-1.4.05-2.46-1.41-3.36-2.7-1.83-2.64-3.22-7.46-1.34-10.71.93-1.62 2.59-2.65 4.39-2.67 1.37-.03 2.66.93 3.49.93.84 0 2.4-1.15 4.04-.98.69.03 2.63.28 3.88 2.11-.1.06-2.32 1.35-2.29 3.99zM14.4 4.69c.75-.9 1.26-2.16 1.12-3.41-1.08.04-2.39.72-3.16 1.62-.69.79-1.29 2.06-1.13 3.28 1.2.09 2.42-.61 3.17-1.49z" />
+                                </svg>
+                                Sign in with Apple
                             </a>
                         </div></>}
 

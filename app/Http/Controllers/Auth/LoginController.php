@@ -92,6 +92,11 @@ class LoginController extends Controller
         }
 
         if ($users && $users->password_login_enabled === false) {
+            if ($users->social_provider === 'facebook') {
+                return redirect('login')->withErrors([
+                    'message' => 'Facebook sign-in has been replaced. Use Forgot Password to set a password, or sign in with Google or Apple using the same email address.',
+                ])->onlyInput('email');
+            }
             $providerName = ucfirst($users->social_provider ?: 'social');
             return redirect('login')->withErrors([
                 'message' => "This account currently uses {$providerName} sign-in. Sign in with {$providerName}, then create a local password from Profile → Change password if you want email/password access.",
@@ -135,23 +140,33 @@ class LoginController extends Controller
 
     public function redirectToProvider(string $provider)
     {
-        $driver = Socialite::driver($provider);
+        try {
+            $driver = Socialite::driver($provider);
 
-        if ($provider === 'google') {
-            $driver->with(['prompt' => 'select_account']);
+            if ($provider === 'google') {
+                $driver->with(['prompt' => 'select_account']);
+            }
+
+            return $driver->redirect();
+        } catch (\Throwable $exception) {
+            if ($provider !== 'apple') throw $exception;
+            Log::warning('Apple sign-in redirect failed', ['exception' => get_class($exception)]);
+
+            return redirect('login')->withErrors([
+                'message' => 'Apple sign-in is currently unavailable. Please use Google or email/password.',
+            ]);
         }
-
-        return $driver->redirect();
     }
 
     public function handleProviderCallback(Request $request, string $provider): RedirectResponse
     {
         try {
+            if ($provider === 'apple') app(AppleCallbackController::class)->restore($request);
             $socialUser = Socialite::driver($provider)->user();
-        } catch (Exception $exception) {
+        } catch (\Throwable $exception) {
             Log::warning('Social login callback failed', [
                 'provider' => $provider,
-                'message' => $exception->getMessage(),
+                'exception' => get_class($exception),
             ]);
 
             return redirect('login')->withErrors([
@@ -160,19 +175,20 @@ class LoginController extends Controller
         }
 
         $email = $socialUser->getEmail();
-        if(!$email){
+        $email = is_string($email) ? Str::lower(trim($email)) : null;
+        $providerId = (string) $socialUser->getId();
+        if ($providerId === '') {
+            return redirect('login')->withErrors(['message' => 'Unable to verify your sign-in identity. Please try again.']);
+        }
+        $users = AdmUser::where('social_provider', $provider)->where('social_provider_id', $providerId)->first();
+        if (!$users && $email) {
+            $users = AdmUser::whereRaw('LOWER(email) = ?', [$email])->first();
+        }
+        if (!$users && !$email) {
             return redirect('login')->withErrors([
                 'message' => ucfirst($provider).' did not return an email address. Please use an account with a verified email.',
             ]);
         }
-
-        $providerId = (string) $socialUser->getId();
-        $users = AdmUser::where(function ($query) use ($provider, $providerId, $email) {
-            $query->where(function ($identityQuery) use ($provider, $providerId) {
-                $identityQuery->where('social_provider', $provider)
-                    ->where('social_provider_id', $providerId);
-            })->orWhere('email', $email);
-        })->first();
 
         if (!$users) {
             $request->session()->put('pending_social_registration', [
@@ -265,7 +281,7 @@ class LoginController extends Controller
     {
         $pending = $request->session()->get('pending_social_registration');
         if (!is_array($pending) || !isset($pending['provider'], $pending['provider_id'], $pending['email'], $pending['created_at'])
-            || !in_array($pending['provider'], ['google', 'facebook'], true)
+            || !in_array($pending['provider'], ['google', 'apple'], true)
             || now()->timestamp - (int) $pending['created_at'] > 900) {
             $request->session()->forget('pending_social_registration');
             return null;

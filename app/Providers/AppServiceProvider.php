@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Services\Auth\AppleProvider;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Socialite\Facades\Socialite;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -19,6 +21,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Socialite::extend('apple', fn ($app) => new AppleProvider(
+            $app->make('request'),
+            config('services.apple.client_id'),
+            config('services.apple.client_secret'),
+            config('services.apple.redirect'),
+        ));
+
         if (
             app()->environment('production')
             && config('market-data.require_redis_in_production', true)

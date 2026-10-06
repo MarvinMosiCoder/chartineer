@@ -19,7 +19,7 @@ export default function PrivacyPolicy({ legal }) {
             <LegalSection title="2. Information we collect">
                 <LegalList>
                     <li><strong>Account and profile information:</strong> name, email address, username, timezone, trading experience, profile image, account status, and password-related security records.</li>
-                    <li><strong>Google or Facebook sign-in information:</strong> provider name, provider account identifier, name, and email address returned by the provider. We do not receive your Google or Facebook password.</li>
+                    <li><strong>Google or Apple sign-in information:</strong> provider name, provider account identifier, name, and email address returned by the provider. We do not receive your Google or Apple password.</li>
                     <li><strong>Trading-workspace content:</strong> saved markets, chart drawings, tool settings, replay checkpoints, alerts, simulated orders and positions, sessions, journal notes and tags, and chart snapshots.</li>
                     <li><strong>Subscription and support information:</strong> selected plan, price and duration snapshot, PayMongo Checkout Session and payment identifiers, payment method, currency, mode, status, timestamps, transaction metadata, feedback, and administrative responses. Historical manual-payment proofs, messages, attachments, and review records remain stored as read-only records.</li>
                     <li><strong>Technical and security information:</strong> IP address, session and cookie data, login and activity logs, browser requests, errors, and timestamps.</li>
@@ -45,7 +45,7 @@ export default function PrivacyPolicy({ legal }) {
                 <p>We do not sell personal information. We may disclose the minimum information needed to:</p>
                 <LegalList>
                     <li>Hosting, database, storage, email, monitoring, and other service providers that operate BacktradeLab for us.</li>
-                    <li>Google or Facebook when you choose their authentication service, subject to their own policies.</li>
+                    <li>Google or Apple when you choose their authentication service, subject to their own policies.</li>
                     <li>PayMongo when you start a hosted checkout. We send the selected plan, server-controlled amount and currency, transaction token, and account contact details needed to process and reconcile the payment. PayMongo handles payment details under its own privacy terms.</li>
                     <li>Courts, regulators, law enforcement, or other parties when disclosure is required by law or needed to protect users, the public, or our legal rights.</li>
                     <li>A successor in a merger, financing, reorganization, or sale, subject to appropriate confidentiality and notice requirements.</li>

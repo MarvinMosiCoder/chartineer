@@ -15,7 +15,7 @@ This handbook documents the application by feature. Each guide names the respons
 
 | Area | Guide |
 |---|---|
-| Login, reset password, Google/Facebook | [Authentication and OAuth](authentication-and-oauth.md) |
+| Login, reset password, Google/Apple | [Authentication and OAuth](authentication-and-oauth.md) |
 | Profile, password, account lifecycle | [Users, profiles, and deactivation](users-profiles-and-deactivation.md) |
 | Admin authorization and navigation | [Roles, privileges, and menus](roles-privileges-menus.md) |
 | Inertia shells and role dashboards | [Dashboard and layouts](dashboard-and-layouts.md) |

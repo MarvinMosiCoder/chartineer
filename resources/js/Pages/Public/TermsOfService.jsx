@@ -15,7 +15,7 @@ export default function TermsOfService({ legal }) {
             icon="terms"
         >
             <LegalSection title="1. Acceptance and eligibility">
-                <p>By creating an account, signing in with Google or Facebook, purchasing access, or otherwise using BacktradeLab, you agree to these Terms and our <a href="/privacy-policy">Privacy Policy</a>. You must be at least 18 years old and legally able to enter this agreement. If you use the service for an organization, you represent that you can bind that organization.</p>
+                <p>By creating an account, signing in with Google or Apple, purchasing access, or otherwise using BacktradeLab, you agree to these Terms and our <a href="/privacy-policy">Privacy Policy</a>. You must be at least 18 years old and legally able to enter this agreement. If you use the service for an organization, you represent that you can bind that organization.</p>
             </LegalSection>
 
             <LegalSection title="2. Educational simulation only">
@@ -58,7 +58,7 @@ export default function TermsOfService({ legal }) {
 
             <LegalSection title="7. Our service and third parties">
                 <p>BacktradeLab and its software, design, branding, and documentation are owned by {operator} or its licensors. These Terms grant only a limited, revocable, non-transferable right to use the service.</p>
-                <p>The service relies on third parties such as Google, Facebook, market-data exchanges, hosting providers, and PayMongo. Their services and terms are separate from ours. We are not responsible for third-party outages, decisions, data, or content beyond the responsibility imposed by law.</p>
+                <p>The service relies on third parties such as Google, Apple, market-data exchanges, hosting providers, and PayMongo. Their services and terms are separate from ours. We are not responsible for third-party outages, decisions, data, or content beyond the responsibility imposed by law.</p>
             </LegalSection>
 
             <LegalSection title="8. Availability, changes, and termination">

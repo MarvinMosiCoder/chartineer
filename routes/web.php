@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\ModulsController;
 use App\Http\Controllers\Admin\NotificationsController;
 use App\Http\Controllers\Admin\PrivilegesController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Auth\AppleCallbackController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\Dashboard\DashboardController;
@@ -90,13 +91,17 @@ Route::post('login-save', [LoginController::class, 'authenticate'])
     ->middleware('throttle:login')
     ->name('login-save');
 Route::get('/auth/{provider}/redirect', [LoginController::class, 'redirectToProvider'])
-    ->whereIn('provider', ['google', 'facebook'])
+    ->whereIn('provider', ['google', 'apple'])
     ->middleware('throttle:social-login')
     ->name('social.redirect');
 Route::get('/auth/{provider}/callback', [LoginController::class, 'handleProviderCallback'])
-    ->whereIn('provider', ['google', 'facebook'])
+    ->whereIn('provider', ['google', 'apple'])
     ->middleware('throttle:social-callback')
     ->name('social.callback');
+Route::post('/auth/apple/callback', [AppleCallbackController::class, 'receive'])
+    ->withoutMiddleware('web')
+    ->middleware('throttle:social-callback')
+    ->name('social.apple.callback');
 Route::get('/social-registration/confirm', [LoginController::class, 'showSocialRegistration'])->name('social.registration.confirm');
 Route::post('/social-registration/confirm', [LoginController::class, 'completeSocialRegistration'])
     ->middleware('throttle:social-login')->name('social.registration.complete');

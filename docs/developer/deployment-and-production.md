@@ -8,7 +8,7 @@ Use managed MySQL, shared Redis for cache/session/rate limits/queues, private S3
 
 Local development in this repo currently runs `SESSION_DRIVER=database` rather than `redis`: the Redis *server* is present via Laragon, but the `predis/predis` client package isn't installed (`composer require predis/predis` would be needed first). `database` needs its `sessions` table migrated once (`php artisan session:table && php artisan migrate`) but otherwise avoids `file`'s locking with zero new dependencies — a reasonable default for local dev, not a substitute for `redis` in production.
 
-Production secrets belong in the deployment environment. Important groups are `APP_*`, `DB_*`, `REDIS_*`, `MAIL_*`, `AWS_*`, `GOOGLE_*`, `FACEBOOK_*`, `LEGAL_*`, `COINMARKETCAP_API_KEY`, optional CoinGecko fallback `COINGECKO_*`, and `PAYMONGO_*`.
+Production secrets belong in the deployment environment. Important groups are `APP_*`, `DB_*`, `REDIS_*`, `MAIL_*`, `AWS_*`, `GOOGLE_*`, `APPLE_*`, `LEGAL_*`, `COINMARKETCAP_API_KEY`, optional CoinGecko fallback `COINGECKO_*`, and `PAYMONGO_*`.
 
 `MARKET_DATA_HISTORICAL_REQUEST_CACHE_SECONDS` controls fixed-end exchange-page caching and defaults to 86,400 seconds. Keep it substantially longer than the latest-candle cache so full-history requests reuse immutable pages.
 
