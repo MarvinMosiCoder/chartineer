@@ -21,6 +21,7 @@ This handbook documents the application by feature. Each guide names the respons
 | Inertia shells and role dashboards | [Dashboard and layouts](dashboard-and-layouts.md) |
 | Homepage, privacy, terms, cookies | [Public and legal pages](public-and-legal-pages.md) |
 | Exchanges, candles, saved markets | [Market data and symbols](market-data-and-symbols.md) |
+| DEX memecoin risk, scalp filters, wallet tracking, journal | [Memecoin research](memecoin-research.md) |
 | Chart composition and indicators | [Trading chart](trading-chart.md) |
 | Drawing persistence and templates | [Chart drawings and settings](chart-drawings-and-settings.md) |
 | Exchange WebSockets and polling | [Live market streaming](live-market-streaming.md) |

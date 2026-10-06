@@ -9,6 +9,12 @@ module.exports = {
     theme: {
         extend: {
             colors: {
+                meme: {
+                    bg: 'var(--meme-bg)', panel: 'var(--meme-panel)', border: 'var(--meme-border)',
+                    text: 'var(--meme-text)', dim: 'var(--meme-dim)', accent: 'var(--meme-accent)',
+                    danger: 'var(--meme-danger)', 'danger-soft': 'var(--meme-danger-soft)',
+                    'palette-amber': '#f59e0b',
+                },
                 "login-bg-color": "#383838",
                 "camera-color": "#342D2D",
                 "screen-color": "#E8E8E8",

@@ -18,6 +18,9 @@ class Kernel extends ConsoleKernel
         $schedule->command('payments:reconcile-paymongo --limit=50')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('subscriptions:send-renewal-reminders')->dailyAt('09:00')->withoutOverlapping();
         $schedule->command('notifications:prune-trades')->dailyAt('04:00')->withoutOverlapping();
+        if (config('memecoin.watch_enabled')) {
+            $schedule->command('memecoin:watch')->everyFiveMinutes()->withoutOverlapping();
+        }
     }
 
     /**

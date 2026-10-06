@@ -15,6 +15,7 @@ import colorMap from '../../Components/Notification/ColorMap';
 // row, so it has to be carried across explicitly rather than coming from session
 // data with the rest.
 const SUPPORT_ITEM = { name: 'Customer Support', slug: 'admin/feedback', type: 'Route', icon: 'fa-solid fa-comments' };
+const MEMECOIN_ITEM = { name: 'Memecoin Research', slug: 'memecoin', type: 'Route', icon: 'fa-solid fa-magnifying-glass-chart' };
 
 const menuHref = (item) => '/' + String(item.slug ?? '').replace(/^\/+/, '');
 
@@ -92,7 +93,7 @@ export default function AdminNavbar() {
     const userMenus = auth?.sessions?.user_menus ?? [];
     const adminMenus = auth?.sessions?.admin_menus ?? [];
     const isSuperadmin = Number(auth?.sessions?.admin_privileges) === 1;
-    const adminEntries = isSuperadmin ? [SUPPORT_ITEM, ...adminMenus] : [];
+    const adminEntries = [MEMECOIN_ITEM, ...(isSuperadmin ? [SUPPORT_ITEM, ...adminMenus] : [])];
     const groupEntries = adminEntries.filter((item) => item.type !== 'Route' && (item.children ?? []).length > 0);
     const singleEntries = adminEntries.filter((item) => item.type === 'Route');
     const overflowEntries = singleEntries;

@@ -25,6 +25,8 @@ php artisan optimize
 
 Run the scheduler every minute and supervise queue workers. Test database restores, not only backups.
 
+[Memecoin research](memecoin-research.md) wallet scans require a queue worker with `--queue=memecoin --timeout=85` (or include `memecoin` in the normal worker's queue list). With a `sync` default they explicitly use the database connection. Optional `MEMECOIN_WATCH_ENABLED=true` schedules checks every five minutes; `MEMECOIN_SOLANA_RPC_URL` overrides the public RPC. Optional Telegram delivery is scoped to `MEMECOIN_TELEGRAM_USER_ID`; keep bot credentials in deployment secrets.
+
 A queue worker is required, not optional: the trade-report export ([Trade reports and journals](trade-reports-and-journals.md)) dispatches a `GenerateBacktestReportExport` job and nothing processes it without `php artisan queue:work` running (supervised, same pattern as the market alert worker below). `QUEUE_CONNECTION=database` needs no extra infrastructure; switch to `redis` if queue volume grows, since Redis is already required for cache/sessions/rate limits.
 
 Subscription renewal reminders ([Subscriptions](subscriptions-trials-and-paymongo.md)) do not need a separate supervised process — `subscriptions:send-renewal-reminders` runs off the same Laravel scheduler as `payments:reconcile-paymongo`, so it only needs the standard cron-triggered `php artisan schedule:run` every minute already required above.

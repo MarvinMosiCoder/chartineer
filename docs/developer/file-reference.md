@@ -27,6 +27,7 @@ Use this index to find the feature owner of a source file. Detailed behavior bel
 | `DashboardController.php`, `Pages/Dashboard/*`, `Layouts/*` | [Dashboard and layouts](dashboard-and-layouts.md), including admin operations and workspace mode |
 | `Pages/Public/*`, `CookieNotice.jsx`, `config/legal.php` | [Public and legal](public-and-legal-pages.md) |
 | `MarketDataController.php`, `MarketMetadataService.php`, `MarketOverviewController.php`, `MarketOverviewService.php`, `MarketSymbol.php` | [Market data](market-data-and-symbols.md) |
+| `MemecoinController.php`, `Services/Memecoin/*`, `Models/Memecoin*.php`, `Jobs/ScanMemecoinWallets.php`, `WatchMemecoinWallets.php`, `routes/memecoin.php`, `config/memecoin.php`, `Pages/Memecoin/Index.jsx`, `Components/Memecoin/*` | [Memecoin research](memecoin-research.md) |
 | `Components/Market/MarketChart*` | [Trading chart](trading-chart.md) |
 | `MarketDrawingController.php`, `MarketToolSettingController.php` | [Drawings and settings](chart-drawings-and-settings.md) |
 | `liveCandleStream.js` | [Live streaming](live-market-streaming.md) |

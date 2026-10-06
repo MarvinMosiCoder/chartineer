@@ -25,6 +25,9 @@ class RouteServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        foreach (['memecoin-search' => 20, 'memecoin-analyze' => 6, 'memecoin-watch' => 2] as $name => $maximum) {
+            RateLimiter::for($name, fn (Request $request) => Limit::perMinute($maximum)->by($name.':'.($request->user()?->id ?: $request->ip())));
+        }
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by(optional($request->user())->id ?: $request->ip());
         });

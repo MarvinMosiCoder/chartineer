@@ -22,6 +22,7 @@ const NAV_ITEMS = [
     { label: 'Workspace', full: 'Workspace', href: '/workspace', icon: LayoutDashboard, primary: true },
     { label: 'Journal', full: 'Trade journal', href: '/trade-report', icon: BookOpen, primary: true },
     { label: 'Training', full: 'Training challenges', href: '/training-challenges', icon: Target, primary: true },
+    { label: 'Memecoins', full: 'Memecoin Research', href: '/memecoin', icon: CandlestickChart },
     { label: 'Mentor review', full: 'Mentor review', href: '/mentor-review', icon: Share2 },
     { label: 'Subscription', full: 'Subscription', href: '/subscription', icon: CreditCard },
     { label: 'Feedback & Support', full: 'Feedback & Customer Support', href: '/feedback', icon: MessageSquarePlus },
@@ -30,7 +31,7 @@ const NAV_ITEMS = [
 
 // Workspace owns several sub-paths (/workspace/<id>), so it stays lit on all of
 // them — the same rule the sidebar used.
-const isNavActive = (url, href) => url === href || (href === '/workspace' && url.startsWith('/workspace'));
+const isNavActive = (url, href) => url.split('?')[0] === href || (['/workspace', '/memecoin'].includes(href) && url.startsWith(`${href}/`));
 
 function NavBarLink({ item, url, isDark }) {
     const active = isNavActive(url, item.href);

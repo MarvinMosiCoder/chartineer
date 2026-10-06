@@ -16,6 +16,7 @@ npm run test:market-sessions    # tests/js/marketSessions.test.js
 npm run test:marquee-selection  # tests/js/marqueeSelection.test.js
 npm run test:order-risk-lines   # tests/js/orderRiskLines.test.js
 npm run test:drawing-history    # tests/js/drawingHistory.test.js
+npm run test:memecoin-scalp     # tests/js/memecoinScalp.test.mjs
 ```
 
 Current automated coverage includes PayMongo client/signature/route behavior and subscription entitlement service behavior under `tests/Unit` and `tests/Feature`. Add tests beside the changed domain; do not rely only on manual chart testing.
